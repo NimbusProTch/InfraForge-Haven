@@ -61,36 +61,39 @@ resource "hcloud_firewall" "haven" {
     source_ips = ["0.0.0.0/0", "::/0"]
   }
 
-  # RKE2 supervisor API (cluster-internal only)
+  # RKE2 supervisor API
+  # NOTE: Hetzner nodes communicate via public IPs by default.
+  # Restricting to network_cidr breaks inter-node traffic.
+  # TODO: Configure RKE2 to use private network, then restrict.
   rule {
     direction  = "in"
     protocol   = "tcp"
     port       = "9345"
-    source_ips = [var.network_cidr]
+    source_ips = ["0.0.0.0/0", "::/0"]
   }
 
-  # VXLAN (Cilium overlay, cluster-internal only)
+  # VXLAN (Cilium overlay)
   rule {
     direction  = "in"
     protocol   = "udp"
     port       = "8472"
-    source_ips = [var.network_cidr]
+    source_ips = ["0.0.0.0/0", "::/0"]
   }
 
-  # etcd peer communication (cluster-internal only)
+  # etcd peer communication
   rule {
     direction  = "in"
     protocol   = "tcp"
     port       = "2379-2380"
-    source_ips = [var.network_cidr]
+    source_ips = ["0.0.0.0/0", "::/0"]
   }
 
-  # Kubelet API (cluster-internal only)
+  # Kubelet API
   rule {
     direction  = "in"
     protocol   = "tcp"
     port       = "10250"
-    source_ips = [var.network_cidr]
+    source_ips = ["0.0.0.0/0", "::/0"]
   }
 }
 
