@@ -173,21 +173,39 @@ resource "null_resource" "wait_for_cluster_active" {
     }
     command = <<-EOT
       echo "Waiting for cluster $CLUSTER_NAME to become active..."
+      # Phase 1: Wait for K8s API to respond via Rancher proxy
       for i in $(seq 1 180); do
-        # Check if cluster K8s API is reachable via Rancher proxy
         HTTP_CODE=$(curl -sk -o /dev/null -w '%%{http_code}' \
           -H "Authorization: Bearer $RANCHER_TOKEN" \
           "$RANCHER_URL/k8s/clusters/$CLUSTER_ID/api/v1/namespaces" 2>/dev/null)
         echo "Attempt $i/180 - K8s API via Rancher proxy: HTTP $HTTP_CODE"
         if [ "$HTTP_CODE" = "200" ]; then
-          echo "Cluster K8s API is reachable! Waiting 90s for catalog repos to sync..."
-          sleep 90
-          echo "Cluster is active!"
+          echo "K8s API is reachable!"
+          break
+        fi
+        if [ "$i" = "180" ]; then
+          echo "ERROR: K8s API did not become reachable in 30 minutes"
+          exit 1
+        fi
+        sleep 10
+      done
+      # Phase 2: Wait for Rancher v3 cluster state = "active"
+      echo "Waiting for Rancher to report cluster as active..."
+      for j in $(seq 1 60); do
+        STATE=$(curl -sk \
+          -H "Authorization: Bearer $RANCHER_TOKEN" \
+          "$RANCHER_URL/v3/clusters?name=$CLUSTER_NAME" 2>/dev/null \
+          | grep -o '"state":"[^"]*"' | head -1 | cut -d'"' -f4)
+        echo "Cluster state check $j/60: $STATE"
+        if [ "$STATE" = "active" ]; then
+          echo "Cluster is active! Waiting 30s for catalog repos to sync..."
+          sleep 30
+          echo "Ready for app installations."
           exit 0
         fi
         sleep 10
       done
-      echo "ERROR: Cluster did not become active in 30 minutes"
+      echo "ERROR: Cluster did not become active in Rancher within 10 minutes"
       exit 1
     EOT
   }

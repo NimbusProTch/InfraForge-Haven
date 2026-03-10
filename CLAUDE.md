@@ -101,7 +101,7 @@ haven-platform/
 - **Environment level**: Node'lar + `rancher2_app_v2` install'lar (enable/disable)
 - **Helm templates**: Module'da (`modules/rancher-cluster/templates/`), env'de değil
 - **cloud-init**: Node registration (env-specific, `environments/dev/templates/`)
-- **Wait pattern**: Rancher K8s proxy API ile cluster readiness check
+- **Wait pattern**: 2-phase check (K8s API HTTP 200 → Rancher v3 state "active" → 30s catalog sync)
 
 ### Multi-Tenancy: 5 Katmanlı İzolasyon
 1. **Namespace**: `tenant-{name}` per tenant
@@ -203,7 +203,9 @@ haven-platform/
 - [x] Master/Worker nodes (cloud-init registration)
 - [x] cloud-init bashism fix (dash uyumu)
 - [x] Helm templates module'e taşındı (rancher-cluster module)
-- [x] Wait for cluster active (Rancher K8s proxy API check)
+- [x] Wait for cluster active (2-phase: K8s API + Rancher v3 state)
+- [x] Full automation tested (single `tofu apply` = 27 resources from zero)
+- [x] Firewall: NodePort removed (Gateway API), hardening deferred (Hetzner public IP issue)
 
 ### Phase 0.5: Platform Servisleri ✅
 - [x] Cert-Manager v1.16.2 (Jetstack repo via rancher2_catalog_v2, Haven #12)
@@ -223,7 +225,10 @@ haven-platform/
 - Provider: `token_key` (provider config) vs `.token` (resource output)
 - `cni: "none"` = chicken-and-egg problem → use `cni: "cilium"` + `chart_values`
 - CIS profile taint: `node-role.kubernetes.io/etcd:NoExecute` → `tolerations: [{operator: "Exists"}]`
-- `rancher2_app_v2` "Cluster not active" → wait for K8s API via Rancher proxy, not v3 state
+- `rancher2_app_v2` "Cluster not active" → 2-phase wait: K8s API 200 + Rancher v3 state "active"
+- **Hetzner firewall**: Nodes use PUBLIC IPs for inter-node traffic, not private network → restricting to `network_cidr` breaks cluster. Need RKE2 `--node-ip` private network config first
+- NodePort range (30000-32767) removed from firewall → Gateway API replaces it
+- Longhorn destroy timeout (10min) → `tofu state rm 'rancher2_app_v2.longhorn[0]'` then re-destroy
 - `nonsensitive()` in local-exec environment block to avoid output suppression
 - cert-manager NOT in rancher-charts → use `rancher2_catalog_v2` (Jetstack repo) + `rancher2_app_v2`
 - rancher-monitoring/logging need CRD chart installed first (e.g., `rancher-monitoring-crd`)
