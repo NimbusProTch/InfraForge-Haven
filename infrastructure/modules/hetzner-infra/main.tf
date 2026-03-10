@@ -61,44 +61,36 @@ resource "hcloud_firewall" "haven" {
     source_ips = ["0.0.0.0/0", "::/0"]
   }
 
-  # RKE2 supervisor API
+  # RKE2 supervisor API (cluster-internal only)
   rule {
     direction  = "in"
     protocol   = "tcp"
     port       = "9345"
-    source_ips = ["0.0.0.0/0", "::/0"]
+    source_ips = [var.network_cidr]
   }
 
-  # NodePort range
-  rule {
-    direction  = "in"
-    protocol   = "tcp"
-    port       = "30000-32767"
-    source_ips = ["0.0.0.0/0", "::/0"]
-  }
-
-  # VXLAN (Cilium overlay)
+  # VXLAN (Cilium overlay, cluster-internal only)
   rule {
     direction  = "in"
     protocol   = "udp"
     port       = "8472"
-    source_ips = ["0.0.0.0/0", "::/0"]
+    source_ips = [var.network_cidr]
   }
 
-  # etcd peer communication
+  # etcd peer communication (cluster-internal only)
   rule {
     direction  = "in"
     protocol   = "tcp"
     port       = "2379-2380"
-    source_ips = ["0.0.0.0/0", "::/0"]
+    source_ips = [var.network_cidr]
   }
 
-  # Kubelet API
+  # Kubelet API (cluster-internal only)
   rule {
     direction  = "in"
     protocol   = "tcp"
     port       = "10250"
-    source_ips = ["0.0.0.0/0", "::/0"]
+    source_ips = [var.network_cidr]
   }
 }
 
