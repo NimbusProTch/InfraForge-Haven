@@ -18,8 +18,9 @@ runcmd:
       sleep 5
     done
   - |
-    export CATTLE_CA_CHECKSUM=$(curl -sk "https://${rancher_ip}/cacerts" | sha256sum | awk '{print $1}')
-    echo "[cloud-init] CA checksum: $${CATTLE_CA_CHECKSUM:0:16}..."
+    CATTLE_CA_CHECKSUM=$(curl -sk "https://${rancher_ip}/cacerts" | sha256sum | awk '{print $1}')
+    export CATTLE_CA_CHECKSUM
+    echo "[cloud-init] CA checksum computed, registering node..."
     curl --insecure -fL "https://${rancher_ip}/system-agent-install.sh" | \
       CATTLE_CA_CHECKSUM="$$CATTLE_CA_CHECKSUM" sh -s - \
         --server "https://${rancher_ip}" \
