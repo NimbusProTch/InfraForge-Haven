@@ -1,6 +1,6 @@
 # ============================================================
-# Tenant Template - Yeni müşteri için kopyala ve düzenle
-# Kullanım: tofu apply -var-file="tenants/gemeente-xxx.tfvars"
+# Tenant Template - Copy and customize for new tenants
+# Usage: tofu apply -var-file="tenants/gemeente-xxx.tfvars"
 # ============================================================
 
 # tenant_name      = "gemeente-utrecht"

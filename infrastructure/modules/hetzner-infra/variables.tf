@@ -14,27 +14,7 @@ variable "location_secondary" {
 
 variable "management_server_type" {
   type    = string
-  default = "cx31"
-}
-
-variable "master_server_type" {
-  type    = string
-  default = "cx31"
-}
-
-variable "worker_server_type" {
-  type    = string
-  default = "cx41"
-}
-
-variable "master_count" {
-  type    = number
-  default = 3
-}
-
-variable "worker_count" {
-  type    = number
-  default = 3
+  default = "cpx32"
 }
 
 variable "ssh_public_key" {
@@ -53,7 +33,19 @@ variable "subnet_cidr" {
 }
 
 variable "os_image" {
-  description = "Hetzner OS image (Ubuntu 22.04 - RKE2 uyumlu)"
+  description = "Hetzner OS image (Ubuntu 22.04 - RKE2 compatible)"
   type        = string
   default     = "ubuntu-22.04"
+}
+
+variable "rancher_bootstrap_password" {
+  description = "Known bootstrap password for Rancher (CATTLE_BOOTSTRAP_PASSWORD)"
+  type        = string
+  default     = "admin"
+}
+
+variable "rancher_version" {
+  description = "Rancher Docker image tag"
+  type        = string
+  default     = "v2.9.3"
 }

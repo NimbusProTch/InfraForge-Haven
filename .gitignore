@@ -30,6 +30,8 @@ out/
 *.tfstate
 *.tfstate.*
 *.tfplan
+terraform.tfvars
+*.auto.tfvars
 crash.log
 override.tf
 override.tf.json

@@ -6,57 +6,57 @@ variable "hcloud_token" {
 }
 
 variable "environment" {
-  description = "Ortam adı"
+  description = "Environment name"
   type        = string
   default     = "dev"
 }
 
 variable "location_primary" {
-  description = "Birincil datacenter (Multi-AZ - Haven Check 1)"
-  type        = string
-  default     = "fsn1" # Falkenstein
-}
-
-variable "location_secondary" {
-  description = "İkincil datacenter (Multi-AZ - Haven Check 1)"
+  description = "Primary datacenter (Multi-AZ - Haven Check 1)"
   type        = string
   default     = "nbg1" # Nuremberg
 }
 
+variable "location_secondary" {
+  description = "Secondary datacenter (Multi-AZ - Haven Check 1)"
+  type        = string
+  default     = "hel1" # Helsinki
+}
+
 # Management node (Rancher server)
 variable "management_server_type" {
-  description = "Rancher management node VM tipi"
+  description = "Rancher management node VM type"
   type        = string
-  default     = "cx31" # 4 vCPU, 8GB RAM
+  default     = "cpx32" # 4 vCPU, 8GB RAM (AMD)
 }
 
 # Cluster nodes
 variable "master_server_type" {
-  description = "RKE2 master node VM tipi"
+  description = "RKE2 master node VM type"
   type        = string
-  default     = "cx31" # 4 vCPU, 8GB RAM
+  default     = "cpx32" # 4 vCPU, 8GB RAM (AMD)
 }
 
 variable "worker_server_type" {
-  description = "RKE2 worker node VM tipi"
+  description = "RKE2 worker node VM type"
   type        = string
-  default     = "cx41" # 8 vCPU, 16GB RAM
+  default     = "cpx42" # 8 vCPU, 16GB RAM (AMD)
 }
 
 variable "master_count" {
-  description = "Master node sayısı (Haven Check 2: min 3)"
+  description = "Number of master nodes (Haven Check 2: min 3)"
   type        = number
   default     = 3
 }
 
 variable "worker_count" {
-  description = "Worker node sayısı (Haven Check 2: min 3)"
+  description = "Number of worker nodes (Haven Check 2: min 3)"
   type        = number
   default     = 3
 }
 
 variable "ssh_public_key" {
-  description = "SSH public key dosya yolu"
+  description = "Path to SSH public key file"
   type        = string
   default     = "~/.ssh/id_rsa.pub"
 }
@@ -75,29 +75,40 @@ variable "subnet_cidr" {
 }
 
 # ===== Rancher =====
-variable "rancher_api_url" {
-  description = "Rancher API URL"
-  type        = string
-  default     = ""
-}
-
-variable "rancher_token_key" {
-  description = "Rancher API token"
+variable "rancher_admin_password" {
+  description = "Rancher admin password (set in terraform.tfvars)"
   type        = string
   sensitive   = true
-  default     = ""
 }
 
-variable "rancher_insecure" {
-  description = "Skip TLS verification (dev only)"
-  type        = bool
-  default     = true
+variable "rancher_bootstrap_password" {
+  description = "Known bootstrap password for initial Rancher login"
+  type        = string
+  default     = "admin"
+}
+
+variable "rancher_version" {
+  description = "Rancher Docker image tag"
+  type        = string
+  default     = "v2.9.3"
+}
+
+variable "cluster_name" {
+  description = "RKE2 cluster name"
+  type        = string
+  default     = "haven-dev"
 }
 
 variable "kubernetes_version" {
-  description = "RKE2 Kubernetes versiyonu"
+  description = "RKE2 Kubernetes version"
   type        = string
   default     = "v1.30.6+rke2r1"
+}
+
+variable "os_image" {
+  description = "Hetzner OS image (Ubuntu 22.04 - RKE2 compatible)"
+  type        = string
+  default     = "ubuntu-22.04"
 }
 
 # ===== Cloudflare =====
