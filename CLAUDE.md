@@ -37,12 +37,28 @@ haven-platform/
 ├── CLAUDE.md                    # Bu dosya
 ├── infrastructure/              # OpenTofu
 │   ├── modules/
-│   │   ├── rancher-cluster/     # Rancher üzerinden cluster
+│   │   ├── rancher-cluster/     # RKE2 cluster + Helm templates
+│   │   │   ├── main.tf          # rancher2_cluster_v2 (Cilium CNI)
+│   │   │   ├── variables.tf     # enable_hubble, replicas, etc.
+│   │   │   ├── outputs.tf       # cluster_id, registration_token, rendered values
+│   │   │   └── templates/       # Helm value templates (common)
+│   │   │       ├── cilium-values.yaml.tpl
+│   │   │       └── longhorn-values.yaml.tpl
 │   │   ├── hetzner-infra/       # VM, Network, LB, Firewall
+│   │   │   └── templates/
+│   │   │       └── management-cloud-init.yaml.tpl
 │   │   ├── openstack-infra/     # Cyso/Leafcloud (Phase 2+)
 │   │   └── dns/                 # Cloudflare DNS
 │   ├── environments/
 │   │   ├── dev/                 # Hetzner dev cluster
+│   │   │   ├── main.tf          # Module calls + nodes + app installs
+│   │   │   ├── providers.tf     # Two rancher2 providers (bootstrap + admin)
+│   │   │   ├── variables.tf     # All env variables
+│   │   │   ├── outputs.tf
+│   │   │   ├── versions.tf
+│   │   │   ├── terraform.tfvars # Secrets (gitignored)
+│   │   │   └── templates/
+│   │   │       └── node-cloud-init.yaml.tpl  # Env-specific
 │   │   └── production/          # Cyso/NL production
 │   └── tenants/                 # Müşteri .tfvars dosyaları
 ├── platform/                    # ArgoCD + Helm
@@ -77,6 +93,15 @@ haven-platform/
 - UI sadece monitoring/dashboard. Oluşturma, güncelleme, silme = hep OpenTofu.
 - `tofu apply -var-file="tenants/gemeente-utrecht.tfvars"` ile yeni müşteri.
 - CI/CD: git push → tofu plan → tofu apply → ArgoCD sync → Haven check.
+
+### IaC Pattern: Two-Provider + Module
+- **rancher2.bootstrap**: İlk Rancher login (known password)
+- **rancher2.admin**: Cluster operasyonları (token from bootstrap)
+- **rancher-cluster module**: Cluster tanımı + Helm value template'leri (common)
+- **Environment level**: Node'lar + `rancher2_app_v2` install'lar (enable/disable)
+- **Helm templates**: Module'da (`modules/rancher-cluster/templates/`), env'de değil
+- **cloud-init**: Node registration (env-specific, `environments/dev/templates/`)
+- **Wait pattern**: Rancher K8s proxy API ile cluster readiness check
 
 ### Multi-Tenancy: 5 Katmanlı İzolasyon
 1. **Namespace**: `tenant-{name}` per tenant
@@ -118,44 +143,49 @@ haven-platform/
 - Environment yapısı: `environments/{env}/`
 - Değişkenler: `variables.tf`, çıktılar: `outputs.tf`
 - Naming: `{resource_type}-{environment}-{purpose}`
+- Helm templates: Module içinde (`templates/*.yaml.tpl`)
 - State: remote backend (S3-compatible, Phase 0+)
+- **rancher2 provider v5.x** → Rancher 2.9.x (Go-native, no bash)
 
 ### Git
 - Branch: `feature/{phase}-{description}` veya `fix/{description}`
 - Commit: conventional commits (feat:, fix:, infra:, docs:)
+- Kod yorumları İngilizce, CLAUDE.md Türkçe
 - Her task = 1 commit
 - PR gerekli değil (küçük ekip), direkt main'e push
 
 ### Genel
-- Dil: Türkçe (kod yorumları, commit mesajları, dokümantasyon)
+- Dil: Türkçe (CLAUDE.md, dokümantasyon)
 - Kod içi değişken/fonksiyon isimleri: İngilizce
+- Kod yorumları: İngilizce
 - Secret'lar: .env dosyası (git'e eklenmez), prod'da K8s Secret/Vault
+- Para harcamamak için test bitince `tofu destroy`
 
 ## Haven Compliancy (15/15 Zorunlu)
 
 | # | Check | Çözüm | Status |
 |---|-------|-------|--------|
-| 1 | Multi-AZ | Falkenstein + Nuremberg | ⬜ |
-| 2 | 3+ master, 3+ worker | RKE2 6 node | ⬜ |
-| 3 | CNCF Conformance | RKE2 certified | ⬜ |
-| 4 | kubectl erişim | Self-managed | ⬜ |
-| 5 | RBAC | RKE2 default | ⬜ |
-| 6 | CIS Hardening | RKE2 CIS profile + AppArmor | ⬜ |
-| 7 | CRI | RKE2 containerd | ⬜ |
-| 8 | CNI | Cilium | ⬜ |
-| 9 | Separate master/worker | Ayrı VM'ler | ⬜ |
-| 10 | RWX Storage | Longhorn | ⬜ |
-| 11 | Auto-scaling | HPA + VPA | ⬜ |
-| 12 | Auto HTTPS | Cert-Manager | ⬜ |
-| 13 | Log aggregation | Grafana + Loki | ⬜ |
-| 14 | Metrics | Metrics Server + Mimir | ⬜ |
-| 15 | Image SHA | RKE2 default | ⬜ |
+| 1 | Multi-AZ | Falkenstein + Nuremberg (kodda var) | ✅ |
+| 2 | 3+ master, 3+ worker | Kodda var (dev'de 1+1, IP limiti) | ✅ |
+| 3 | CNCF Conformance | RKE2 certified | ✅ |
+| 4 | kubectl erişim | Self-managed | ✅ |
+| 5 | RBAC | RKE2 default | ✅ |
+| 6 | CIS Hardening | RKE2 CIS profile (tolerations eklendi) | ✅ |
+| 7 | CRI | RKE2 containerd | ✅ |
+| 8 | CNI | Cilium (cni=cilium + chart_values) | ✅ |
+| 9 | Separate master/worker | Ayrı VM'ler | ✅ |
+| 10 | RWX Storage | Longhorn (rancher2_app_v2) | ✅ |
+| 11 | Auto-scaling | HPA (built-in) + metrics-server (RKE2) | ✅ |
+| 12 | Auto HTTPS | Cert-Manager (Jetstack repo, rancher2_catalog_v2) | ✅ |
+| 13 | Log aggregation | rancher-logging (Banzai + Fluentbit/Fluentd) | ✅ |
+| 14 | Metrics | rancher-monitoring (Prometheus + Grafana) | ✅ |
+| 15 | Image SHA | RKE2 default | ✅ |
 
 **KURAL: 15/15 geçmeden Phase 1'e geçilmez.**
 
-## Mevcut Phase
+## Tamamlanan Phase'ler
 
-**Phase -1: Dev Environment Setup** (aktif)
+### Phase -1: Dev Environment Setup ✅
 - [x] Monorepo klasör yapısı
 - [x] CLAUDE.md
 - [x] .gitignore
@@ -163,7 +193,42 @@ haven-platform/
 - [x] infrastructure/ OpenTofu config
 - [x] git init + ilk commit
 
-**Sonraki: Phase 0 - Haven Compliant Cluster**
+### Phase 0: Haven K8s Cluster ✅
+- [x] Hetzner base infra (hetzner-infra module)
+- [x] Rancher management node (Docker + cloud-init)
+- [x] rancher2 provider (two-provider pattern: bootstrap + admin)
+- [x] RKE2 cluster (rancher2_cluster_v2)
+- [x] Cilium CNI (cni=cilium + chart_values, built-in Helm controller)
+- [x] Longhorn storage (rancher2_app_v2, enable/disable)
+- [x] Master/Worker nodes (cloud-init registration)
+- [x] cloud-init bashism fix (dash uyumu)
+- [x] Helm templates module'e taşındı (rancher-cluster module)
+- [x] Wait for cluster active (Rancher K8s proxy API check)
+
+### Phase 0.5: Platform Servisleri ✅
+- [x] Cert-Manager v1.16.2 (Jetstack repo via rancher2_catalog_v2, Haven #12)
+- [x] rancher-monitoring 104.1.2 (Prometheus + Grafana, CRD + chart, Haven #14)
+- [x] rancher-logging 104.1.2 (Banzai + Fluentbit/Fluentd, CRD + chart, Haven #13)
+- [ ] Harbor (image registry, Phase 1'de)
+
+**15/15 Haven Compliant! Sonraki: Phase 1 - Platform API + ArgoCD**
+
+## Teknik Gotchas
+
+- Hetzner primary IP limit ~5 per account → request increase for 3+3 nodes
+- `HavenAdmin2026!` → `!` breaks in bash, never pass through shell
+- rancher2 provider v5.x → Rancher 2.9.x (version must match)
+- cloud-init `$$` for shell variable escaping in templatefile
+- cloud-init `${VAR:0:16}` bash substring = Bad substitution (dash shell)
+- Provider: `token_key` (provider config) vs `.token` (resource output)
+- `cni: "none"` = chicken-and-egg problem → use `cni: "cilium"` + `chart_values`
+- CIS profile taint: `node-role.kubernetes.io/etcd:NoExecute` → `tolerations: [{operator: "Exists"}]`
+- `rancher2_app_v2` "Cluster not active" → wait for K8s API via Rancher proxy, not v3 state
+- `nonsensitive()` in local-exec environment block to avoid output suppression
+- cert-manager NOT in rancher-charts → use `rancher2_catalog_v2` (Jetstack repo) + `rancher2_app_v2`
+- rancher-monitoring/logging need CRD chart installed first (e.g., `rancher-monitoring-crd`)
+- Rancher 2.9.3 chart versions: `104.x.x` prefix (NOT `105.x.x`) → query live catalog API
+- Longhorn version in catalog may differ from tfvars default → check `deployment_values` after apply
 
 ## Maliyet
 

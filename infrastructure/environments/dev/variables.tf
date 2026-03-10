@@ -124,6 +124,45 @@ variable "longhorn_version" {
   default     = "104.2.0+up1.7.2"
 }
 
+# ===== Cert-Manager =====
+variable "enable_cert_manager" {
+  description = "Enable Cert-Manager (Haven Check 12: auto HTTPS)"
+  type        = bool
+  default     = true
+}
+
+variable "cert_manager_version" {
+  description = "Cert-Manager Helm chart version (from Jetstack repo)"
+  type        = string
+  default     = "v1.16.2"
+}
+
+# ===== Monitoring =====
+variable "enable_monitoring" {
+  description = "Enable rancher-monitoring (Haven Check 14: Prometheus + Grafana)"
+  type        = bool
+  default     = true
+}
+
+variable "monitoring_version" {
+  description = "rancher-monitoring Helm chart version (from Rancher marketplace)"
+  type        = string
+  default     = "104.1.2+up57.0.3"
+}
+
+# ===== Logging =====
+variable "enable_logging" {
+  description = "Enable rancher-logging (Haven Check 13: log aggregation)"
+  type        = bool
+  default     = true
+}
+
+variable "logging_version" {
+  description = "rancher-logging Helm chart version (from Rancher marketplace)"
+  type        = string
+  default     = "104.1.2+up4.8.0"
+}
+
 # ===== Cloudflare =====
 variable "cloudflare_api_token" {
   description = "Cloudflare API token"

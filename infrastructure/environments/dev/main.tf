@@ -8,6 +8,9 @@
 #   4. RKE2 cluster with Cilium CNI (via rancher-cluster module)
 #   5. Master/Worker nodes with cloud-init registration
 #   6. Longhorn storage (via Rancher marketplace, enable/disable)
+#   7. Cert-Manager (auto HTTPS - Haven #12)
+#   8. Rancher Monitoring (Prometheus + Grafana - Haven #14)
+#   9. Rancher Logging (Banzai logging operator - Haven #13)
 # ============================================================
 
 locals {
@@ -204,4 +207,91 @@ resource "rancher2_app_v2" "longhorn" {
   values = module.rancher_cluster.longhorn_values
 
   depends_on = [null_resource.wait_for_cluster_active]
+}
+
+# --- 10. Cert-Manager (Haven Check #12: Auto HTTPS) ---
+# Cert-Manager is not in rancher-charts, add Jetstack Helm repo
+resource "rancher2_catalog_v2" "jetstack" {
+  count      = var.enable_cert_manager ? 1 : 0
+  provider   = rancher2.admin
+  cluster_id = module.rancher_cluster.cluster_id
+  name       = "jetstack"
+  url        = "https://charts.jetstack.io"
+
+  depends_on = [null_resource.wait_for_cluster_active]
+}
+
+resource "rancher2_app_v2" "cert_manager" {
+  count         = var.enable_cert_manager ? 1 : 0
+  provider      = rancher2.admin
+  cluster_id    = module.rancher_cluster.cluster_id
+  name          = "cert-manager"
+  namespace     = "cert-manager"
+  repo_name     = "jetstack"
+  chart_name    = "cert-manager"
+  chart_version = var.cert_manager_version
+
+  values = module.rancher_cluster.cert_manager_values
+
+  depends_on = [rancher2_catalog_v2.jetstack]
+}
+
+# --- 11. Rancher Monitoring (Haven Check #14: Metrics + Grafana) ---
+# CRDs must be installed first
+resource "rancher2_app_v2" "monitoring_crd" {
+  count         = var.enable_monitoring ? 1 : 0
+  provider      = rancher2.admin
+  cluster_id    = module.rancher_cluster.cluster_id
+  name          = "rancher-monitoring-crd"
+  namespace     = "cattle-monitoring-system"
+  repo_name     = "rancher-charts"
+  chart_name    = "rancher-monitoring-crd"
+  chart_version = var.monitoring_version
+
+  depends_on = [null_resource.wait_for_cluster_active]
+}
+
+resource "rancher2_app_v2" "monitoring" {
+  count         = var.enable_monitoring ? 1 : 0
+  provider      = rancher2.admin
+  cluster_id    = module.rancher_cluster.cluster_id
+  name          = "rancher-monitoring"
+  namespace     = "cattle-monitoring-system"
+  repo_name     = "rancher-charts"
+  chart_name    = "rancher-monitoring"
+  chart_version = var.monitoring_version
+
+  values = module.rancher_cluster.monitoring_values
+
+  depends_on = [rancher2_app_v2.monitoring_crd]
+}
+
+# --- 12. Rancher Logging (Haven Check #13: Log aggregation) ---
+# CRDs must be installed first
+resource "rancher2_app_v2" "logging_crd" {
+  count         = var.enable_logging ? 1 : 0
+  provider      = rancher2.admin
+  cluster_id    = module.rancher_cluster.cluster_id
+  name          = "rancher-logging-crd"
+  namespace     = "cattle-logging-system"
+  repo_name     = "rancher-charts"
+  chart_name    = "rancher-logging-crd"
+  chart_version = var.logging_version
+
+  depends_on = [null_resource.wait_for_cluster_active]
+}
+
+resource "rancher2_app_v2" "logging" {
+  count         = var.enable_logging ? 1 : 0
+  provider      = rancher2.admin
+  cluster_id    = module.rancher_cluster.cluster_id
+  name          = "rancher-logging"
+  namespace     = "cattle-logging-system"
+  repo_name     = "rancher-charts"
+  chart_name    = "rancher-logging"
+  chart_version = var.logging_version
+
+  values = module.rancher_cluster.logging_values
+
+  depends_on = [rancher2_app_v2.logging_crd]
 }

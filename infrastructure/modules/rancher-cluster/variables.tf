@@ -40,3 +40,71 @@ variable "longhorn_replica_count" {
   type        = number
   default     = 1
 }
+
+# ===== Monitoring (rancher-monitoring) =====
+variable "monitoring_retention_size" {
+  description = "Prometheus retention size"
+  type        = string
+  default     = "5GB"
+}
+
+variable "monitoring_retention_days" {
+  description = "Prometheus retention period"
+  type        = string
+  default     = "7d"
+}
+
+variable "prometheus_cpu_request" {
+  description = "Prometheus CPU request"
+  type        = string
+  default     = "250m"
+}
+
+variable "prometheus_memory_request" {
+  description = "Prometheus memory request"
+  type        = string
+  default     = "512Mi"
+}
+
+variable "prometheus_memory_limit" {
+  description = "Prometheus memory limit"
+  type        = string
+  default     = "2Gi"
+}
+
+# ===== Logging (rancher-logging) =====
+variable "fluentbit_cpu_request" {
+  description = "Fluent Bit CPU request"
+  type        = string
+  default     = "100m"
+}
+
+variable "fluentbit_memory_request" {
+  description = "Fluent Bit memory request"
+  type        = string
+  default     = "128Mi"
+}
+
+variable "fluentbit_memory_limit" {
+  description = "Fluent Bit memory limit"
+  type        = string
+  default     = "256Mi"
+}
+
+variable "fluentd_cpu_request" {
+  description = "Fluentd CPU request"
+  type        = string
+  default     = "200m"
+}
+
+variable "fluentd_memory_request" {
+  description = "Fluentd memory request"
+  type        = string
+  default     = "256Mi"
+}
+
+variable "fluentd_memory_limit" {
+  description = "Fluentd memory limit"
+  type        = string
+  default     = "512Mi"
+}
