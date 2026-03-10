@@ -25,5 +25,5 @@ output "rancher_url" {
 
 output "cluster_name" {
   description = "RKE2 cluster name"
-  value       = rancher2_cluster_v2.haven.name
+  value       = module.rancher_cluster.cluster_name
 }

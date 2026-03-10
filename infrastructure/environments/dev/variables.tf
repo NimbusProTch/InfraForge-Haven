@@ -112,6 +112,12 @@ variable "os_image" {
 }
 
 # ===== Longhorn =====
+variable "enable_longhorn" {
+  description = "Enable Longhorn distributed storage (Haven Check 10: RWX)"
+  type        = bool
+  default     = true
+}
+
 variable "longhorn_version" {
   description = "Longhorn Helm chart version (from Rancher marketplace)"
   type        = string

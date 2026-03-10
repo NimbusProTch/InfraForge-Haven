@@ -5,9 +5,9 @@
 #   1. Hetzner base infra (network, firewall, SSH, LB, mgmt node)
 #   2. Wait for Rancher API to be ready
 #   3. Bootstrap Rancher (rancher2 provider - Go native, no bash)
-#   4. Create RKE2 cluster with Cilium CNI (built-in Helm controller)
+#   4. RKE2 cluster with Cilium CNI (via rancher-cluster module)
 #   5. Master/Worker nodes with cloud-init registration
-#   6. Longhorn storage (via Rancher marketplace)
+#   6. Longhorn storage (via Rancher marketplace, enable/disable)
 # ============================================================
 
 locals {
@@ -64,24 +64,23 @@ resource "rancher2_bootstrap" "admin" {
   depends_on = [null_resource.wait_for_rancher]
 }
 
-# --- 4. Create RKE2 Cluster with Cilium CNI ---
-resource "rancher2_cluster_v2" "haven" {
-  provider           = rancher2.admin
-  name               = var.cluster_name
+# --- 4. RKE2 Cluster (module: Cilium CNI + templates) ---
+module "rancher_cluster" {
+  source = "../../modules/rancher-cluster"
+  providers = {
+    rancher2 = rancher2.admin
+  }
+
+  cluster_name       = var.cluster_name
   kubernetes_version = var.kubernetes_version
 
-  rke_config {
-    chart_values = templatefile("${path.module}/templates/cilium-values.yaml.tpl", {
-      operator_replicas = 1
-      hubble_enabled    = true
-    })
+  # Cilium CNI settings
+  enable_hubble          = true
+  cilium_operator_replicas = 1
+  disable_kube_proxy     = true
 
-    machine_global_config = yamlencode({
-      cni                = "cilium"
-      disable            = ["rke2-ingress-nginx"]
-      disable-kube-proxy = true
-    })
-  }
+  # Longhorn values (rendered by module, used below)
+  longhorn_replica_count = var.worker_count >= 3 ? 3 : var.worker_count
 }
 
 # --- 5. Master Nodes (cloud-init with registration token) ---
@@ -96,7 +95,7 @@ resource "hcloud_server" "master" {
 
   user_data = templatefile("${path.module}/templates/node-cloud-init.yaml.tpl", {
     rancher_ip         = module.hetzner_infra.management_ip
-    registration_token = rancher2_cluster_v2.haven.cluster_registration_token[0].token
+    registration_token = module.rancher_cluster.registration_token
     node_roles         = "--etcd --controlplane"
   })
 
@@ -126,7 +125,7 @@ resource "hcloud_server" "worker" {
 
   user_data = templatefile("${path.module}/templates/node-cloud-init.yaml.tpl", {
     rancher_ip         = module.hetzner_infra.management_ip
-    registration_token = rancher2_cluster_v2.haven.cluster_registration_token[0].token
+    registration_token = module.rancher_cluster.registration_token
     node_roles         = "--worker"
   })
 
@@ -166,18 +165,20 @@ resource "null_resource" "wait_for_cluster_active" {
     environment = {
       RANCHER_TOKEN = nonsensitive(rancher2_bootstrap.admin.token)
       RANCHER_URL   = nonsensitive(rancher2_bootstrap.admin.url)
-      CLUSTER_ID    = rancher2_cluster_v2.haven.cluster_v1_id
+      CLUSTER_ID    = module.rancher_cluster.cluster_id
       CLUSTER_NAME  = var.cluster_name
     }
     command = <<-EOT
       echo "Waiting for cluster $CLUSTER_NAME to become active..."
       for i in $(seq 1 180); do
-        RESPONSE=$(curl -sk \
+        # Check if cluster K8s API is reachable via Rancher proxy
+        HTTP_CODE=$(curl -sk -o /dev/null -w '%%{http_code}' \
           -H "Authorization: Bearer $RANCHER_TOKEN" \
-          "$RANCHER_URL/v3/clusters/$CLUSTER_ID" 2>/dev/null)
-        STATE=$(echo "$RESPONSE" | grep -o '"state":"[^"]*"' | head -1 | cut -d'"' -f4)
-        echo "Attempt $i/180 - Cluster state: $STATE"
-        if [ "$STATE" = "active" ]; then
+          "$RANCHER_URL/k8s/clusters/$CLUSTER_ID/api/v1/namespaces" 2>/dev/null)
+        echo "Attempt $i/180 - K8s API via Rancher proxy: HTTP $HTTP_CODE"
+        if [ "$HTTP_CODE" = "200" ]; then
+          echo "Cluster K8s API is reachable! Waiting 90s for catalog repos to sync..."
+          sleep 90
           echo "Cluster is active!"
           exit 0
         fi
@@ -191,17 +192,16 @@ resource "null_resource" "wait_for_cluster_active" {
 
 # --- 9. Longhorn Storage (via Rancher marketplace) ---
 resource "rancher2_app_v2" "longhorn" {
+  count         = var.enable_longhorn ? 1 : 0
   provider      = rancher2.admin
-  cluster_id    = rancher2_cluster_v2.haven.cluster_v1_id
+  cluster_id    = module.rancher_cluster.cluster_id
   name          = "longhorn"
   namespace     = "longhorn-system"
   repo_name     = "rancher-charts"
   chart_name    = "longhorn"
   chart_version = var.longhorn_version
 
-  values = templatefile("${path.module}/templates/longhorn-values.yaml.tpl", {
-    replica_count = var.worker_count >= 3 ? 3 : var.worker_count
-  })
+  values = module.rancher_cluster.longhorn_values
 
   depends_on = [null_resource.wait_for_cluster_active]
 }
