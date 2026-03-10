@@ -111,6 +111,13 @@ variable "os_image" {
   default     = "ubuntu-22.04"
 }
 
+# ===== Longhorn =====
+variable "longhorn_version" {
+  description = "Longhorn Helm chart version (from Rancher marketplace)"
+  type        = string
+  default     = "104.2.0+up1.7.2"
+}
+
 # ===== Cloudflare =====
 variable "cloudflare_api_token" {
   description = "Cloudflare API token"

@@ -22,3 +22,8 @@ output "rancher_url" {
   description = "Rancher management URL"
   value       = "https://${module.hetzner_infra.management_ip}"
 }
+
+output "cluster_name" {
+  description = "RKE2 cluster name"
+  value       = rancher2_cluster_v2.haven.name
+}
