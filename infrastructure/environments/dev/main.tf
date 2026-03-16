@@ -3,14 +3,15 @@
 # ============================================================
 # Single `tofu apply` creates everything:
 #   1. Hetzner base infra (network, firewall, SSH, LB, mgmt node)
-#   2. Wait for Rancher API to be ready
-#   3. Bootstrap Rancher (rancher2 provider - Go native, no bash)
+#   2. Wait for Rancher API (K3s + Helm install via cloud-init)
+#   3. Bootstrap Rancher (rancher2 provider - Go native)
 #   4. RKE2 cluster with Cilium CNI (via rancher-cluster module)
 #   5. Master/Worker nodes with cloud-init registration
-#   6. Longhorn storage (via Rancher marketplace, enable/disable)
-#   7. Cert-Manager (auto HTTPS - Haven #12)
-#   8. Rancher Monitoring (Prometheus + Grafana - Haven #14)
-#   9. Rancher Logging (Banzai logging operator - Haven #13)
+#   6. Wait for cluster active (rancher2_cluster_sync - native)
+#   7. Longhorn storage (via Rancher marketplace)
+#   8. Cert-Manager (auto HTTPS - Haven #12)
+#   9. Rancher Monitoring (Prometheus + Grafana - Haven #14)
+#  10. Rancher Logging (Banzai logging operator - Haven #13)
 # ============================================================
 
 locals {
@@ -31,28 +32,36 @@ module "hetzner_infra" {
   network_cidr           = var.network_cidr
   subnet_cidr            = var.subnet_cidr
 
-  # Rancher cloud-init
+  # Rancher on K3s (production-grade, not Docker)
   rancher_bootstrap_password = var.rancher_bootstrap_password
   rancher_version            = var.rancher_version
+  rancher_chart_version      = var.rancher_chart_version
+  k3s_version                = var.k3s_version
 }
 
-# --- 2. Wait for Rancher API ---
-resource "null_resource" "wait_for_rancher" {
-  depends_on = [module.hetzner_infra]
+# --- 2. Wait for Rancher API (K3s + Helm takes longer than Docker) ---
+resource "terraform_data" "wait_for_rancher" {
+  triggers_replace = [module.hetzner_infra.management_ip]
 
   provisioner "local-exec" {
     interpreter = ["bash", "-c"]
     command     = <<-EOT
-      echo "Waiting for Rancher at https://${module.hetzner_infra.management_ip}..."
+      RANCHER_URL="https://${module.hetzner_infra.management_ip}"
+      echo "Waiting for Rancher at $RANCHER_URL (K3s + Helm install)..."
+      echo "This takes ~10-15 minutes for K3s + cert-manager + Rancher..."
+      BACKOFF=10
       for i in $(seq 1 120); do
-        if curl -sk "https://${module.hetzner_infra.management_ip}/ping" 2>/dev/null | grep -q pong; then
-          echo "Rancher is ready!"
+        if curl -sk "$RANCHER_URL/ping" 2>/dev/null | grep -q pong; then
+          echo "Rancher is ready after $i attempts!"
           exit 0
         fi
-        echo "Attempt $i/120..."
-        sleep 5
+        echo "Attempt $i/120 (sleep $BACKOFF s)..."
+        sleep $BACKOFF
+        if [ "$BACKOFF" -lt 20 ]; then
+          BACKOFF=$((BACKOFF + 1))
+        fi
       done
-      echo "ERROR: Rancher did not become ready in 10 minutes"
+      echo "ERROR: Rancher did not become ready in 20+ minutes"
       exit 1
     EOT
   }
@@ -64,7 +73,7 @@ resource "rancher2_bootstrap" "admin" {
   initial_password = var.rancher_bootstrap_password
   password         = var.rancher_admin_password
 
-  depends_on = [null_resource.wait_for_rancher]
+  depends_on = [terraform_data.wait_for_rancher]
 }
 
 # --- 4. RKE2 Cluster (module: Cilium CNI + templates) ---
@@ -78,9 +87,9 @@ module "rancher_cluster" {
   kubernetes_version = var.kubernetes_version
 
   # Cilium CNI settings
-  enable_hubble          = true
+  enable_hubble            = true
   cilium_operator_replicas = 1
-  disable_kube_proxy     = true
+  disable_kube_proxy       = true
 
   # Longhorn values (rendered by module, used below)
   longhorn_replica_count = var.worker_count >= 3 ? 3 : var.worker_count
@@ -154,64 +163,30 @@ resource "hcloud_load_balancer_target" "master" {
   server_id        = hcloud_server.master[count.index].id
 }
 
-# --- 8. Wait for Cluster Active ---
-resource "null_resource" "wait_for_cluster_active" {
+# --- 8. Wait for Cluster Active (native rancher2_cluster_sync) ---
+# Replaces fragile null_resource + bash curl loops with Go-native wait
+resource "rancher2_cluster_sync" "cluster" {
+  provider      = rancher2.admin
+  cluster_id    = module.rancher_cluster.cluster_id
+  wait_catalogs = true
+  state_confirm = 3
+
+  timeouts {
+    create = "45m"
+    update = "45m"
+  }
+
   depends_on = [
     hcloud_server.master,
     hcloud_server.worker,
     hcloud_server_network.master,
     hcloud_server_network.worker,
   ]
-
-  provisioner "local-exec" {
-    interpreter = ["bash", "-c"]
-    environment = {
-      RANCHER_TOKEN = nonsensitive(rancher2_bootstrap.admin.token)
-      RANCHER_URL   = nonsensitive(rancher2_bootstrap.admin.url)
-      CLUSTER_ID    = module.rancher_cluster.cluster_id
-      CLUSTER_NAME  = var.cluster_name
-    }
-    command = <<-EOT
-      echo "Waiting for cluster $CLUSTER_NAME to become active..."
-      # Phase 1: Wait for K8s API to respond via Rancher proxy
-      for i in $(seq 1 180); do
-        HTTP_CODE=$(curl -sk -o /dev/null -w '%%{http_code}' \
-          -H "Authorization: Bearer $RANCHER_TOKEN" \
-          "$RANCHER_URL/k8s/clusters/$CLUSTER_ID/api/v1/namespaces" 2>/dev/null)
-        echo "Attempt $i/180 - K8s API via Rancher proxy: HTTP $HTTP_CODE"
-        if [ "$HTTP_CODE" = "200" ]; then
-          echo "K8s API is reachable!"
-          break
-        fi
-        if [ "$i" = "180" ]; then
-          echo "ERROR: K8s API did not become reachable in 30 minutes"
-          exit 1
-        fi
-        sleep 10
-      done
-      # Phase 2: Wait for Rancher v3 cluster state = "active"
-      echo "Waiting for Rancher to report cluster as active..."
-      for j in $(seq 1 60); do
-        STATE=$(curl -sk \
-          -H "Authorization: Bearer $RANCHER_TOKEN" \
-          "$RANCHER_URL/v3/clusters?name=$CLUSTER_NAME" 2>/dev/null \
-          | grep -o '"state":"[^"]*"' | head -1 | cut -d'"' -f4)
-        echo "Cluster state check $j/60: $STATE"
-        if [ "$STATE" = "active" ]; then
-          echo "Cluster is active! Waiting 30s for catalog repos to sync..."
-          sleep 30
-          echo "Ready for app installations."
-          exit 0
-        fi
-        sleep 10
-      done
-      echo "ERROR: Cluster did not become active in Rancher within 10 minutes"
-      exit 1
-    EOT
-  }
 }
 
 # --- 9. Longhorn Storage (via Rancher marketplace) ---
+# Longhorn is installed FIRST - other apps depend on it for destroy ordering
+# Destroy order: monitoring/logging/cert-manager → then Longhorn (slowest)
 resource "rancher2_app_v2" "longhorn" {
   count         = var.enable_longhorn ? 1 : 0
   provider      = rancher2.admin
@@ -224,7 +199,13 @@ resource "rancher2_app_v2" "longhorn" {
 
   values = module.rancher_cluster.longhorn_values
 
-  depends_on = [null_resource.wait_for_cluster_active]
+  timeouts {
+    create = "15m"
+    update = "15m"
+    delete = "20m"
+  }
+
+  depends_on = [rancher2_cluster_sync.cluster]
 }
 
 # --- 10. Cert-Manager (Haven Check #12: Auto HTTPS) ---
@@ -236,7 +217,7 @@ resource "rancher2_catalog_v2" "jetstack" {
   name       = "jetstack"
   url        = "https://charts.jetstack.io"
 
-  depends_on = [null_resource.wait_for_cluster_active]
+  depends_on = [rancher2_cluster_sync.cluster]
 }
 
 resource "rancher2_app_v2" "cert_manager" {
@@ -251,7 +232,14 @@ resource "rancher2_app_v2" "cert_manager" {
 
   values = module.rancher_cluster.cert_manager_values
 
-  depends_on = [rancher2_catalog_v2.jetstack]
+  timeouts {
+    create = "10m"
+    update = "10m"
+    delete = "10m"
+  }
+
+  # Destroy: cert-manager before Longhorn
+  depends_on = [rancher2_catalog_v2.jetstack, rancher2_app_v2.longhorn]
 }
 
 # --- 11. Rancher Monitoring (Haven Check #14: Metrics + Grafana) ---
@@ -266,7 +254,13 @@ resource "rancher2_app_v2" "monitoring_crd" {
   chart_name    = "rancher-monitoring-crd"
   chart_version = var.monitoring_version
 
-  depends_on = [null_resource.wait_for_cluster_active]
+  timeouts {
+    create = "10m"
+    update = "10m"
+    delete = "10m"
+  }
+
+  depends_on = [rancher2_cluster_sync.cluster]
 }
 
 resource "rancher2_app_v2" "monitoring" {
@@ -281,7 +275,14 @@ resource "rancher2_app_v2" "monitoring" {
 
   values = module.rancher_cluster.monitoring_values
 
-  depends_on = [rancher2_app_v2.monitoring_crd]
+  timeouts {
+    create = "15m"
+    update = "15m"
+    delete = "15m"
+  }
+
+  # Destroy: monitoring before Longhorn
+  depends_on = [rancher2_app_v2.monitoring_crd, rancher2_app_v2.longhorn]
 }
 
 # --- 12. Rancher Logging (Haven Check #13: Log aggregation) ---
@@ -296,7 +297,13 @@ resource "rancher2_app_v2" "logging_crd" {
   chart_name    = "rancher-logging-crd"
   chart_version = var.logging_version
 
-  depends_on = [null_resource.wait_for_cluster_active]
+  timeouts {
+    create = "10m"
+    update = "10m"
+    delete = "10m"
+  }
+
+  depends_on = [rancher2_cluster_sync.cluster]
 }
 
 resource "rancher2_app_v2" "logging" {
@@ -311,5 +318,12 @@ resource "rancher2_app_v2" "logging" {
 
   values = module.rancher_cluster.logging_values
 
-  depends_on = [rancher2_app_v2.logging_crd]
+  timeouts {
+    create = "15m"
+    update = "15m"
+    delete = "15m"
+  }
+
+  # Destroy: logging before Longhorn
+  depends_on = [rancher2_app_v2.logging_crd, rancher2_app_v2.longhorn]
 }

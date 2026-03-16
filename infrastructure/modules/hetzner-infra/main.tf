@@ -107,8 +107,11 @@ resource "hcloud_server" "management" {
   firewall_ids = [hcloud_firewall.haven.id]
 
   user_data = templatefile("${path.module}/templates/management-cloud-init.yaml.tpl", {
-    bootstrap_password = var.rancher_bootstrap_password
-    rancher_version    = var.rancher_version
+    bootstrap_password    = var.rancher_bootstrap_password
+    rancher_version       = var.rancher_version
+    rancher_chart_version = var.rancher_chart_version
+    k3s_version           = var.k3s_version
+    cert_manager_version  = var.cert_manager_version
   })
 
   labels = {

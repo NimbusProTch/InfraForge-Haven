@@ -88,9 +88,21 @@ variable "rancher_bootstrap_password" {
 }
 
 variable "rancher_version" {
-  description = "Rancher Docker image tag"
+  description = "Rancher server version"
   type        = string
   default     = "v2.9.3"
+}
+
+variable "rancher_chart_version" {
+  description = "Rancher Helm chart version (from rancher-stable repo)"
+  type        = string
+  default     = "2.9.3"
+}
+
+variable "k3s_version" {
+  description = "K3s version for Rancher management node"
+  type        = string
+  default     = "v1.30.6+k3s1"
 }
 
 variable "cluster_name" {

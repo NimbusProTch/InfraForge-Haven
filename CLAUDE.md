@@ -101,7 +101,14 @@ haven-platform/
 - **Environment level**: Node'lar + `rancher2_app_v2` install'lar (enable/disable)
 - **Helm templates**: Module'da (`modules/rancher-cluster/templates/`), env'de değil
 - **cloud-init**: Node registration (env-specific, `environments/dev/templates/`)
-- **Wait pattern**: 2-phase check (K8s API HTTP 200 → Rancher v3 state "active" → 30s catalog sync)
+- **Wait pattern**: `rancher2_cluster_sync` (native, Go-based, `wait_catalogs=true`, `state_confirm=3`)
+
+### Rancher Management (Production-Grade)
+- **K3s + Helm** (Docker yerine) - production-ready, HA-scalable
+- Management node: K3s → cert-manager (Helm) → Rancher (Helm)
+- Cloud-init runtime IP detection (Hetzner metadata API)
+- `terraform_data.wait_for_rancher`: K3s + Helm boot ~10-15dk
+- Tek node (dev), 3 node HA (prod) - scale edilebilir
 
 ### Multi-Tenancy: 5 Katmanlı İzolasyon
 1. **Namespace**: `tenant-{name}` per tenant
@@ -195,7 +202,7 @@ haven-platform/
 
 ### Phase 0: Haven K8s Cluster ✅
 - [x] Hetzner base infra (hetzner-infra module)
-- [x] Rancher management node (Docker + cloud-init)
+- [x] Rancher management node (K3s + Helm, production-grade)
 - [x] rancher2 provider (two-provider pattern: bootstrap + admin)
 - [x] RKE2 cluster (rancher2_cluster_v2)
 - [x] Cilium CNI (cni=cilium + chart_values, built-in Helm controller)
@@ -203,8 +210,9 @@ haven-platform/
 - [x] Master/Worker nodes (cloud-init registration)
 - [x] cloud-init bashism fix (dash uyumu)
 - [x] Helm templates module'e taşındı (rancher-cluster module)
-- [x] Wait for cluster active (2-phase: K8s API + Rancher v3 state)
-- [x] Full automation tested (single `tofu apply` = 27 resources from zero)
+- [x] Cluster readiness: `rancher2_cluster_sync` (native, replaces bash curl loops)
+- [x] App timeouts: all `rancher2_app_v2` have explicit timeouts (Longhorn 20m)
+- [x] Destroy ordering: serialized (Longhorn last, 20m timeout)
 - [x] Firewall: NodePort removed (Gateway API), hardening deferred (Hetzner public IP issue)
 
 ### Phase 0.5: Platform Servisleri ✅
@@ -225,10 +233,11 @@ haven-platform/
 - Provider: `token_key` (provider config) vs `.token` (resource output)
 - `cni: "none"` = chicken-and-egg problem → use `cni: "cilium"` + `chart_values`
 - CIS profile taint: `node-role.kubernetes.io/etcd:NoExecute` → `tolerations: [{operator: "Exists"}]`
-- `rancher2_app_v2` "Cluster not active" → 2-phase wait: K8s API 200 + Rancher v3 state "active"
+- `rancher2_app_v2` "Cluster not active" → `rancher2_cluster_sync` with `wait_catalogs=true` + `state_confirm=3`
 - **Hetzner firewall**: Nodes use PUBLIC IPs for inter-node traffic, not private network → restricting to `network_cidr` breaks cluster. Need RKE2 `--node-ip` private network config first
 - NodePort range (30000-32767) removed from firewall → Gateway API replaces it
-- Longhorn destroy timeout (10min) → `tofu state rm 'rancher2_app_v2.longhorn[0]'` then re-destroy
+- Longhorn destroy timeout → `timeouts { delete = "20m" }` + serialized destroy (Longhorn last)
+- Longhorn destroy fallback: if 20m timeout, `tofu state rm 'rancher2_app_v2.longhorn[0]'` then re-destroy
 - `nonsensitive()` in local-exec environment block to avoid output suppression
 - cert-manager NOT in rancher-charts → use `rancher2_catalog_v2` (Jetstack repo) + `rancher2_app_v2`
 - rancher-monitoring/logging need CRD chart installed first (e.g., `rancher-monitoring-crd`)

@@ -39,13 +39,31 @@ variable "os_image" {
 }
 
 variable "rancher_bootstrap_password" {
-  description = "Known bootstrap password for Rancher (CATTLE_BOOTSTRAP_PASSWORD)"
+  description = "Known bootstrap password for Rancher initial login"
   type        = string
   default     = "admin"
 }
 
 variable "rancher_version" {
-  description = "Rancher Docker image tag"
+  description = "Rancher server version (for reference)"
   type        = string
   default     = "v2.9.3"
+}
+
+variable "rancher_chart_version" {
+  description = "Rancher Helm chart version (from rancher-stable repo)"
+  type        = string
+  default     = "2.9.3"
+}
+
+variable "k3s_version" {
+  description = "K3s version for management node"
+  type        = string
+  default     = "v1.30.6+k3s1"
+}
+
+variable "cert_manager_version" {
+  description = "cert-manager version for management node (Rancher dependency)"
+  type        = string
+  default     = "v1.16.2"
 }
