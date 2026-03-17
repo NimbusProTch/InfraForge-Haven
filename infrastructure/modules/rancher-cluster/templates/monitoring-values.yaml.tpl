@@ -7,6 +7,8 @@ prometheus:
     scrapeInterval: "1m"
     retentionSize: "${retention_size}"
     retention: "${retention_days}"
+    # No PVC - use emptyDir to prevent Longhorn uninstall hanging on destroy
+    storageSpec: {}
     resources:
       requests:
         cpu: "${prometheus_cpu_request}"
@@ -17,6 +19,9 @@ prometheus:
       - operator: "Exists"
 grafana:
   defaultDashboardsEnabled: true
+  # No PVC for Grafana dashboards
+  persistence:
+    enabled: false
   sidecar:
     dashboards:
       searchNamespace: ALL
@@ -24,6 +29,8 @@ grafana:
     - operator: "Exists"
 alertmanager:
   alertmanagerSpec:
+    # No PVC for Alertmanager
+    storage: {}
     tolerations:
       - operator: "Exists"
 prometheusOperator:

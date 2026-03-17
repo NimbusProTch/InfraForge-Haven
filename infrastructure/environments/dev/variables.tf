@@ -55,12 +55,6 @@ variable "worker_count" {
   default     = 3
 }
 
-variable "ssh_public_key" {
-  description = "Path to SSH public key file"
-  type        = string
-  default     = "~/.ssh/id_rsa.pub"
-}
-
 # ===== Network =====
 variable "network_cidr" {
   description = "Private network CIDR"
@@ -97,6 +91,12 @@ variable "rancher_chart_version" {
   description = "Rancher Helm chart version (from rancher-stable repo)"
   type        = string
   default     = "2.9.3"
+}
+
+variable "rancher_helm_repository" {
+  description = "Rancher Helm chart repository URL"
+  type        = string
+  default     = "https://releases.rancher.com/server-charts/stable"
 }
 
 variable "k3s_version" {
@@ -173,6 +173,64 @@ variable "logging_version" {
   description = "rancher-logging Helm chart version (from Rancher marketplace)"
   type        = string
   default     = "104.1.2+up4.8.0"
+}
+
+# ===== Harbor =====
+variable "enable_harbor" {
+  description = "Enable Harbor image registry"
+  type        = bool
+  default     = true
+}
+
+variable "harbor_version" {
+  description = "Harbor Helm chart version"
+  type        = string
+  default     = "1.16.2"
+}
+
+variable "harbor_admin_password" {
+  description = "Harbor admin password"
+  type        = string
+  sensitive   = true
+  default     = "Harbor12345"
+}
+
+variable "harbor_registry_storage_size" {
+  description = "Harbor registry PVC size"
+  type        = string
+  default     = "20Gi"
+}
+
+# ===== MinIO =====
+variable "enable_minio" {
+  description = "Enable MinIO object storage"
+  type        = bool
+  default     = true
+}
+
+variable "minio_version" {
+  description = "MinIO Helm chart version"
+  type        = string
+  default     = "5.3.0"
+}
+
+variable "minio_root_user" {
+  description = "MinIO root username"
+  type        = string
+  default     = "admin"
+}
+
+variable "minio_root_password" {
+  description = "MinIO root password"
+  type        = string
+  sensitive   = true
+  default     = "MinIO12345!"
+}
+
+variable "minio_storage_size" {
+  description = "MinIO PVC size"
+  type        = string
+  default     = "20Gi"
 }
 
 # ===== Cloudflare =====

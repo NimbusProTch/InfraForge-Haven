@@ -14,6 +14,12 @@ output "registration_token" {
   sensitive   = true
 }
 
+output "insecure_node_command" {
+  description = "Rancher-generated node registration command (insecure, for self-signed certs)"
+  value       = rancher2_cluster_v2.cluster.cluster_registration_token[0].insecure_node_command
+  sensitive   = true
+}
+
 # Rendered Helm values for downstream use
 output "longhorn_values" {
   description = "Rendered Longhorn Helm values"
@@ -48,4 +54,26 @@ output "logging_values" {
     fluentd_memory_request   = var.fluentd_memory_request
     fluentd_memory_limit     = var.fluentd_memory_limit
   })
+}
+
+output "harbor_values" {
+  description = "Rendered Harbor Helm values"
+  value = templatefile("${path.module}/templates/harbor-values.yaml.tpl", {
+    harbor_host            = var.harbor_host
+    harbor_admin_password  = var.harbor_admin_password
+    registry_storage_size  = var.harbor_registry_storage_size
+  })
+  sensitive = true
+}
+
+output "minio_values" {
+  description = "Rendered MinIO Helm values"
+  value = templatefile("${path.module}/templates/minio-values.yaml.tpl", {
+    minio_root_user     = var.minio_root_user
+    minio_root_password = var.minio_root_password
+    minio_storage_size  = var.minio_storage_size
+    minio_console_host  = var.minio_console_host
+    minio_api_host      = var.minio_api_host
+  })
+  sensitive = true
 }

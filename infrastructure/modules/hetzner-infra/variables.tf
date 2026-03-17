@@ -18,8 +18,8 @@ variable "management_server_type" {
 }
 
 variable "ssh_public_key" {
-  type    = string
-  default = "~/.ssh/id_rsa.pub"
+  description = "SSH public key content (not file path)"
+  type        = string
 }
 
 variable "network_cidr" {
@@ -38,32 +38,3 @@ variable "os_image" {
   default     = "ubuntu-22.04"
 }
 
-variable "rancher_bootstrap_password" {
-  description = "Known bootstrap password for Rancher initial login"
-  type        = string
-  default     = "admin"
-}
-
-variable "rancher_version" {
-  description = "Rancher server version (for reference)"
-  type        = string
-  default     = "v2.9.3"
-}
-
-variable "rancher_chart_version" {
-  description = "Rancher Helm chart version (from rancher-stable repo)"
-  type        = string
-  default     = "2.9.3"
-}
-
-variable "k3s_version" {
-  description = "K3s version for management node"
-  type        = string
-  default     = "v1.30.6+k3s1"
-}
-
-variable "cert_manager_version" {
-  description = "cert-manager version for management node (Rancher dependency)"
-  type        = string
-  default     = "v1.16.2"
-}

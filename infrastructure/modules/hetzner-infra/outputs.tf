@@ -13,6 +13,11 @@ output "network_id" {
   value       = hcloud_network.haven.id
 }
 
+output "subnet_id" {
+  description = "Subnet ID (for server_network dependency ordering)"
+  value       = hcloud_network_subnet.haven.id
+}
+
 output "ssh_key_id" {
   description = "SSH key ID for cluster nodes"
   value       = hcloud_ssh_key.haven.id

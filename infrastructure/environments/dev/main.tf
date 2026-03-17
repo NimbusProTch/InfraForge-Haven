@@ -1,26 +1,40 @@
 # ============================================================
 # Haven Platform - Dev Environment (Hetzner Cloud)
 # ============================================================
-# Single `tofu apply` creates everything:
+# Following Rancher official quickstart pattern:
 #   1. Hetzner base infra (network, firewall, SSH, LB, mgmt node)
-#   2. Wait for Rancher API (K3s + Helm install via cloud-init)
-#   3. Bootstrap Rancher (rancher2 provider - Go native)
-#   4. RKE2 cluster with Cilium CNI (via rancher-cluster module)
-#   5. Master/Worker nodes with cloud-init registration
-#   6. Wait for cluster active (rancher2_cluster_sync - native)
-#   7. Longhorn storage (via Rancher marketplace)
-#   8. Cert-Manager (auto HTTPS - Haven #12)
-#   9. Rancher Monitoring (Prometheus + Grafana - Haven #14)
-#  10. Rancher Logging (Banzai logging operator - Haven #13)
+#   2. SSH: Install K3s on management node
+#   3. SSH: Retrieve kubeconfig
+#   4. Helm: Install cert-manager + Rancher
+#   5. Bootstrap Rancher (rancher2 provider - Go native)
+#   6. RKE2 cluster with Cilium CNI (via rancher-cluster module)
+#   7. Master/Worker nodes (Rancher insecure_node_command)
+#   8. Wait for cluster active (rancher2_cluster_sync)
+#   9. Apps: Longhorn, Cert-Manager, Monitoring, Logging
 # ============================================================
 
 locals {
+  node_username      = "root"
+  rancher_server_dns = join(".", ["rancher", module.hetzner_infra.management_ip, "sslip.io"])
+
   # Multi-AZ distribution: first 2 nodes primary, rest secondary
   master_locations = [for i in range(var.master_count) : i < 2 ? var.location_primary : var.location_secondary]
   worker_locations = [for i in range(var.worker_count) : i < 2 ? var.location_primary : var.location_secondary]
 }
 
-# --- 1. Base Infrastructure ---
+# --- 1. SSH Key (generated, like official quickstart) ---
+resource "tls_private_key" "global_key" {
+  algorithm = "RSA"
+  rsa_bits  = 2048
+}
+
+resource "local_sensitive_file" "ssh_private_key_pem" {
+  filename        = "${path.module}/id_rsa"
+  content         = tls_private_key.global_key.private_key_pem
+  file_permission = "0600"
+}
+
+# --- 2. Base Infrastructure ---
 module "hetzner_infra" {
   source = "../../modules/hetzner-infra"
 
@@ -28,55 +42,105 @@ module "hetzner_infra" {
   location_primary       = var.location_primary
   location_secondary     = var.location_secondary
   management_server_type = var.management_server_type
-  ssh_public_key         = var.ssh_public_key
+  ssh_public_key         = tls_private_key.global_key.public_key_openssh
   network_cidr           = var.network_cidr
   subnet_cidr            = var.subnet_cidr
-
-  # Rancher on K3s (production-grade, not Docker)
-  rancher_bootstrap_password = var.rancher_bootstrap_password
-  rancher_version            = var.rancher_version
-  rancher_chart_version      = var.rancher_chart_version
-  k3s_version                = var.k3s_version
 }
 
-# --- 2. Wait for Rancher API (K3s + Helm takes longer than Docker) ---
-resource "terraform_data" "wait_for_rancher" {
-  triggers_replace = [module.hetzner_infra.management_ip]
+# --- 3. Install K3s via SSH (official pattern) ---
+resource "ssh_resource" "install_k3s" {
+  host = module.hetzner_infra.management_ip
+  commands = [
+    "bash -c 'curl https://get.k3s.io | INSTALL_K3S_EXEC=\"server --node-external-ip ${module.hetzner_infra.management_ip}\" INSTALL_K3S_VERSION=${var.k3s_version} sh -'"
+  ]
+  user        = local.node_username
+  private_key = tls_private_key.global_key.private_key_pem
+}
 
-  provisioner "local-exec" {
-    interpreter = ["bash", "-c"]
-    command     = <<-EOT
-      RANCHER_URL="https://${module.hetzner_infra.management_ip}"
-      echo "Waiting for Rancher at $RANCHER_URL (K3s + Helm install)..."
-      echo "This takes ~10-15 minutes for K3s + cert-manager + Rancher..."
-      BACKOFF=10
-      for i in $(seq 1 120); do
-        if curl -sk "$RANCHER_URL/ping" 2>/dev/null | grep -q pong; then
-          echo "Rancher is ready after $i attempts!"
-          exit 0
+# --- 4. Install cert-manager + Rancher via SSH (remote Helm) ---
+# Uses Helm on the management node itself - no local port 6443 access needed
+resource "ssh_resource" "install_cert_manager" {
+  depends_on = [ssh_resource.install_k3s]
+  host       = module.hetzner_infra.management_ip
+  commands = [
+    <<-EOT
+      bash -c '
+        export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+
+        # Wait for K3s API to be ready
+        echo "Waiting for K3s API..."
+        for i in $(seq 1 60); do
+          if kubectl get nodes >/dev/null 2>&1; then
+            echo "K3s API ready!"
+            break
+          fi
+          echo "Attempt $i/60..."
+          sleep 5
+        done
+
+        # Install Helm if not present
+        if ! command -v helm &>/dev/null; then
+          echo "Installing Helm..."
+          curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
         fi
-        echo "Attempt $i/120 (sleep $BACKOFF s)..."
-        sleep $BACKOFF
-        if [ "$BACKOFF" -lt 20 ]; then
-          BACKOFF=$((BACKOFF + 1))
-        fi
-      done
-      echo "ERROR: Rancher did not become ready in 20+ minutes"
-      exit 1
+
+        # Add Jetstack repo and install cert-manager
+        helm repo add jetstack https://charts.jetstack.io
+        helm repo update jetstack
+        helm upgrade --install cert-manager jetstack/cert-manager \
+          --namespace cert-manager --create-namespace \
+          --version ${var.cert_manager_version} \
+          --set installCRDs=true \
+          --wait --timeout 5m
+
+        echo "cert-manager installed successfully"
+      '
     EOT
-  }
+  ]
+  user        = local.node_username
+  private_key = tls_private_key.global_key.private_key_pem
+  timeout     = "10m"
 }
 
-# --- 3. Bootstrap Rancher (Go native - no bash password issues) ---
+# --- 5. Install Rancher via SSH (remote Helm) ---
+resource "ssh_resource" "install_rancher" {
+  depends_on = [ssh_resource.install_cert_manager]
+  host       = module.hetzner_infra.management_ip
+  commands = [
+    <<-EOT
+      bash -c '
+        export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+
+        # Add Rancher repo and install
+        helm repo add rancher-stable ${var.rancher_helm_repository}
+        helm repo update rancher-stable
+        helm upgrade --install rancher rancher-stable/rancher \
+          --namespace cattle-system --create-namespace \
+          --version ${var.rancher_chart_version} \
+          --set hostname=${local.rancher_server_dns} \
+          --set replicas=1 \
+          --set bootstrapPassword=${var.rancher_bootstrap_password} \
+          --wait --timeout 10m
+
+        echo "Rancher installed successfully"
+      '
+    EOT
+  ]
+  user        = local.node_username
+  private_key = tls_private_key.global_key.private_key_pem
+  timeout     = "15m"
+}
+
+# --- 6. Bootstrap Rancher (Go native) ---
 resource "rancher2_bootstrap" "admin" {
-  provider         = rancher2.bootstrap
+  depends_on = [ssh_resource.install_rancher]
+  provider   = rancher2.bootstrap
+
   initial_password = var.rancher_bootstrap_password
   password         = var.rancher_admin_password
-
-  depends_on = [terraform_data.wait_for_rancher]
 }
 
-# --- 4. RKE2 Cluster (module: Cilium CNI + templates) ---
+# --- 7. RKE2 Cluster (module: Cilium CNI + templates) ---
 module "rancher_cluster" {
   source = "../../modules/rancher-cluster"
   providers = {
@@ -93,9 +157,21 @@ module "rancher_cluster" {
 
   # Longhorn values (rendered by module, used below)
   longhorn_replica_count = var.worker_count >= 3 ? 3 : var.worker_count
+
+  # Harbor
+  harbor_host                  = join(".", ["harbor", module.hetzner_infra.load_balancer_ip, "sslip.io"])
+  harbor_admin_password        = var.harbor_admin_password
+  harbor_registry_storage_size = var.harbor_registry_storage_size
+
+  # MinIO
+  minio_root_user     = var.minio_root_user
+  minio_root_password = var.minio_root_password
+  minio_storage_size  = var.minio_storage_size
+  minio_console_host  = join(".", ["minio", module.hetzner_infra.load_balancer_ip, "sslip.io"])
+  minio_api_host      = join(".", ["s3", module.hetzner_infra.load_balancer_ip, "sslip.io"])
 }
 
-# --- 5. Master Nodes (cloud-init with registration token) ---
+# --- 9. Master Nodes (Rancher insecure_node_command) ---
 resource "hcloud_server" "master" {
   count        = var.master_count
   name         = "haven-master-${var.environment}-${count.index + 1}"
@@ -106,9 +182,8 @@ resource "hcloud_server" "master" {
   firewall_ids = [module.hetzner_infra.firewall_id]
 
   user_data = templatefile("${path.module}/templates/node-cloud-init.yaml.tpl", {
-    rancher_ip         = module.hetzner_infra.management_ip
-    registration_token = module.rancher_cluster.registration_token
-    node_roles         = "--etcd --controlplane"
+    register_command = nonsensitive(module.rancher_cluster.insecure_node_command)
+    node_roles       = "--etcd --controlplane"
   })
 
   labels = {
@@ -120,12 +195,12 @@ resource "hcloud_server" "master" {
 }
 
 resource "hcloud_server_network" "master" {
-  count      = var.master_count
-  server_id  = hcloud_server.master[count.index].id
-  network_id = module.hetzner_infra.network_id
+  count     = var.master_count
+  server_id = hcloud_server.master[count.index].id
+  subnet_id = module.hetzner_infra.subnet_id
 }
 
-# --- 6. Worker Nodes (cloud-init with registration token) ---
+# --- 10. Worker Nodes (Rancher insecure_node_command) ---
 resource "hcloud_server" "worker" {
   count        = var.worker_count
   name         = "haven-worker-${var.environment}-${count.index + 1}"
@@ -136,9 +211,8 @@ resource "hcloud_server" "worker" {
   firewall_ids = [module.hetzner_infra.firewall_id]
 
   user_data = templatefile("${path.module}/templates/node-cloud-init.yaml.tpl", {
-    rancher_ip         = module.hetzner_infra.management_ip
-    registration_token = module.rancher_cluster.registration_token
-    node_roles         = "--worker"
+    register_command = nonsensitive(module.rancher_cluster.insecure_node_command)
+    node_roles       = "--worker"
   })
 
   labels = {
@@ -150,12 +224,12 @@ resource "hcloud_server" "worker" {
 }
 
 resource "hcloud_server_network" "worker" {
-  count      = var.worker_count
-  server_id  = hcloud_server.worker[count.index].id
-  network_id = module.hetzner_infra.network_id
+  count     = var.worker_count
+  server_id = hcloud_server.worker[count.index].id
+  subnet_id = module.hetzner_infra.subnet_id
 }
 
-# --- 7. Load Balancer Targets (master nodes) ---
+# --- 11. Load Balancer Targets (master nodes) ---
 resource "hcloud_load_balancer_target" "master" {
   count            = var.master_count
   type             = "server"
@@ -163,8 +237,7 @@ resource "hcloud_load_balancer_target" "master" {
   server_id        = hcloud_server.master[count.index].id
 }
 
-# --- 8. Wait for Cluster Active (native rancher2_cluster_sync) ---
-# Replaces fragile null_resource + bash curl loops with Go-native wait
+# --- 12. Wait for Cluster Active (native rancher2_cluster_sync) ---
 resource "rancher2_cluster_sync" "cluster" {
   provider      = rancher2.admin
   cluster_id    = module.rancher_cluster.cluster_id
@@ -184,9 +257,7 @@ resource "rancher2_cluster_sync" "cluster" {
   ]
 }
 
-# --- 9. Longhorn Storage (via Rancher marketplace) ---
-# Longhorn is installed FIRST - other apps depend on it for destroy ordering
-# Destroy order: monitoring/logging/cert-manager → then Longhorn (slowest)
+# --- 13. Longhorn Storage (via Rancher marketplace) ---
 resource "rancher2_app_v2" "longhorn" {
   count         = var.enable_longhorn ? 1 : 0
   provider      = rancher2.admin
@@ -202,14 +273,13 @@ resource "rancher2_app_v2" "longhorn" {
   timeouts {
     create = "15m"
     update = "15m"
-    delete = "20m"
+    delete = "10m"
   }
 
   depends_on = [rancher2_cluster_sync.cluster]
 }
 
-# --- 10. Cert-Manager (Haven Check #12: Auto HTTPS) ---
-# Cert-Manager is not in rancher-charts, add Jetstack Helm repo
+# --- 14. Cert-Manager on workload cluster (Haven Check #12) ---
 resource "rancher2_catalog_v2" "jetstack" {
   count      = var.enable_cert_manager ? 1 : 0
   provider   = rancher2.admin
@@ -238,12 +308,10 @@ resource "rancher2_app_v2" "cert_manager" {
     delete = "10m"
   }
 
-  # Destroy: cert-manager before Longhorn
   depends_on = [rancher2_catalog_v2.jetstack, rancher2_app_v2.longhorn]
 }
 
-# --- 11. Rancher Monitoring (Haven Check #14: Metrics + Grafana) ---
-# CRDs must be installed first
+# --- 15. Rancher Monitoring (Haven Check #14) ---
 resource "rancher2_app_v2" "monitoring_crd" {
   count         = var.enable_monitoring ? 1 : 0
   provider      = rancher2.admin
@@ -281,12 +349,10 @@ resource "rancher2_app_v2" "monitoring" {
     delete = "15m"
   }
 
-  # Destroy: monitoring before Longhorn
   depends_on = [rancher2_app_v2.monitoring_crd, rancher2_app_v2.longhorn]
 }
 
-# --- 12. Rancher Logging (Haven Check #13: Log aggregation) ---
-# CRDs must be installed first
+# --- 16. Rancher Logging (Haven Check #13) ---
 resource "rancher2_app_v2" "logging_crd" {
   count         = var.enable_logging ? 1 : 0
   provider      = rancher2.admin
@@ -324,6 +390,69 @@ resource "rancher2_app_v2" "logging" {
     delete = "15m"
   }
 
-  # Destroy: logging before Longhorn
   depends_on = [rancher2_app_v2.logging_crd, rancher2_app_v2.longhorn]
+}
+
+# --- 17. Harbor Image Registry ---
+resource "rancher2_catalog_v2" "harbor" {
+  count      = var.enable_harbor ? 1 : 0
+  provider   = rancher2.admin
+  cluster_id = module.rancher_cluster.cluster_id
+  name       = "harbor"
+  url        = "https://helm.goharbor.io"
+
+  depends_on = [rancher2_cluster_sync.cluster]
+}
+
+resource "rancher2_app_v2" "harbor" {
+  count         = var.enable_harbor ? 1 : 0
+  provider      = rancher2.admin
+  cluster_id    = module.rancher_cluster.cluster_id
+  name          = "harbor"
+  namespace     = "harbor-system"
+  repo_name     = "harbor"
+  chart_name    = "harbor"
+  chart_version = var.harbor_version
+
+  values = module.rancher_cluster.harbor_values
+
+  timeouts {
+    create = "15m"
+    update = "15m"
+    delete = "20m"
+  }
+
+  depends_on = [rancher2_catalog_v2.harbor, rancher2_app_v2.longhorn, rancher2_app_v2.cert_manager]
+}
+
+# --- 18. MinIO Object Storage ---
+resource "rancher2_catalog_v2" "minio" {
+  count      = var.enable_minio ? 1 : 0
+  provider   = rancher2.admin
+  cluster_id = module.rancher_cluster.cluster_id
+  name       = "minio"
+  url        = "https://charts.min.io"
+
+  depends_on = [rancher2_cluster_sync.cluster]
+}
+
+resource "rancher2_app_v2" "minio" {
+  count         = var.enable_minio ? 1 : 0
+  provider      = rancher2.admin
+  cluster_id    = module.rancher_cluster.cluster_id
+  name          = "minio"
+  namespace     = "minio-system"
+  repo_name     = "minio"
+  chart_name    = "minio"
+  chart_version = var.minio_version
+
+  values = module.rancher_cluster.minio_values
+
+  timeouts {
+    create = "15m"
+    update = "15m"
+    delete = "20m"
+  }
+
+  depends_on = [rancher2_catalog_v2.minio, rancher2_app_v2.longhorn]
 }

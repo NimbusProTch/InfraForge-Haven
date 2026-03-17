@@ -108,3 +108,55 @@ variable "fluentd_memory_limit" {
   type        = string
   default     = "512Mi"
 }
+
+# ===== Harbor (Image Registry) =====
+variable "harbor_host" {
+  description = "Harbor hostname (e.g., harbor.<IP>.sslip.io)"
+  type        = string
+  default     = ""
+}
+
+variable "harbor_admin_password" {
+  description = "Harbor admin password"
+  type        = string
+  default     = "Harbor12345"
+  sensitive   = true
+}
+
+variable "harbor_registry_storage_size" {
+  description = "Harbor registry PVC size"
+  type        = string
+  default     = "20Gi"
+}
+
+# ===== MinIO (Object Storage) =====
+variable "minio_root_user" {
+  description = "MinIO root username"
+  type        = string
+  default     = "admin"
+}
+
+variable "minio_root_password" {
+  description = "MinIO root password"
+  type        = string
+  default     = "MinIO12345!"
+  sensitive   = true
+}
+
+variable "minio_storage_size" {
+  description = "MinIO PVC size"
+  type        = string
+  default     = "20Gi"
+}
+
+variable "minio_console_host" {
+  description = "MinIO Console hostname (e.g., minio.<IP>.sslip.io)"
+  type        = string
+  default     = ""
+}
+
+variable "minio_api_host" {
+  description = "MinIO API hostname (e.g., s3.<IP>.sslip.io)"
+  type        = string
+  default     = ""
+}

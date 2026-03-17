@@ -9,7 +9,7 @@
 # --- SSH Key ---
 resource "hcloud_ssh_key" "haven" {
   name       = "haven-${var.environment}"
-  public_key = file(var.ssh_public_key)
+  public_key = var.ssh_public_key
 }
 
 # --- Private Network ---
@@ -106,13 +106,7 @@ resource "hcloud_server" "management" {
   ssh_keys     = [hcloud_ssh_key.haven.id]
   firewall_ids = [hcloud_firewall.haven.id]
 
-  user_data = templatefile("${path.module}/templates/management-cloud-init.yaml.tpl", {
-    bootstrap_password    = var.rancher_bootstrap_password
-    rancher_version       = var.rancher_version
-    rancher_chart_version = var.rancher_chart_version
-    k3s_version           = var.k3s_version
-    cert_manager_version  = var.cert_manager_version
-  })
+  user_data = templatefile("${path.module}/templates/management-cloud-init.yaml.tpl", {})
 
   labels = {
     role        = "management"
@@ -122,8 +116,8 @@ resource "hcloud_server" "management" {
 }
 
 resource "hcloud_server_network" "management" {
-  server_id  = hcloud_server.management.id
-  network_id = hcloud_network.haven.id
+  server_id = hcloud_server.management.id
+  subnet_id = hcloud_network_subnet.haven.id
 }
 
 # --- Load Balancer (K8s API + Ingress) ---
@@ -135,7 +129,7 @@ resource "hcloud_load_balancer" "haven" {
 
 resource "hcloud_load_balancer_network" "haven" {
   load_balancer_id = hcloud_load_balancer.haven.id
-  network_id       = hcloud_network.haven.id
+  subnet_id        = hcloud_network_subnet.haven.id
 }
 
 # K8s API service

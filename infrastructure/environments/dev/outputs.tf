@@ -20,10 +20,25 @@ output "load_balancer_ip" {
 
 output "rancher_url" {
   description = "Rancher management URL"
-  value       = "https://${module.hetzner_infra.management_ip}"
+  value       = "https://${local.rancher_server_dns}"
 }
 
 output "cluster_name" {
   description = "RKE2 cluster name"
   value       = module.rancher_cluster.cluster_name
+}
+
+output "harbor_url" {
+  description = "Harbor registry URL"
+  value       = var.enable_harbor ? "https://harbor.${module.hetzner_infra.load_balancer_ip}.sslip.io" : ""
+}
+
+output "minio_console_url" {
+  description = "MinIO Console URL"
+  value       = var.enable_minio ? "https://minio.${module.hetzner_infra.load_balancer_ip}.sslip.io" : ""
+}
+
+output "minio_api_url" {
+  description = "MinIO S3 API URL"
+  value       = var.enable_minio ? "https://s3.${module.hetzner_infra.load_balancer_ip}.sslip.io" : ""
 }
