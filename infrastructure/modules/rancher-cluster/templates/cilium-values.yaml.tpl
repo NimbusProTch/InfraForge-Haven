@@ -14,3 +14,6 @@ rke2-cilium:
       enabled: ${hubble_enabled}
     ui:
       enabled: ${hubble_enabled}
+  # Gateway API support (replaces rke2-ingress-nginx)
+  gatewayAPI:
+    enabled: true

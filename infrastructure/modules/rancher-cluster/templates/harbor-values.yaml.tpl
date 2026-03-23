@@ -1,19 +1,11 @@
 # Harbor Helm values (Image Registry)
 # Self-hosted, Trivy vulnerability scanning enabled
 expose:
-  type: ingress
+  # Use clusterIP — Gateway API HTTPRoute handles external access
+  type: clusterIP
   tls:
-    enabled: true
-    certSource: secret
-    secret:
-      secretName: harbor-tls
-  ingress:
-    hosts:
-      core: ${harbor_host}
-    className: ""
-    annotations:
-      cert-manager.io/cluster-issuer: ""
-externalURL: https://${harbor_host}
+    enabled: false
+externalURL: http://${harbor_host}
 harborAdminPassword: ${harbor_admin_password}
 persistence:
   enabled: true

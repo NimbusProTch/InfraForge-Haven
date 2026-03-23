@@ -1,0 +1,184 @@
+# ============================================================
+# Haven Platform - Cilium Gateway API Resources
+# ============================================================
+# Applied manually after cluster is active:
+#   kubectl apply -f manifests/gateway-api.yaml
+#
+# Prerequisites:
+#   - Gateway API experimental CRDs installed:
+#     kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.2.1/experimental-install.yaml
+#   - Cilium with gatewayAPI.enabled: true (see cilium-values.yaml.tpl)
+# ============================================================
+
+---
+# Namespace for Gateway resources
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: haven-gateway
+
+---
+# Gateway: single entry point for all HTTP traffic
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: haven-gateway
+  namespace: haven-gateway
+spec:
+  gatewayClassName: cilium
+  listeners:
+    - name: http
+      port: 80
+      protocol: HTTP
+      allowedRoutes:
+        namespaces:
+          from: All
+
+---
+# HTTPRoute: Harbor image registry
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: harbor
+  namespace: harbor-system
+spec:
+  parentRefs:
+    - name: haven-gateway
+      namespace: haven-gateway
+  hostnames:
+    - "harbor.46.225.42.2.sslip.io"
+  rules:
+    - backendRefs:
+        - name: harbor-core
+          port: 80
+
+---
+# HTTPRoute: MinIO Console (web UI)
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: minio-console
+  namespace: minio-system
+spec:
+  parentRefs:
+    - name: haven-gateway
+      namespace: haven-gateway
+  hostnames:
+    - "minio.46.225.42.2.sslip.io"
+  rules:
+    - backendRefs:
+        - name: minio-console
+          port: 9001
+
+---
+# HTTPRoute: MinIO S3 API
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: minio-s3
+  namespace: minio-system
+spec:
+  parentRefs:
+    - name: haven-gateway
+      namespace: haven-gateway
+  hostnames:
+    - "s3.46.225.42.2.sslip.io"
+  rules:
+    - backendRefs:
+        - name: minio
+          port: 9000
+
+---
+# ============================================================
+# gateway-proxy DaemonSet
+# ============================================================
+# Workaround for Cilium 1.16 bug: L7LB Proxy Port is NOT
+# propagated to NodePort BPF entries, so external NodePort
+# traffic can't reach the Cilium gateway. This nginx DaemonSet
+# runs with hostNetwork:true on port 80 (already open in
+# Hetzner firewall) and proxies to the gateway ClusterIP
+# which DOES have the correct L7LB routing.
+#
+# Key: proxy_http_version 1.1 required — Cilium Envoy rejects
+# HTTP/1.0 with 426 Upgrade Required.
+# ============================================================
+
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: haven-proxy
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nginx-conf
+  namespace: haven-proxy
+data:
+  nginx.conf: |
+    user nginx;
+    worker_processes auto;
+    error_log /dev/stderr warn;
+    pid /tmp/nginx.pid;
+    events { worker_connections 1024; }
+    http {
+      access_log /dev/stdout;
+      server {
+        listen 80;
+        location / {
+          proxy_pass http://10.43.161.106:80;
+          proxy_http_version 1.1;
+          proxy_set_header Host $host;
+          proxy_set_header Connection "";
+          proxy_set_header X-Real-IP $remote_addr;
+          proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+          proxy_set_header X-Forwarded-Proto $scheme;
+          proxy_connect_timeout 5s;
+          proxy_read_timeout 60s;
+        }
+      }
+    }
+
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: gateway-proxy
+  namespace: haven-proxy
+  labels:
+    app: gateway-proxy
+spec:
+  selector:
+    matchLabels:
+      app: gateway-proxy
+  template:
+    metadata:
+      labels:
+        app: gateway-proxy
+    spec:
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      tolerations:
+        - operator: "Exists"
+      containers:
+        - name: nginx
+          image: nginx:1.27-alpine
+          ports:
+            - containerPort: 80
+              hostPort: 80
+              protocol: TCP
+          volumeMounts:
+            - name: nginx-conf
+              mountPath: /etc/nginx/nginx.conf
+              subPath: nginx.conf
+          resources:
+            requests:
+              cpu: "10m"
+              memory: "32Mi"
+            limits:
+              memory: "64Mi"
+      volumes:
+        - name: nginx-conf
+          configMap:
+            name: nginx-conf

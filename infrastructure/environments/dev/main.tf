@@ -229,12 +229,25 @@ resource "hcloud_server_network" "worker" {
   subnet_id = module.hetzner_infra.subnet_id
 }
 
-# --- 11. Load Balancer Targets (master nodes) ---
+# --- 11. Load Balancer Targets (master + worker nodes via private network) ---
+# use_private_ip = true: LB reaches nodes via private network, bypassing Hetzner firewall.
+# This allows NodePort 30080/30443 to be reached without opening them in the public firewall.
 resource "hcloud_load_balancer_target" "master" {
   count            = var.master_count
   type             = "server"
   load_balancer_id = module.hetzner_infra.load_balancer_id
   server_id        = hcloud_server.master[count.index].id
+  use_private_ip   = true
+  depends_on       = [hcloud_server_network.master]
+}
+
+resource "hcloud_load_balancer_target" "worker" {
+  count            = var.worker_count
+  type             = "server"
+  load_balancer_id = module.hetzner_infra.load_balancer_id
+  server_id        = hcloud_server.worker[count.index].id
+  use_private_ip   = true
+  depends_on       = [hcloud_server_network.worker]
 }
 
 # --- 12. Wait for Cluster Active (native rancher2_cluster_sync) ---

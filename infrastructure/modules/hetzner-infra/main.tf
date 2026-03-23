@@ -140,7 +140,10 @@ resource "hcloud_load_balancer_service" "k8s_api" {
   destination_port = 6443
 }
 
-# HTTP service
+# HTTP service → gateway-proxy DaemonSet hostNetwork port 80
+# Note: Cilium 1.16 L7LB doesn't propagate to NodePort BPF entries.
+# gateway-proxy DaemonSet (haven-proxy ns) runs nginx with hostNetwork on port 80
+# and proxies to the Cilium gateway ClusterIP (which has correct L7LB).
 resource "hcloud_load_balancer_service" "http" {
   load_balancer_id = hcloud_load_balancer.haven.id
   protocol         = "tcp"
@@ -148,10 +151,10 @@ resource "hcloud_load_balancer_service" "http" {
   destination_port = 80
 }
 
-# HTTPS service
+# HTTPS service → Cilium Gateway API NodePort 30443
 resource "hcloud_load_balancer_service" "https" {
   load_balancer_id = hcloud_load_balancer.haven.id
   protocol         = "tcp"
   listen_port      = 443
-  destination_port = 443
+  destination_port = 30443
 }

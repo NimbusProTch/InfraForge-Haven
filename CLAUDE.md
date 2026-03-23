@@ -219,9 +219,22 @@ haven-platform/
 - [x] Cert-Manager v1.16.2 (Jetstack repo via rancher2_catalog_v2, Haven #12)
 - [x] rancher-monitoring 104.1.2 (Prometheus + Grafana, CRD + chart, Haven #14)
 - [x] rancher-logging 104.1.2 (Banzai + Fluentbit/Fluentd, CRD + chart, Haven #13)
-- [ ] Harbor (image registry, Phase 1'de)
+- [x] Harbor (image registry, rancher2_app_v2, harbor-system)
+- [x] MinIO (S3 storage, rancher2_app_v2, minio-system, worker nodeSelector fix)
 
 **15/15 Haven Compliant! Sonraki: Phase 1 - Platform API + ArgoCD**
+
+### Phase 0.6: Cilium Gateway API + External Access ✅
+- [x] Gateway API experimental CRDs (v1.2.1, tlsroutes dahil)
+- [x] Cilium `gatewayAPI.enabled: true` (cilium-values.yaml.tpl)
+- [x] GatewayClass `cilium` (Cilium operator oluşturdu)
+- [x] Gateway `haven-gateway` (haven-gateway namespace, PROGRAMMED: True)
+- [x] HTTPRoute: Harbor, MinIO Console, MinIO S3 (sslip.io hostnames)
+- [x] Hetzner LB `use_private_ip: true` (firewall bypass, private network)
+- [x] Hetzner LB targets: master + worker (6 node)
+- [x] gateway-proxy DaemonSet (nginx, hostNetwork, port 80 → Cilium gateway ClusterIP)
+- [x] Hetzner LB destination_port: 80 (firewall açık)
+- [x] Dış erişim: Harbor HTTP 200, MinIO Console HTTP 200, MinIO S3 HTTP 403 ✅
 
 ## Teknik Gotchas
 
@@ -236,6 +249,10 @@ haven-platform/
 - `rancher2_app_v2` "Cluster not active" → `rancher2_cluster_sync` with `wait_catalogs=true` + `state_confirm=3`
 - **Hetzner firewall**: Nodes use PUBLIC IPs for inter-node traffic, not private network → restricting to `network_cidr` breaks cluster. Need RKE2 `--node-ip` private network config first
 - NodePort range (30000-32767) removed from firewall → Gateway API replaces it
+- **Cilium 1.16 Gateway API + NodePort bug**: L7LB Proxy Port only applied to ClusterIP BPF entry, NOT NodePort entries → NodePort unreachable externally. Workaround: nginx DaemonSet (hostNetwork, port 80) proxies to gateway ClusterIP
+- **nginx proxy_http_version**: Default is HTTP/1.0. Cilium Envoy gateway requires HTTP/1.1. Add `proxy_http_version 1.1; proxy_set_header Connection ""` to nginx config
+- **Hetzner LB private IP**: `use_private_ip = true` + `depends_on = [hcloud_server_network.*]` bypasses public firewall for LB→node traffic
+- **GatewayClass Unknown status**: Cilium 1.16 writes `supportedFeatures` as strings, but Gateway API CRD v1.2.1 expects objects → cosmetic only, Gateway itself works (PROGRAMMED: True)
 - Longhorn destroy timeout → `timeouts { delete = "20m" }` + serialized destroy (Longhorn last)
 - Longhorn destroy fallback: if 20m timeout, `tofu state rm 'rancher2_app_v2.longhorn[0]'` then re-destroy
 - `nonsensitive()` in local-exec environment block to avoid output suppression

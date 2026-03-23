@@ -13,15 +13,12 @@ resources:
     memory: "256Mi"
   limits:
     memory: "512Mi"
+# Ingress disabled — Gateway API HTTPRoute handles external access
 consoleIngress:
-  enabled: true
-  hosts:
-    - ${minio_console_host}
-  tls: []
+  enabled: false
 ingress:
-  enabled: true
-  hosts:
-    - ${minio_api_host}
-  tls: []
+  enabled: false
 tolerations:
   - operator: "Exists"
+nodeSelector:
+  node-role.kubernetes.io/worker: "true"
