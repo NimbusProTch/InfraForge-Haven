@@ -133,7 +133,7 @@ variable "enable_longhorn" {
 variable "longhorn_version" {
   description = "Longhorn Helm chart version (from Rancher marketplace)"
   type        = string
-  default     = "104.2.0+up1.7.2"
+  default     = "104.2.0+up1.7.1"
 }
 
 # ===== Cert-Manager =====
