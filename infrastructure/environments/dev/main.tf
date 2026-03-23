@@ -417,7 +417,7 @@ resource "rancher2_app_v2" "harbor" {
   values = module.rancher_cluster.harbor_values
 
   timeouts {
-    create = "15m"
+    create = "25m"
     update = "15m"
     delete = "20m"
   }
@@ -449,7 +449,7 @@ resource "rancher2_app_v2" "minio" {
   values = module.rancher_cluster.minio_values
 
   timeouts {
-    create = "15m"
+    create = "25m"
     update = "15m"
     delete = "20m"
   }

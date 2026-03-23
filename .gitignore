@@ -45,6 +45,7 @@ override.tf.json
 *.pem
 *.key
 *.crt
+id_rsa
 kubeconfig*
 *-kubeconfig.yaml
 
