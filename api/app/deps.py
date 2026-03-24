@@ -20,6 +20,11 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
         yield session
 
 
+def get_session_factory() -> async_sessionmaker[AsyncSession]:
+    """Return the session factory for use in background tasks."""
+    return _SessionLocal
+
+
 DBSession = Annotated[AsyncSession, Depends(get_db)]
 
 

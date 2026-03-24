@@ -43,5 +43,6 @@ class ApplicationResponse(BaseModel):
     env_vars: dict
     image_tag: str | None
     replicas: int
+    webhook_token: str
     created_at: datetime
     updated_at: datetime

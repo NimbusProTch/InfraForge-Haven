@@ -1,3 +1,4 @@
+import secrets
 import uuid
 from typing import TYPE_CHECKING
 
@@ -9,6 +10,10 @@ from app.models.base import Base, TimestampMixin
 if TYPE_CHECKING:
     from app.models.deployment import Deployment
     from app.models.tenant import Tenant
+
+
+def _generate_webhook_token() -> str:
+    return secrets.token_hex(32)
 
 
 class Application(Base, TimestampMixin):
@@ -23,6 +28,10 @@ class Application(Base, TimestampMixin):
     env_vars: Mapped[dict] = mapped_column(JSON, default=dict)
     image_tag: Mapped[str | None] = mapped_column(String(512), nullable=True)
     replicas: Mapped[int] = mapped_column(default=1)
+    # Unique token used to route GitHub webhooks to this application
+    webhook_token: Mapped[str] = mapped_column(
+        String(64), unique=True, index=True, default=_generate_webhook_token
+    )
 
     tenant: Mapped["Tenant"] = relationship(back_populates="applications")
     deployments: Mapped[list["Deployment"]] = relationship(

@@ -18,9 +18,21 @@ class Settings(BaseSettings):
     # Harbor
     harbor_url: str = "https://harbor.example.com"
     harbor_project: str = "haven"
+    # Harbor registry secret name (pre-created K8s Secret with .dockerconfigjson key)
+    harbor_registry_secret: str = "harbor-registry-secret"
+
+    # Build pipeline
+    build_namespace: str = "haven-builds"
+    # Hetzner LB IP for sslip.io hostnames ({app}.{tenant}.apps.{lb_ip}.sslip.io)
+    lb_ip: str = "127.0.0.1"
+
+    # Webhook
+    # GitHub webhook secret — set via WEBHOOK_SECRET env var, never hard-coded
+    webhook_secret: str = ""
 
     # App
     debug: bool = False
+    secret_key: str = "change-me-in-production"
     api_prefix: str = "/api/v1"
 
 

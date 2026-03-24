@@ -17,6 +17,7 @@ class K8sClient:
         self.apps_v1: k8s_client_lib.AppsV1Api | None = None
         self.batch_v1: k8s_client_lib.BatchV1Api | None = None
         self.rbac_v1: k8s_client_lib.RbacAuthorizationV1Api | None = None
+        self.autoscaling_v2: k8s_client_lib.AutoscalingV2Api | None = None
         self.custom_objects: k8s_client_lib.CustomObjectsApi | None = None
 
     async def initialize(self) -> None:
@@ -32,6 +33,7 @@ class K8sClient:
             self.apps_v1 = k8s_client_lib.AppsV1Api()
             self.batch_v1 = k8s_client_lib.BatchV1Api()
             self.rbac_v1 = k8s_client_lib.RbacAuthorizationV1Api()
+            self.autoscaling_v2 = k8s_client_lib.AutoscalingV2Api()
             self.custom_objects = k8s_client_lib.CustomObjectsApi()
             self._initialized = True
         except Exception as e:
