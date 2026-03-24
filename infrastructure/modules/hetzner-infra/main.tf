@@ -151,10 +151,12 @@ resource "hcloud_load_balancer_service" "http" {
   destination_port = 80
 }
 
-# HTTPS service → Cilium Gateway API NodePort 30443
+# HTTPS service → gateway-proxy DaemonSet hostNetwork port 443
+# nginx stream module does TCP passthrough to Cilium gateway Service port 443
+# (same pattern as HTTP: nginx hostNetwork proxies to Cilium gateway ClusterIP)
 resource "hcloud_load_balancer_service" "https" {
   load_balancer_id = hcloud_load_balancer.haven.id
   protocol         = "tcp"
   listen_port      = 443
-  destination_port = 30443
+  destination_port = 443
 }

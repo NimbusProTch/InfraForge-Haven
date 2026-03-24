@@ -469,3 +469,28 @@ resource "rancher2_app_v2" "minio" {
 
   depends_on = [rancher2_catalog_v2.minio, rancher2_app_v2.longhorn]
 }
+
+# --- 19. Node Topology Labels (Haven Check #1: Multi-AZ) ---
+# Labels nodes with topology.kubernetes.io/zone so Haven checker detects multi-AZ.
+# The Haven infraMultiAZ check reads this label; without it all nodes appear in the same zone.
+resource "ssh_resource" "node_topology_labels" {
+  host        = module.hetzner_infra.management_ip
+  user        = local.node_username
+  private_key = tls_private_key.global_key.private_key_pem
+  timeout     = "5m"
+
+  commands = concat(
+    # Get workload cluster kubeconfig via fleet-default secret
+    ["kubectl get secret -n fleet-default ${var.cluster_name}-kubeconfig -o jsonpath='{.data.value}' | base64 -d > /tmp/workload-kubeconfig"],
+    # Label master nodes with their zone
+    [for i in range(var.master_count) :
+      "KUBECONFIG=/tmp/workload-kubeconfig kubectl label node haven-master-${var.environment}-${i + 1} topology.kubernetes.io/zone=${local.master_locations[i]} topology.kubernetes.io/region=eu --overwrite"
+    ],
+    # Label worker nodes with their zone
+    [for i in range(var.worker_count) :
+      "KUBECONFIG=/tmp/workload-kubeconfig kubectl label node haven-worker-${var.environment}-${i + 1} topology.kubernetes.io/zone=${local.worker_locations[i]} topology.kubernetes.io/region=eu --overwrite"
+    ]
+  )
+
+  depends_on = [rancher2_cluster_sync.cluster]
+}

@@ -52,6 +52,7 @@ kubeconfig*
 # ===== Claude Code =====
 .claude/settings.json
 .claude/settings.local.json
+.claude/worktrees/
 
 # ===== IDE =====
 .idea/

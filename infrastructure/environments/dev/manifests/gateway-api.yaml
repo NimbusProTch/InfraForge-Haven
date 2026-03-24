@@ -8,7 +8,18 @@
 #   - Gateway API experimental CRDs installed:
 #     kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.2.1/experimental-install.yaml
 #   - Cilium with gatewayAPI.enabled: true (see cilium-values.yaml.tpl)
+#   - cert-manager v1.16.2+ installed
 # ============================================================
+
+---
+# GatewayClass: must be created manually (Cilium operator does not auto-create it)
+# Cilium operator picks it up after restart when Gateway API CRDs are present
+apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: cilium
+spec:
+  controllerName: io.cilium/gateway-controller
 
 ---
 # Namespace for Gateway resources
@@ -18,7 +29,53 @@ metadata:
   name: haven-gateway
 
 ---
-# Gateway: single entry point for all HTTP traffic
+# ClusterIssuer: Let's Encrypt via HTTP-01 Gateway API solver
+# Uses cert-manager's gatewayHTTPRoute solver (cert-manager v1.14+)
+# cert-manager creates a temporary HTTPRoute on the HTTP listener for ACME challenges.
+# NOTE: Update email before applying.
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-gateway
+spec:
+  acme:
+    email: admin@haven-platform.nl  # TODO: update to actual admin email
+    server: https://acme-v02.api.letsencrypt.org/directory
+    privateKeySecretRef:
+      name: letsencrypt-gateway-key
+    solvers:
+      - http01:
+          gatewayHTTPRoute:
+            parentRefs:
+              - name: haven-gateway
+                namespace: haven-gateway
+                kind: Gateway
+                sectionName: http  # IMPORTANT: bind to HTTP listener only so ACME solver HTTPRoutes are on HTTP
+
+---
+# Certificate: single SAN cert covering all gateway hostnames
+# cert-manager creates Secret 'haven-gateway-tls' in haven-gateway namespace
+# after issuing via ACME HTTP-01 challenge on the HTTP listener.
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: haven-gateway-tls
+  namespace: haven-gateway
+spec:
+  secretName: haven-gateway-tls
+  issuerRef:
+    name: letsencrypt-gateway
+    kind: ClusterIssuer
+  dnsNames:
+    - harbor.46.225.42.2.sslip.io
+    - minio.46.225.42.2.sslip.io
+    - s3.46.225.42.2.sslip.io
+
+---
+# Gateway: HTTP (port 80) + HTTPS (port 443) listeners
+# Cilium creates Service 'cilium-gateway-haven-gateway' with both ports.
+# HTTP listener: serves ACME challenges + redirects everything else to HTTPS.
+# HTTPS listener: terminates TLS using the cert-manager-issued secret.
 apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway
 metadata:
@@ -33,9 +90,45 @@ spec:
       allowedRoutes:
         namespaces:
           from: All
+    - name: https
+      port: 443
+      protocol: HTTPS
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - group: ""
+            kind: Secret
+            name: haven-gateway-tls
+      allowedRoutes:
+        namespaces:
+          from: All
 
 ---
-# HTTPRoute: Harbor image registry
+# HTTP → HTTPS redirect (catch-all on HTTP listener)
+# ACME challenge HTTPRoutes (created by cert-manager) have a more specific
+# path prefix (/.well-known/acme-challenge/) and will match before this rule.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: http-to-https-redirect
+  namespace: haven-gateway
+spec:
+  parentRefs:
+    - name: haven-gateway
+      namespace: haven-gateway
+      sectionName: http
+  rules:
+    - filters:
+        - type: RequestRedirect
+          requestRedirect:
+            scheme: https
+            statusCode: 301
+
+---
+# HTTPRoute: Harbor image registry (HTTP + HTTPS)
+# NOTE: Cilium 1.16 does not respect sectionName on cross-namespace HTTPRoutes.
+# Routes are served on both listeners. ACME solver (Exact path) wins over Harbor
+# (PathPrefix /) when cert-manager is configured with sectionName: http.
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
@@ -49,11 +142,11 @@ spec:
     - "harbor.46.225.42.2.sslip.io"
   rules:
     - backendRefs:
-        - name: harbor-core
+        - name: harbor
           port: 80
 
 ---
-# HTTPRoute: MinIO Console (web UI)
+# HTTPRoute: MinIO Console (web UI) (HTTP + HTTPS)
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
@@ -71,7 +164,7 @@ spec:
           port: 9001
 
 ---
-# HTTPRoute: MinIO S3 API
+# HTTPRoute: MinIO S3 API (HTTP + HTTPS)
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
@@ -93,14 +186,15 @@ spec:
 # gateway-proxy DaemonSet
 # ============================================================
 # Workaround for Cilium 1.16 bug: L7LB Proxy Port is NOT
-# propagated to NodePort BPF entries, so external NodePort
-# traffic can't reach the Cilium gateway. This nginx DaemonSet
-# runs with hostNetwork:true on port 80 (already open in
-# Hetzner firewall) and proxies to the gateway ClusterIP
-# which DOES have the correct L7LB routing.
+# propagated to NodePort BPF entries, so external traffic
+# can't reach the Cilium gateway via NodePort. This nginx
+# DaemonSet runs with hostNetwork:true and proxies to the
+# gateway ClusterIP (via stable Service DNS name).
 #
-# Key: proxy_http_version 1.1 required — Cilium Envoy rejects
-# HTTP/1.0 with 426 Upgrade Required.
+# Port 80  → nginx HTTP proxy → gateway Service port 80
+#   (proxy_http_version 1.1 required: Cilium Envoy rejects HTTP/1.0)
+# Port 443 → nginx stream TCP passthrough → gateway Service port 443
+#   (TLS is terminated by Cilium Gateway, not nginx)
 # ============================================================
 
 ---
@@ -127,7 +221,7 @@ data:
       server {
         listen 80;
         location / {
-          proxy_pass http://10.43.161.106:80;
+          proxy_pass http://cilium-gateway-haven-gateway.haven-gateway.svc.cluster.local:80;
           proxy_http_version 1.1;
           proxy_set_header Host $host;
           proxy_set_header Connection "";
@@ -137,6 +231,14 @@ data:
           proxy_connect_timeout 5s;
           proxy_read_timeout 60s;
         }
+      }
+    }
+    stream {
+      server {
+        listen 443;
+        proxy_pass cilium-gateway-haven-gateway.haven-gateway.svc.cluster.local:443;
+        proxy_connect_timeout 5s;
+        proxy_timeout 60s;
       }
     }
 
@@ -167,6 +269,9 @@ spec:
           ports:
             - containerPort: 80
               hostPort: 80
+              protocol: TCP
+            - containerPort: 443
+              hostPort: 443
               protocol: TCP
           volumeMounts:
             - name: nginx-conf

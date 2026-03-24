@@ -8,7 +8,7 @@ terraform {
     }
     rancher2 = {
       source  = "rancher/rancher2"
-      version = "~> 5.0" # Rancher 2.9.x
+      version = "~> 5.0" # Compatible with Rancher 2.9.x - 2.10.x
     }
     ssh = {
       source  = "loafoe/ssh"

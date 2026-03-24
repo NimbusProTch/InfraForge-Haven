@@ -14,13 +14,13 @@ variable "environment" {
 variable "location_primary" {
   description = "Primary datacenter (Multi-AZ - Haven Check 1)"
   type        = string
-  default     = "nbg1" # Nuremberg
+  default     = "nbg1" # Nuremberg (eu-central)
 }
 
 variable "location_secondary" {
   description = "Secondary datacenter (Multi-AZ - Haven Check 1)"
   type        = string
-  default     = "hel1" # Helsinki
+  default     = "fsn1" # Falkenstein (eu-central) - same network zone, stable cross-AZ connectivity
 }
 
 # Management node (Rancher server)
@@ -84,13 +84,13 @@ variable "rancher_bootstrap_password" {
 variable "rancher_version" {
   description = "Rancher server version"
   type        = string
-  default     = "v2.9.3"
+  default     = "v2.10.3"
 }
 
 variable "rancher_chart_version" {
   description = "Rancher Helm chart version (from rancher-stable repo)"
   type        = string
-  default     = "2.9.3"
+  default     = "2.10.3"
 }
 
 variable "rancher_helm_repository" {
@@ -112,9 +112,9 @@ variable "cluster_name" {
 }
 
 variable "kubernetes_version" {
-  description = "RKE2 Kubernetes version"
+  description = "RKE2 Kubernetes version (Haven Check: max 3 minor versions behind current)"
   type        = string
-  default     = "v1.30.6+rke2r1"
+  default     = "v1.32.3+rke2r1"
 }
 
 variable "os_image" {
