@@ -1,0 +1,22 @@
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: haven-ui
+  namespace: haven-system
+  labels:
+    haven.io/component: ui
+spec:
+  parentRefs:
+    - name: haven-gateway
+      namespace: haven-gateway
+  hostnames:
+    # PLACEHOLDER: Replace LB_IP with actual load balancer IP
+    - "ui.LB_IP.sslip.io"
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: haven-ui
+          port: 80

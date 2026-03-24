@@ -1,0 +1,66 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: haven-ui
+  namespace: haven-system
+  labels:
+    app: haven-ui
+    haven.io/component: ui
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: haven-ui
+  template:
+    metadata:
+      labels:
+        app: haven-ui
+        haven.io/component: ui
+    spec:
+      tolerations:
+        - operator: "Exists"
+      containers:
+        - name: haven-ui
+          # PLACEHOLDER: Updated by CI/CD pipeline on each release
+          image: harbor.example.com/haven/haven-ui:latest
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 3000
+          env:
+            - name: NEXTAUTH_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: haven-ui-config
+                  key: NEXTAUTH_URL
+            - name: NEXT_PUBLIC_API_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: haven-ui-config
+                  key: NEXT_PUBLIC_API_URL
+            - name: KEYCLOAK_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: haven-ui-config
+                  key: KEYCLOAK_URL
+            - name: KEYCLOAK_REALM
+              valueFrom:
+                configMapKeyRef:
+                  name: haven-ui-config
+                  key: KEYCLOAK_REALM
+          envFrom:
+            - secretRef:
+                name: haven-ui-secrets
+                optional: false
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 3000
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              memory: "256Mi"

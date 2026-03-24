@@ -1,0 +1,58 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: haven-api
+  namespace: haven-system
+  labels:
+    app: haven-api
+    haven.io/component: api
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: haven-api
+  template:
+    metadata:
+      labels:
+        app: haven-api
+        haven.io/component: api
+    spec:
+      serviceAccountName: haven-api
+      tolerations:
+        - operator: "Exists"
+      containers:
+        - name: haven-api
+          # PLACEHOLDER: Updated by CI/CD pipeline on each release
+          # Format: harbor.<LB_IP>.sslip.io/haven/haven-api:<git-sha>
+          image: harbor.example.com/haven/haven-api:latest
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 8000
+          env:
+            - name: K8S_INCLUSTER
+              value: "true"
+            - name: DEBUG
+              value: "false"
+          envFrom:
+            - secretRef:
+                name: haven-api-secrets
+                optional: false
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: "200m"
+              memory: "256Mi"
+            limits:
+              memory: "512Mi"

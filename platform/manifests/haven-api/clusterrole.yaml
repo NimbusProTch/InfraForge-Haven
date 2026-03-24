@@ -1,0 +1,51 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: haven-api
+  labels:
+    haven.io/component: api
+rules:
+  # Tenant namespace management
+  - apiGroups: [""]
+    resources: ["namespaces"]
+    verbs: ["get", "list", "create", "delete"]
+  # ResourceQuota and LimitRange
+  - apiGroups: [""]
+    resources: ["resourcequotas", "limitranges"]
+    verbs: ["get", "list", "create", "patch", "delete"]
+  # Services and pods (for deploy service)
+  - apiGroups: [""]
+    resources: ["services", "pods", "pods/log", "secrets", "configmaps"]
+    verbs: ["get", "list", "create", "patch", "update", "delete"]
+  # Deployments
+  - apiGroups: ["apps"]
+    resources: ["deployments", "deployments/scale"]
+    verbs: ["get", "list", "create", "patch", "update", "delete"]
+  # Batch jobs (Kaniko builds)
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["get", "list", "create", "delete", "watch"]
+  # RBAC for tenant provisioning
+  - apiGroups: ["rbac.authorization.k8s.io"]
+    resources: ["roles", "rolebindings"]
+    verbs: ["get", "list", "create", "patch", "delete"]
+  # CiliumNetworkPolicy
+  - apiGroups: ["cilium.io"]
+    resources: ["ciliumnetworkpolicies"]
+    verbs: ["get", "list", "create", "patch", "delete"]
+  # CNPG Cluster CRD
+  - apiGroups: ["postgresql.cnpg.io"]
+    resources: ["clusters"]
+    verbs: ["get", "list", "create", "patch", "delete"]
+  # Redis CRD (OpsTree)
+  - apiGroups: ["redis.redis.opstreelabs.in"]
+    resources: ["redis"]
+    verbs: ["get", "list", "create", "patch", "delete"]
+  # RabbitMQ Cluster CRD
+  - apiGroups: ["rabbitmq.com"]
+    resources: ["rabbitmqclusters"]
+    verbs: ["get", "list", "create", "patch", "delete"]
+  # HTTPRoute (Gateway API)
+  - apiGroups: ["gateway.networking.k8s.io"]
+    resources: ["httproutes"]
+    verbs: ["get", "list", "create", "patch", "delete"]
