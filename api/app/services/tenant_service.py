@@ -170,7 +170,7 @@ class TenantService:
         rb = k8s_lib.V1RoleBinding(
             metadata=k8s_lib.V1ObjectMeta(name="tenant-admin-binding"),
             subjects=[
-                k8s_lib.V1Subject(
+                k8s_lib.RbacV1Subject(
                     kind="Group",
                     name=f"haven:tenant:{slug}:admin",
                     api_group="rbac.authorization.k8s.io",

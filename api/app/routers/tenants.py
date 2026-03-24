@@ -1,5 +1,3 @@
-import uuid
-
 from fastapi import APIRouter, HTTPException, status
 from sqlalchemy import select
 
@@ -9,6 +7,14 @@ from app.schemas.tenant import TenantCreate, TenantResponse, TenantUpdate
 from app.services.tenant_service import TenantService
 
 router = APIRouter(prefix="/tenants", tags=["tenants"])
+
+
+async def _get_tenant_or_404(tenant_slug: str, db: DBSession) -> Tenant:
+    result = await db.execute(select(Tenant).where(Tenant.slug == tenant_slug))
+    tenant = result.scalar_one_or_none()
+    if tenant is None:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+    return tenant
 
 
 @router.get("", response_model=list[TenantResponse])
@@ -51,19 +57,15 @@ async def create_tenant(body: TenantCreate, db: DBSession, k8s: K8sDep) -> Tenan
     return tenant
 
 
-@router.get("/{tenant_id}", response_model=TenantResponse)
-async def get_tenant(tenant_id: uuid.UUID, db: DBSession) -> Tenant:
-    tenant = await db.get(Tenant, tenant_id)
-    if tenant is None:
-        raise HTTPException(status_code=404, detail="Tenant not found")
-    return tenant
+@router.get("/{tenant_slug}", response_model=TenantResponse)
+async def get_tenant(tenant_slug: str, db: DBSession) -> Tenant:
+    return await _get_tenant_or_404(tenant_slug, db)
 
 
-@router.patch("/{tenant_id}", response_model=TenantResponse)
-async def update_tenant(tenant_id: uuid.UUID, body: TenantUpdate, db: DBSession) -> Tenant:
-    tenant = await db.get(Tenant, tenant_id)
-    if tenant is None:
-        raise HTTPException(status_code=404, detail="Tenant not found")
+@router.patch("/{tenant_slug}", response_model=TenantResponse)
+@router.put("/{tenant_slug}", response_model=TenantResponse)
+async def update_tenant(tenant_slug: str, body: TenantUpdate, db: DBSession) -> Tenant:
+    tenant = await _get_tenant_or_404(tenant_slug, db)
 
     update_data = body.model_dump(exclude_none=True)
     for field, value in update_data.items():
@@ -74,11 +76,9 @@ async def update_tenant(tenant_id: uuid.UUID, body: TenantUpdate, db: DBSession)
     return tenant
 
 
-@router.delete("/{tenant_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_tenant(tenant_id: uuid.UUID, db: DBSession, k8s: K8sDep) -> None:
-    tenant = await db.get(Tenant, tenant_id)
-    if tenant is None:
-        raise HTTPException(status_code=404, detail="Tenant not found")
+@router.delete("/{tenant_slug}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_tenant(tenant_slug: str, db: DBSession, k8s: K8sDep) -> None:
+    tenant = await _get_tenant_or_404(tenant_slug, db)
 
     svc = TenantService(k8s)
     await svc.deprovision(tenant.namespace)

@@ -1,12 +1,23 @@
+import re
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class ApplicationCreate(BaseModel):
-    slug: str = Field(..., min_length=3, max_length=63, pattern=r"^[a-z0-9][a-z0-9-]*[a-z0-9]$")
+    slug: str | None = Field(default=None, min_length=3, max_length=63, pattern=r"^[a-z0-9][a-z0-9-]*[a-z0-9]$")
     name: str = Field(..., min_length=1, max_length=255)
+
+    @model_validator(mode="after")
+    def _set_slug_from_name(self) -> "ApplicationCreate":
+        if self.slug is None:
+            slug = re.sub(r"[^a-z0-9]+", "-", self.name.lower()).strip("-")
+            slug = slug[:63]
+            if len(slug) < 3:
+                slug = slug.ljust(3, "0")
+            self.slug = slug
+        return self
     repo_url: str = Field(..., max_length=2048)
     branch: str = Field(default="main", max_length=255)
     env_vars: dict[str, str] = Field(default_factory=dict)
