@@ -77,3 +77,31 @@ output "minio_values" {
   })
   sensitive = true
 }
+
+output "cnpg_values" {
+  description = "Rendered CloudNativePG operator Helm values"
+  value       = templatefile("${path.module}/templates/cnpg-values.yaml.tpl", {})
+}
+
+output "argocd_values" {
+  description = "Rendered ArgoCD Helm values"
+  value       = templatefile("${path.module}/templates/argocd-values.yaml.tpl", {})
+}
+
+output "keycloak_values" {
+  description = "Rendered Keycloak Helm values"
+  value = templatefile("${path.module}/templates/keycloak-values.yaml.tpl", {
+    keycloak_admin_password = var.keycloak_admin_password
+    keycloak_db_password    = var.keycloak_db_password
+  })
+  sensitive = true
+}
+
+output "external_dns_values" {
+  description = "Rendered External-DNS Helm values"
+  value = templatefile("${path.module}/templates/external-dns-values.yaml.tpl", {
+    cloudflare_api_token = var.external_dns_cloudflare_token
+    domain_filters       = var.external_dns_domain_filters
+  })
+  sensitive = true
+}

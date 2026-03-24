@@ -236,6 +236,18 @@ haven-platform/
 - [x] Hetzner LB destination_port: 80 (firewall açık)
 - [x] Dış erişim: Harbor HTTP 200, MinIO Console HTTP 200, MinIO S3 HTTP 403 ✅
 
+### Phase 1 Sprint 1: Platform Servisleri (CNPG, ArgoCD, Keycloak) ✅
+- [x] CloudNativePG operator 0.22.1 (cnpg-system, rancher2_app_v2)
+- [x] CNPG Cluster `haven-platform` (haven_platform DB, cnpg-system, 1 instance, Longhorn 20Gi)
+- [x] ArgoCD 7.7.3 (argocd namespace, insecure mode, HA disabled, HTTP 200)
+- [x] Keycloak 26.1 (quay.io/keycloak/keycloak:26.1, start-dev, keycloak namespace, HTTP 302 → login)
+- [x] External-DNS (optional, disabled, cloudflare provider ready)
+- [x] Platform namespaces: haven-system, haven-builds
+- [x] Gateway HTTPRoutes: argocd, keycloak, haven-api (placeholder)
+- [x] Certificate SANs updated: argocd, keycloak, api sslip.io hostnames
+- [x] Keycloak: ssh_resource ile kubectl apply (quay.io image, Bitnami chart abandon edildi)
+- [x] Service selector fix: `kubectl delete svc` before apply (old Bitnami selector override)
+
 ## Teknik Gotchas
 
 - Hetzner primary IP limit ~5 per account → request increase for 3+3 nodes
@@ -260,6 +272,12 @@ haven-platform/
 - rancher-monitoring/logging need CRD chart installed first (e.g., `rancher-monitoring-crd`)
 - Rancher 2.9.3 chart versions: `104.x.x` prefix (NOT `105.x.x`) → query live catalog API
 - Longhorn version in catalog may differ from tfvars default → check `deployment_values` after apply
+- **Bitnami images decommissioned**: `registry.bitnami.com` = NXDOMAIN, `docker.io/bitnami/*` tags removed, `ghcr.io/bitnami` = 403. Use official images (e.g. `quay.io/keycloak/keycloak:26.1`)
+- **CNPG Cluster tolerations**: `spec.affinity.tolerations` NOT `spec.tolerations` (strict CRD validation)
+- **Keycloak 26 start-dev**: management port 9000 not exposed → use `tcpSocket` probe on port 8080
+- **kubectl apply + Service selector**: strategic merge patch does NOT remove extra labels from existing Service. Fix: `kubectl delete svc <name> --ignore-not-found` before `kubectl apply` to reset selector cleanly
+- **ssh_resource via Rancher fleet secret**: `kubectl get secret -n fleet-default ${cluster_name}-kubeconfig -o jsonpath='{.data.value}' | base64 -d > /tmp/workload-kubeconfig` gives RKE2 cluster access from K3s management node
+- **base64encode() trick for kubectl apply**: `echo '${base64encode(yaml)}' | base64 -d | kubectl apply -f -` avoids heredoc/escaping issues in ssh_resource commands
 
 ## Maliyet
 

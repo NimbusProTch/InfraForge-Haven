@@ -160,3 +160,45 @@ variable "minio_api_host" {
   type        = string
   default     = ""
 }
+
+# ===== ArgoCD =====
+variable "argocd_host" {
+  description = "ArgoCD hostname (e.g., argocd.<IP>.sslip.io)"
+  type        = string
+  default     = ""
+}
+
+# ===== Keycloak =====
+variable "keycloak_host" {
+  description = "Keycloak hostname (e.g., keycloak.<IP>.sslip.io)"
+  type        = string
+  default     = ""
+}
+
+variable "keycloak_admin_password" {
+  description = "Keycloak admin password"
+  type        = string
+  default     = "Keycloak12345!"
+  sensitive   = true
+}
+
+variable "keycloak_db_password" {
+  description = "Keycloak embedded PostgreSQL password (Sprint 1)"
+  type        = string
+  default     = "KeycloakDB12345!"
+  sensitive   = true
+}
+
+# ===== External-DNS =====
+variable "external_dns_cloudflare_token" {
+  description = "Cloudflare API token for External-DNS"
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "external_dns_domain_filters" {
+  description = "Domain filters for External-DNS"
+  type        = list(string)
+  default     = []
+}

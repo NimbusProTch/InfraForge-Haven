@@ -246,3 +246,75 @@ variable "domain" {
   type        = string
   default     = "haven.dev"
 }
+
+# ===== ArgoCD =====
+variable "enable_argocd" {
+  description = "Enable ArgoCD GitOps"
+  type        = bool
+  default     = true
+}
+
+variable "argocd_version" {
+  description = "ArgoCD Helm chart version (from argo-helm repo)"
+  type        = string
+  default     = "7.7.3"
+}
+
+# ===== Keycloak =====
+variable "enable_keycloak" {
+  description = "Enable Keycloak identity provider"
+  type        = bool
+  default     = true
+}
+
+variable "keycloak_version" {
+  description = "Keycloak Helm chart version (Bitnami)"
+  type        = string
+  default     = "22.2.2"
+}
+
+variable "keycloak_admin_password" {
+  description = "Keycloak admin password"
+  type        = string
+  sensitive   = true
+  default     = "Keycloak12345!"
+}
+
+variable "keycloak_db_password" {
+  description = "Keycloak embedded PostgreSQL password (Sprint 1)"
+  type        = string
+  sensitive   = true
+  default     = "KeycloakDB12345!"
+}
+
+# ===== CloudNativePG =====
+variable "enable_cnpg" {
+  description = "Enable CloudNativePG operator"
+  type        = bool
+  default     = true
+}
+
+variable "cnpg_version" {
+  description = "CloudNativePG Helm chart version"
+  type        = string
+  default     = "0.22.1"
+}
+
+# ===== External-DNS =====
+variable "enable_external_dns" {
+  description = "Enable External-DNS (requires cloudflare_api_token to be set)"
+  type        = bool
+  default     = false
+}
+
+variable "external_dns_version" {
+  description = "External-DNS Helm chart version"
+  type        = string
+  default     = "1.15.0"
+}
+
+variable "external_dns_domain_filters" {
+  description = "Domain filters for External-DNS"
+  type        = list(string)
+  default     = []
+}

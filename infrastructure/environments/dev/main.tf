@@ -169,6 +169,18 @@ module "rancher_cluster" {
   minio_storage_size  = var.minio_storage_size
   minio_console_host  = join(".", ["minio", module.hetzner_infra.load_balancer_ip, "sslip.io"])
   minio_api_host      = join(".", ["s3", module.hetzner_infra.load_balancer_ip, "sslip.io"])
+
+  # ArgoCD
+  argocd_host = join(".", ["argocd", module.hetzner_infra.load_balancer_ip, "sslip.io"])
+
+  # Keycloak
+  keycloak_host           = join(".", ["keycloak", module.hetzner_infra.load_balancer_ip, "sslip.io"])
+  keycloak_admin_password = var.keycloak_admin_password
+  keycloak_db_password    = var.keycloak_db_password
+
+  # External-DNS
+  external_dns_cloudflare_token = var.cloudflare_api_token
+  external_dns_domain_filters   = var.external_dns_domain_filters
 }
 
 # --- 9. Master Nodes (Rancher insecure_node_command) ---
@@ -470,7 +482,277 @@ resource "rancher2_app_v2" "minio" {
   depends_on = [rancher2_catalog_v2.minio, rancher2_app_v2.longhorn]
 }
 
-# --- 19. Node Topology Labels (Haven Check #1: Multi-AZ) ---
+# --- 19. CloudNativePG Operator ---
+resource "rancher2_catalog_v2" "cnpg" {
+  count      = var.enable_cnpg ? 1 : 0
+  provider   = rancher2.admin
+  cluster_id = module.rancher_cluster.cluster_id
+  name       = "cnpg"
+  url        = "https://cloudnative-pg.github.io/charts"
+
+  depends_on = [rancher2_cluster_sync.cluster]
+}
+
+resource "rancher2_app_v2" "cnpg" {
+  count         = var.enable_cnpg ? 1 : 0
+  provider      = rancher2.admin
+  cluster_id    = module.rancher_cluster.cluster_id
+  name          = "cloudnative-pg"
+  namespace     = "cnpg-system"
+  repo_name     = "cnpg"
+  chart_name    = "cloudnative-pg"
+  chart_version = var.cnpg_version
+
+  values = module.rancher_cluster.cnpg_values
+
+  timeouts {
+    create = "10m"
+    update = "10m"
+    delete = "10m"
+  }
+
+  depends_on = [rancher2_catalog_v2.cnpg, rancher2_app_v2.longhorn]
+}
+
+# --- 20. ArgoCD ---
+resource "rancher2_catalog_v2" "argocd" {
+  count      = var.enable_argocd ? 1 : 0
+  provider   = rancher2.admin
+  cluster_id = module.rancher_cluster.cluster_id
+  name       = "argo"
+  url        = "https://argoproj.github.io/argo-helm"
+
+  depends_on = [rancher2_cluster_sync.cluster]
+}
+
+resource "rancher2_app_v2" "argocd" {
+  count         = var.enable_argocd ? 1 : 0
+  provider      = rancher2.admin
+  cluster_id    = module.rancher_cluster.cluster_id
+  name          = "argocd"
+  namespace     = "argocd"
+  repo_name     = "argo"
+  chart_name    = "argo-cd"
+  chart_version = var.argocd_version
+
+  values = module.rancher_cluster.argocd_values
+
+  timeouts {
+    create = "15m"
+    update = "15m"
+    delete = "10m"
+  }
+
+  depends_on = [rancher2_catalog_v2.argocd, rancher2_app_v2.cert_manager]
+}
+
+# --- 21. Keycloak ---
+# NOTE: Bitnami Keycloak images removed from all public registries (Docker Hub, registry.bitnami.com).
+# Using official quay.io/keycloak/keycloak image via kubectl apply (ssh_resource).
+# Sprint 1: dev mode (H2 in-memory). Sprint 2: migrate to CNPG PostgreSQL.
+#
+# rancher2_catalog_v2.bitnami kept so existing state entry is not destroyed.
+resource "rancher2_catalog_v2" "bitnami" {
+  count      = var.enable_keycloak ? 1 : 0
+  provider   = rancher2.admin
+  cluster_id = module.rancher_cluster.cluster_id
+  name       = "bitnami"
+  url        = "https://charts.bitnami.com/bitnami"
+
+  depends_on = [rancher2_cluster_sync.cluster]
+}
+
+locals {
+  keycloak_manifest_yaml = <<-YAML
+    apiVersion: v1
+    kind: Secret
+    metadata:
+      name: keycloak-admin
+      namespace: keycloak
+    type: Opaque
+    stringData:
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: "${var.keycloak_admin_password}"
+    ---
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: keycloak
+      namespace: keycloak
+      labels:
+        app: keycloak
+    spec:
+      replicas: 1
+      selector:
+        matchLabels:
+          app: keycloak
+      template:
+        metadata:
+          labels:
+            app: keycloak
+        spec:
+          containers:
+            - name: keycloak
+              image: quay.io/keycloak/keycloak:26.1
+              args: ["start-dev"]
+              env:
+                - name: KEYCLOAK_ADMIN
+                  valueFrom:
+                    secretKeyRef:
+                      name: keycloak-admin
+                      key: KEYCLOAK_ADMIN
+                - name: KEYCLOAK_ADMIN_PASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: keycloak-admin
+                      key: KEYCLOAK_ADMIN_PASSWORD
+                - name: KC_PROXY_HEADERS
+                  value: "xforwarded"
+                - name: KC_HOSTNAME_STRICT
+                  value: "false"
+                - name: KC_HTTP_ENABLED
+                  value: "true"
+              ports:
+                - name: http
+                  containerPort: 8080
+              readinessProbe:
+                tcpSocket:
+                  port: 8080
+                initialDelaySeconds: 30
+                periodSeconds: 10
+                failureThreshold: 6
+              resources:
+                requests:
+                  cpu: "500m"
+                  memory: "512Mi"
+                limits:
+                  memory: "1Gi"
+          tolerations:
+            - operator: "Exists"
+    ---
+    apiVersion: v1
+    kind: Service
+    metadata:
+      name: keycloak
+      namespace: keycloak
+    spec:
+      selector:
+        app: keycloak
+      ports:
+        - name: http
+          port: 80
+          targetPort: 8080
+      type: ClusterIP
+  YAML
+}
+
+resource "ssh_resource" "keycloak" {
+  count       = var.enable_keycloak ? 1 : 0
+  host        = module.hetzner_infra.management_ip
+  user        = local.node_username
+  private_key = tls_private_key.global_key.private_key_pem
+  timeout     = "5m"
+
+  commands = [
+    "kubectl get secret -n fleet-default ${var.cluster_name}-kubeconfig -o jsonpath='{.data.value}' | base64 -d > /tmp/workload-kubeconfig",
+    # Delete existing Service first to avoid stale selector from old Bitnami install
+    "KUBECONFIG=/tmp/workload-kubeconfig kubectl delete svc keycloak -n keycloak --ignore-not-found",
+    "echo '${base64encode(local.keycloak_manifest_yaml)}' | base64 -d | KUBECONFIG=/tmp/workload-kubeconfig kubectl apply -f -",
+  ]
+
+  depends_on = [rancher2_cluster_sync.cluster]
+}
+
+# --- 22. External-DNS (optional, requires cloudflare_api_token) ---
+resource "rancher2_catalog_v2" "external_dns" {
+  count      = var.enable_external_dns ? 1 : 0
+  provider   = rancher2.admin
+  cluster_id = module.rancher_cluster.cluster_id
+  name       = "external-dns"
+  url        = "https://kubernetes-sigs.github.io/external-dns"
+
+  depends_on = [rancher2_cluster_sync.cluster]
+}
+
+resource "rancher2_app_v2" "external_dns" {
+  count         = var.enable_external_dns ? 1 : 0
+  provider      = rancher2.admin
+  cluster_id    = module.rancher_cluster.cluster_id
+  name          = "external-dns"
+  namespace     = "external-dns"
+  repo_name     = "external-dns"
+  chart_name    = "external-dns"
+  chart_version = var.external_dns_version
+
+  values = module.rancher_cluster.external_dns_values
+
+  timeouts {
+    create = "10m"
+    update = "10m"
+    delete = "10m"
+  }
+
+  depends_on = [rancher2_catalog_v2.external_dns, rancher2_cluster_sync.cluster]
+}
+
+# --- 23. Platform Namespaces (haven-system, haven-builds) ---
+resource "ssh_resource" "platform_namespaces" {
+  host        = module.hetzner_infra.management_ip
+  user        = local.node_username
+  private_key = tls_private_key.global_key.private_key_pem
+  timeout     = "5m"
+
+  commands = [
+    "kubectl get secret -n fleet-default ${var.cluster_name}-kubeconfig -o jsonpath='{.data.value}' | base64 -d > /tmp/workload-kubeconfig",
+    "KUBECONFIG=/tmp/workload-kubeconfig kubectl create namespace haven-system --dry-run=client -o yaml | KUBECONFIG=/tmp/workload-kubeconfig kubectl apply -f -",
+    "KUBECONFIG=/tmp/workload-kubeconfig kubectl create namespace haven-builds --dry-run=client -o yaml | KUBECONFIG=/tmp/workload-kubeconfig kubectl apply -f -",
+    "KUBECONFIG=/tmp/workload-kubeconfig kubectl label namespace haven-system project=haven environment=${var.environment} --overwrite",
+    "KUBECONFIG=/tmp/workload-kubeconfig kubectl label namespace haven-builds project=haven environment=${var.environment} --overwrite",
+  ]
+
+  depends_on = [rancher2_cluster_sync.cluster]
+}
+
+# --- 24. CNPG Cluster (haven_platform database) ---
+# Applied after CNPG operator is ready. Uses base64-encoded manifest to avoid heredoc issues.
+locals {
+  cnpg_cluster_yaml = <<-YAML
+    apiVersion: postgresql.cnpg.io/v1
+    kind: Cluster
+    metadata:
+      name: haven-platform
+      namespace: cnpg-system
+    spec:
+      instances: 1
+      storage:
+        storageClass: longhorn
+        size: 20Gi
+      bootstrap:
+        initdb:
+          database: haven_platform
+          owner: haven_api
+      affinity:
+        tolerations:
+          - operator: "Exists"
+  YAML
+}
+
+resource "ssh_resource" "cnpg_cluster" {
+  count       = var.enable_cnpg ? 1 : 0
+  host        = module.hetzner_infra.management_ip
+  user        = local.node_username
+  private_key = tls_private_key.global_key.private_key_pem
+  timeout     = "10m"
+
+  commands = [
+    "kubectl get secret -n fleet-default ${var.cluster_name}-kubeconfig -o jsonpath='{.data.value}' | base64 -d > /tmp/workload-kubeconfig",
+    "echo '${base64encode(local.cnpg_cluster_yaml)}' | base64 -d | KUBECONFIG=/tmp/workload-kubeconfig kubectl apply -f -",
+  ]
+
+  depends_on = [rancher2_app_v2.cnpg]
+}
+
+# --- 25. Node Topology Labels (Haven Check #1: Multi-AZ) ---
 # Labels nodes with topology.kubernetes.io/zone so Haven checker detects multi-AZ.
 # The Haven infraMultiAZ check reads this label; without it all nodes appear in the same zone.
 resource "ssh_resource" "node_topology_labels" {
