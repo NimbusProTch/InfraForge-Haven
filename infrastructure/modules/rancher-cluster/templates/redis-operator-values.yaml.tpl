@@ -1,0 +1,12 @@
+# Redis Operator (OpsTree) Helm values
+replicaCount: 1
+
+resources:
+  requests:
+    cpu: "100m"
+    memory: "128Mi"
+  limits:
+    memory: "256Mi"
+
+tolerations:
+  - operator: "Exists"

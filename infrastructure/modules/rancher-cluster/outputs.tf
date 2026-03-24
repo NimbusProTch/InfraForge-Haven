@@ -105,3 +105,13 @@ output "external_dns_values" {
   })
   sensitive = true
 }
+
+output "redis_operator_values" {
+  description = "Rendered Redis Operator Helm values"
+  value       = templatefile("${path.module}/templates/redis-operator-values.yaml.tpl", {})
+}
+
+output "rabbitmq_operator_values" {
+  description = "Rendered RabbitMQ Cluster Operator Helm values"
+  value       = templatefile("${path.module}/templates/rabbitmq-operator-values.yaml.tpl", {})
+}

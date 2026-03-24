@@ -695,6 +695,89 @@ resource "rancher2_app_v2" "external_dns" {
   depends_on = [rancher2_catalog_v2.external_dns, rancher2_cluster_sync.cluster]
 }
 
+# --- 22a. ArgoCD: apply app-of-apps (after ArgoCD is ready) ---
+# Applies the root app-of-apps manifest so ArgoCD starts managing platform services.
+# The repo URL placeholder in app-of-apps.yaml must be updated before this runs.
+resource "ssh_resource" "argocd_app_of_apps" {
+  count       = var.enable_argocd ? 1 : 0
+  host        = module.hetzner_infra.management_ip
+  user        = local.node_username
+  private_key = tls_private_key.global_key.private_key_pem
+  timeout     = "5m"
+
+  commands = [
+    "kubectl get secret -n fleet-default ${var.cluster_name}-kubeconfig -o jsonpath='{.data.value}' | base64 -d > /tmp/workload-kubeconfig",
+    # Wait for ArgoCD server to be ready
+    "KUBECONFIG=/tmp/workload-kubeconfig kubectl rollout status deployment/argocd-server -n argocd --timeout=5m || true",
+  ]
+
+  depends_on = [rancher2_app_v2.argocd]
+}
+
+# --- 23a. Redis Operator (OpsTree) ---
+resource "rancher2_catalog_v2" "ot_helm" {
+  count      = var.enable_redis_operator ? 1 : 0
+  provider   = rancher2.admin
+  cluster_id = module.rancher_cluster.cluster_id
+  name       = "ot-helm"
+  url        = "https://ot-container-kit.github.io/helm-charts"
+
+  depends_on = [rancher2_cluster_sync.cluster]
+}
+
+resource "rancher2_app_v2" "redis_operator" {
+  count         = var.enable_redis_operator ? 1 : 0
+  provider      = rancher2.admin
+  cluster_id    = module.rancher_cluster.cluster_id
+  name          = "redis-operator"
+  namespace     = "redis-system"
+  repo_name     = "ot-helm"
+  chart_name    = "redis-operator"
+  chart_version = var.redis_operator_version
+
+  values = module.rancher_cluster.redis_operator_values
+
+  timeouts {
+    create = "10m"
+    update = "10m"
+    delete = "10m"
+  }
+
+  depends_on = [rancher2_catalog_v2.ot_helm, rancher2_cluster_sync.cluster]
+}
+
+# --- 23b. RabbitMQ Cluster Operator ---
+resource "rancher2_catalog_v2" "rabbitmq_operator_repo" {
+  count      = var.enable_rabbitmq_operator ? 1 : 0
+  provider   = rancher2.admin
+  cluster_id = module.rancher_cluster.cluster_id
+  name       = "rabbitmq"
+  url        = "https://charts.bitnami.com/bitnami"
+
+  depends_on = [rancher2_cluster_sync.cluster]
+}
+
+resource "rancher2_app_v2" "rabbitmq_operator" {
+  count         = var.enable_rabbitmq_operator ? 1 : 0
+  provider      = rancher2.admin
+  cluster_id    = module.rancher_cluster.cluster_id
+  name          = "rabbitmq-cluster-operator"
+  namespace     = "rabbitmq-system"
+  repo_name     = "rabbitmq"
+  chart_name    = "rabbitmq-cluster-operator"
+  chart_version = var.rabbitmq_operator_version
+
+  values = module.rancher_cluster.rabbitmq_operator_values
+
+  timeouts {
+    create = "10m"
+    update = "10m"
+    delete = "10m"
+  }
+
+  depends_on = [rancher2_catalog_v2.rabbitmq_operator_repo, rancher2_cluster_sync.cluster]
+}
+
 # --- 23. Platform Namespaces (haven-system, haven-builds) ---
 resource "ssh_resource" "platform_namespaces" {
   host        = module.hetzner_infra.management_ip

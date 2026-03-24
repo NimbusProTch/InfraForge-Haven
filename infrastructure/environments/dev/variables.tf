@@ -318,3 +318,29 @@ variable "external_dns_domain_filters" {
   type        = list(string)
   default     = []
 }
+
+# ===== Redis Operator =====
+variable "enable_redis_operator" {
+  description = "Enable OpsTree Redis Operator"
+  type        = bool
+  default     = true
+}
+
+variable "redis_operator_version" {
+  description = "Redis Operator Helm chart version (ot-helm repo)"
+  type        = string
+  default     = "0.15.0"
+}
+
+# ===== RabbitMQ Operator =====
+variable "enable_rabbitmq_operator" {
+  description = "Enable RabbitMQ Cluster Operator"
+  type        = bool
+  default     = true
+}
+
+variable "rabbitmq_operator_version" {
+  description = "RabbitMQ Cluster Operator Helm chart version (bitnami repo)"
+  type        = string
+  default     = "4.3.26"
+}
