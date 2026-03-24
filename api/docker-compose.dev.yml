@@ -1,0 +1,37 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: haven
+      POSTGRES_PASSWORD: haven
+      POSTGRES_DB: haven_platform
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U haven -d haven_platform"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: .
+      target: runtime
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql+asyncpg://haven:haven@postgres:5432/haven_platform
+      K8S_INCLUSTER: "false"
+      DEBUG: "true"
+    volumes:
+      - ./app:/app/app
+      - ~/.kube:/root/.kube:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+
+volumes:
+  postgres_data:
