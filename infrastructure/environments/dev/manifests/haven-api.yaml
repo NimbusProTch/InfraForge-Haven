@@ -1,0 +1,84 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: haven-api
+  namespace: haven-system
+  labels:
+    app: haven-api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: haven-api
+  template:
+    metadata:
+      labels:
+        app: haven-api
+    spec:
+      tolerations:
+        - operator: "Exists"
+      containers:
+        - name: haven-api
+          image: harbor.46.225.42.2.sslip.io/library/haven-api:dev
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8000
+          env:
+            - name: DATABASE_URL
+              value: "postgresql+asyncpg://haven_api:U8Xi5OkG7LnmQ5BzqUvrpftMmZq7Yt2dvH8AzqAGoRNyXP2aufHe1x3VixtiOdqa@haven-platform-rw.cnpg-system.svc.cluster.local:5432/haven_platform"
+            - name: SECRET_KEY
+              value: "haven-dev-secret-change-in-prod"
+            - name: DEBUG
+              value: "true"
+            - name: KEYCLOAK_URL
+              value: "http://keycloak.keycloak.svc.cluster.local:8080"
+            - name: KEYCLOAK_REALM
+              value: "haven"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: haven-api
+  namespace: haven-system
+spec:
+  selector:
+    app: haven-api
+  ports:
+    - port: 8000
+      targetPort: 8000
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: haven-api
+  namespace: haven-system
+spec:
+  parentRefs:
+    - name: haven-gateway
+      namespace: haven-gateway
+  hostnames:
+    - "api.46.225.42.2.sslip.io"
+  rules:
+    - backendRefs:
+        - name: haven-api
+          port: 8000
