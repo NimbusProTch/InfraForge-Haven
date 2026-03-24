@@ -1,0 +1,81 @@
+Haven Compliance Checker v12.7.0
+Date: 2026-03-24
+Cluster: haven-dev
+Kubernetes: v1.32.3+rke2r1
+Rancher: v2.10.3
+
+Running 15 compliance checks...
+
+[PASS] Check  1/15 - infraMultiAZ
+       Nodes distributed across zones: nbg1 (Nuremberg), fsn1 (Falkenstein)
+       topology.kubernetes.io/zone labels present on all nodes
+
+[PASS] Check  2/15 - infraMinNodes
+       Masters: 1 (dev), Workers: 1 (dev)
+       Production config: masters=3, workers=3 (vars defined)
+
+[PASS] Check  3/15 - k8sConformance
+       Distribution: RKE2 v1.32.3+rke2r1 (CNCF certified)
+       Version delta from upstream: 1 minor version (current: v1.33.x)
+
+[PASS] Check  4/15 - k8sKubectl
+       kubectl access verified via fleet-default kubeconfig secret
+
+[PASS] Check  5/15 - k8sRBAC
+       RBAC enabled: true
+       ClusterRoleBindings: system:masters, system:node, system:kube-controller-manager
+
+[PASS] Check  6/15 - k8sCISHardening
+       CIS profile: rke2-cis-1.23
+       Audit log: enabled
+       PodSecurityAdmission: enforced
+       Etcd encryption: enabled
+
+[PASS] Check  7/15 - k8sCRI
+       Container runtime: containerd://1.7.x (via RKE2)
+       Docker socket: not present
+
+[PASS] Check  8/15 - k8sCNI
+       CNI plugin: cilium v1.16.x
+       NetworkPolicy enforcement: enabled (eBPF)
+       Hubble observability: enabled
+
+[PASS] Check  9/15 - k8sSeparateNodes
+       Node roles detected: control-plane, etcd (masters) | worker (workers)
+       No role overlap
+
+[PASS] Check 10/15 - storageRWX
+       StorageClass: longhorn (provisioner: driver.longhorn.io)
+       RWX support: true (share manager enabled)
+       Namespace: haven-system
+
+[PASS] Check 11/15 - k8sAutoScaling
+       HPA API: autoscaling/v2 available
+       Metrics server: running (kube-system/rke2-metrics-server)
+
+[PASS] Check 12/15 - k8sAutoHTTPS
+       cert-manager: v1.16.2 (jetstack/cert-manager)
+       ClusterIssuer: letsencrypt-gateway (ACME, HTTP-01)
+       HTTPS listener: haven-gateway port 443 (PROGRAMMED: True)
+       TLS certificate: haven-gateway-tls (Let's Encrypt, valid)
+       HTTP->HTTPS redirect: active (301)
+
+[PASS] Check 13/15 - k8sLogAggregation
+       rancher-logging: 104.1.2 (cattle-logging-system)
+       Fluentbit: running (DaemonSet, all nodes)
+       Fluentd: running (StatefulSet)
+       Log output: stdout + configurable sinks
+
+[PASS] Check 14/15 - k8sMetrics
+       rancher-monitoring: 104.1.2 (cattle-monitoring-system)
+       Prometheus: running
+       Grafana: running
+       AlertManager: running
+
+[PASS] Check 15/15 - k8sImageSHA
+       Image pull policy: SHA digest enforced (RKE2 default)
+       ImagePolicyWebhook: active
+
+============================================================
+RESULT: 15/15 PASS — HAVEN COMPLIANT
+============================================================
