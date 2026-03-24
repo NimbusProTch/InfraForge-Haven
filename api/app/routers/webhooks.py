@@ -1,5 +1,3 @@
-import hashlib
-import hmac
 import logging
 from typing import Any
 
@@ -9,7 +7,6 @@ from sqlalchemy import select
 from app.deps import DBSession, K8sDep
 from app.models.application import Application
 from app.models.deployment import Deployment, DeploymentStatus
-from app.models.tenant import Tenant
 
 router = APIRouter(prefix="/webhooks", tags=["webhooks"])
 logger = logging.getLogger(__name__)
@@ -24,8 +21,6 @@ async def github_webhook(
     x_hub_signature_256: str | None = Header(default=None),
 ) -> dict[str, str]:
     """Receive GitHub push webhook and trigger a build. (skeleton)"""
-    body = await request.body()
-
     # Find application by webhook token (token = sha256(app_id) — stub for now)
     # TODO: store webhook_token on Application model and look it up properly
     result = await db.execute(select(Application).limit(1))  # placeholder

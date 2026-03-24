@@ -1,5 +1,5 @@
 import uuid
-from enum import Enum as PyEnum
+from enum import StrEnum as PyEnum
 from typing import TYPE_CHECKING
 
 from sqlalchemy import Enum, ForeignKey, String, Text
@@ -11,7 +11,7 @@ if TYPE_CHECKING:
     from app.models.application import Application
 
 
-class DeploymentStatus(str, PyEnum):
+class DeploymentStatus(PyEnum):
     PENDING = "pending"
     BUILDING = "building"
     DEPLOYING = "deploying"

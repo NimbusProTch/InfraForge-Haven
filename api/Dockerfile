@@ -6,7 +6,10 @@ WORKDIR /app
 RUN pip install --no-cache-dir uv
 
 COPY pyproject.toml ./
-RUN uv pip install --system --no-cache-dir -e ".[dev]"
+# Install dependencies only (no source yet) — use a stub app package for metadata
+RUN mkdir -p app && touch app/__init__.py && \
+    uv pip install --system --no-cache-dir -e "." && \
+    rm -rf app
 
 # ----- Runtime stage -----
 FROM python:3.12-slim AS runtime
