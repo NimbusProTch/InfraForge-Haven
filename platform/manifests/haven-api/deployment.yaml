@@ -22,9 +22,7 @@ spec:
         - operator: "Exists"
       containers:
         - name: haven-api
-          # PLACEHOLDER: Updated by CI/CD pipeline on each release
-          # Format: harbor.<LB_IP>.sslip.io/haven/haven-api:<git-sha>
-          image: harbor.example.com/haven/haven-api:latest
+          image: harbor.46.225.42.2.sslip.io/haven/haven-api:latest
           imagePullPolicy: Always
           ports:
             - name: http

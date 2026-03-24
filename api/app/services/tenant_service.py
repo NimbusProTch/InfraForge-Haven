@@ -16,10 +16,15 @@ _CILIUM_NETPOL_TEMPLATE = {
         "endpointSelector": {},
         "ingress": [
             {
+                # Allow intra-tenant traffic
                 "fromEndpoints": [
                     {"matchLabels": {"io.kubernetes.pod.namespace": ""}},  # filled at runtime
                 ]
-            }
+            },
+            {
+                # Allow Cilium Gateway and platform system namespaces
+                "fromEntities": ["host", "cluster"],
+            },
         ],
     },
 }

@@ -134,31 +134,49 @@ class BuildService:
           initContainer nixpacks   → ghcr.io/railwayapp/nixpacks: generate Dockerfile
           container     kaniko     → gcr.io/kaniko-project/executor: build + push to Harbor
         """
-        git_clone_cmd = (
-            f"git clone --depth=50 '{repo_url}' /workspace "
-            f"&& cd /workspace "
-            f"&& git checkout '{commit_sha}'"
-        )
+        _is_real_sha = len(commit_sha) >= 7 and all(c in "0123456789abcdef" for c in commit_sha)
+        if _is_real_sha:
+            git_clone_cmd = (
+                f"git clone --depth=50 '{repo_url}' /workspace "
+                f"&& cd /workspace "
+                f"&& git checkout '{commit_sha}'"
+            )
+        else:
+            git_clone_cmd = f"git clone --depth=1 --branch '{branch}' '{repo_url}' /workspace"
+        # Download nixpacks CLI from GitHub releases and generate Dockerfile if missing.
+        # We use alpine (has sh + curl + tar) so we can fetch the static nixpacks binary.
         nixpacks_cmd = (
             "if [ ! -f /workspace/Dockerfile ]; then "
-            "  /usr/local/bin/nixpacks build /workspace --out /workspace "
-            "  && cp /workspace/.nixpacks/Dockerfile /workspace/Dockerfile; "
+            "  apk add --no-cache curl tar && "
+            "  NIXPACKS_VERSION=1.41.0 && "
+            "  curl -fsSL -o /tmp/nixpacks.tar.gz "
+            "    https://github.com/railwayapp/nixpacks/releases/download/v${NIXPACKS_VERSION}/"
+            "nixpacks-v${NIXPACKS_VERSION}-x86_64-unknown-linux-musl.tar.gz && "
+            "  tar -xzf /tmp/nixpacks.tar.gz -C /tmp && "
+            "  chmod +x /tmp/nixpacks && "
+            "  /tmp/nixpacks build /workspace --out /workspace && "
+            "  cp /workspace/.nixpacks/Dockerfile /workspace/Dockerfile; "
             "fi"
         )
 
         init_containers = [
             k8s_client_lib.V1Container(
                 name="git-clone",
-                image="alpine/git:latest",
+                image="alpine:3.20",
                 command=["sh", "-c"],
-                args=[git_clone_cmd],
+                args=[f"apk add --no-cache git && {git_clone_cmd}"],
+                env=[
+                    k8s_client_lib.V1EnvVar(name="GIT_TERMINAL_PROMPT", value="0"),
+                    k8s_client_lib.V1EnvVar(name="GIT_CONFIG_NOSYSTEM", value="1"),
+                    k8s_client_lib.V1EnvVar(name="HOME", value="/tmp"),
+                ],
                 volume_mounts=[
                     k8s_client_lib.V1VolumeMount(name="workspace", mount_path="/workspace")
                 ],
             ),
             k8s_client_lib.V1Container(
                 name="nixpacks",
-                image="ghcr.io/railwayapp/nixpacks:latest",
+                image="alpine:3.20",
                 command=["/bin/sh", "-c"],
                 args=[nixpacks_cmd],
                 volume_mounts=[
@@ -176,7 +194,7 @@ class BuildService:
                 f"--destination={image_name}",
                 "--skip-tls-verify",
                 "--cache=true",
-                f"--cache-repo={settings.harbor_url}/{settings.harbor_project}/cache",
+                f"--cache-repo={settings.harbor_url.removeprefix('https://').removeprefix('http://')}/{settings.harbor_project}/cache",
             ],
             volume_mounts=[
                 k8s_client_lib.V1VolumeMount(name="workspace", mount_path="/workspace"),

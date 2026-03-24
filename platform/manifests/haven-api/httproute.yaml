@@ -10,8 +10,7 @@ spec:
     - name: haven-gateway
       namespace: haven-gateway
   hostnames:
-    # PLACEHOLDER: Replace LB_IP with actual load balancer IP
-    - "api.LB_IP.sslip.io"
+    - "api.46.225.42.2.sslip.io"
   rules:
     - matches:
         - path:

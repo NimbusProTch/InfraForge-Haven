@@ -2,7 +2,7 @@ import asyncio
 import logging
 import uuid
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, HTTPException, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 
@@ -12,6 +12,7 @@ from app.models.deployment import Deployment, DeploymentStatus
 from app.models.tenant import Tenant
 from app.schemas.deployment import DeploymentResponse
 from app.services.deploy_service import DeployService, get_service_secret_names
+from app.services.pipeline import run_pipeline
 
 router = APIRouter(prefix="/tenants/{tenant_slug}/apps/{app_slug}", tags=["deployments"])
 logger = logging.getLogger(__name__)
@@ -78,6 +79,46 @@ async def get_deployment(
     deployment = result.scalar_one_or_none()
     if deployment is None:
         raise HTTPException(status_code=404, detail="Deployment not found")
+    return deployment
+
+
+@router.post("/build", response_model=DeploymentResponse, status_code=status.HTTP_202_ACCEPTED)
+async def trigger_build(
+    tenant_slug: str,
+    app_slug: str,
+    db: DBSession,
+    k8s: K8sDep,
+    background_tasks: BackgroundTasks,
+) -> Deployment:
+    """Manually trigger a full build + deploy pipeline."""
+    tenant = await _get_tenant_or_404(tenant_slug, db)
+    app = await _get_app_or_404(tenant.id, app_slug, db)
+
+    deployment = Deployment(
+        application_id=app.id,
+        commit_sha="manual",
+        status=DeploymentStatus.PENDING,
+    )
+    db.add(deployment)
+    await db.commit()
+    await db.refresh(deployment)
+
+    background_tasks.add_task(
+        run_pipeline,
+        deployment_id=deployment.id,
+        app_id=app.id,
+        repo_url=app.repo_url,
+        branch=app.branch,
+        commit_sha="manual",
+        app_slug=app.slug,
+        tenant_slug=tenant.slug,
+        namespace=tenant.namespace,
+        tenant_id=tenant.id,
+        env_vars=dict(app.env_vars),
+        replicas=app.replicas,
+        session_factory=get_session_factory(),
+        k8s=k8s,
+    )
     return deployment
 
 

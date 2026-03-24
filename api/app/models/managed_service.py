@@ -35,10 +35,16 @@ class ManagedService(Base, TimestampMixin):
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     tenant_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("tenants.id"), index=True)
     name: Mapped[str] = mapped_column(String(63))  # user-given name, slug-safe
-    service_type: Mapped[ServiceType] = mapped_column(Enum(ServiceType))
-    tier: Mapped[ServiceTier] = mapped_column(Enum(ServiceTier), default=ServiceTier.DEV)
+    service_type: Mapped[ServiceType] = mapped_column(
+        Enum(ServiceType, values_callable=lambda obj: [e.value for e in obj])
+    )
+    tier: Mapped[ServiceTier] = mapped_column(
+        Enum(ServiceTier, values_callable=lambda obj: [e.value for e in obj]),
+        default=ServiceTier.DEV,
+    )
     status: Mapped[ServiceStatus] = mapped_column(
-        Enum(ServiceStatus), default=ServiceStatus.PROVISIONING
+        Enum(ServiceStatus, values_callable=lambda obj: [e.value for e in obj]),
+        default=ServiceStatus.PROVISIONING,
     )
     # K8s secret name that holds the connection credentials
     secret_name: Mapped[str | None] = mapped_column(String(255), nullable=True)

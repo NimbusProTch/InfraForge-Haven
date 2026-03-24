@@ -21,8 +21,7 @@ spec:
         - operator: "Exists"
       containers:
         - name: haven-ui
-          # PLACEHOLDER: Updated by CI/CD pipeline on each release
-          image: harbor.example.com/haven/haven-ui:latest
+          image: harbor.46.225.42.2.sslip.io/haven/haven-ui:latest
           imagePullPolicy: Always
           ports:
             - name: http

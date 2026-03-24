@@ -125,6 +125,50 @@ class ManagedServiceProvisioner:
     def __init__(self, k8s: K8sClient) -> None:
         self.k8s = k8s
 
+    async def sync_status(self, service: ManagedService) -> None:
+        """Check the K8s CRD status and update service.status accordingly."""
+        if not self.k8s.is_available() or self.k8s.custom_objects is None:
+            return
+        if not service.service_namespace:
+            return
+
+        cfg = _CRD_CONFIG[service.service_type]
+        try:
+            obj = self.k8s.custom_objects.get_namespaced_custom_object(
+                group=cfg["group"],
+                version=cfg["version"],
+                namespace=service.service_namespace,
+                plural=cfg["plural"],
+                name=service.name,
+            )
+        except ApiException as e:
+            if e.status == 404:
+                service.status = ServiceStatus.FAILED
+            return
+
+        # Determine ready state based on operator-specific status fields
+        svc_type = service.service_type
+        k8s_status = obj.get("status", {})
+        if svc_type == ServiceType.POSTGRES:
+            phase = k8s_status.get("phase", "")
+            ready_instances = k8s_status.get("readyInstances", 0)
+            instances = obj.get("spec", {}).get("instances", 1)
+            if phase == "Cluster in healthy state" or (ready_instances and ready_instances >= instances):
+                service.status = ServiceStatus.READY
+            elif phase in ("Failed", "Error"):
+                service.status = ServiceStatus.FAILED
+        elif svc_type == ServiceType.REDIS:
+            ready = k8s_status.get("readyReplicas", 0)
+            if ready and ready > 0:
+                service.status = ServiceStatus.READY
+        elif svc_type == ServiceType.RABBITMQ:
+            ready_replicas = k8s_status.get("observedGeneration")
+            conditions = k8s_status.get("conditions", [])
+            for cond in conditions:
+                if cond.get("type") == "AllReplicasReady" and cond.get("status") == "True":
+                    service.status = ServiceStatus.READY
+                    break
+
     async def provision(self, service: ManagedService, tenant_namespace: str) -> None:
         """Create the operator CRD and populate secret_name + connection_hint."""
         if not self.k8s.is_available() or self.k8s.custom_objects is None:

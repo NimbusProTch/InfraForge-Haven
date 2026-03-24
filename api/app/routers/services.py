@@ -73,7 +73,9 @@ async def create_service(
 
 
 @router.get("/{service_name}", response_model=ManagedServiceResponse)
-async def get_service(tenant_slug: str, service_name: str, db: DBSession) -> ManagedService:
+async def get_service(
+    tenant_slug: str, service_name: str, db: DBSession, k8s: K8sDep
+) -> ManagedService:
     tenant = await _get_tenant_or_404(tenant_slug, db)
     result = await db.execute(
         select(ManagedService).where(
@@ -84,6 +86,14 @@ async def get_service(tenant_slug: str, service_name: str, db: DBSession) -> Man
     svc = result.scalar_one_or_none()
     if svc is None:
         raise HTTPException(status_code=404, detail="Service not found")
+
+    # Sync status from K8s if still provisioning
+    if svc.status == ServiceStatus.PROVISIONING:
+        provisioner = ManagedServiceProvisioner(k8s)
+        await provisioner.sync_status(svc)
+        await db.commit()
+        await db.refresh(svc)
+
     return svc
 
 
