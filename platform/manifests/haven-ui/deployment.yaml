@@ -53,7 +53,7 @@ spec:
                 optional: false
           readinessProbe:
             httpGet:
-              path: /
+              path: /api/auth/csrf
               port: 3000
             initialDelaySeconds: 15
             periodSeconds: 10

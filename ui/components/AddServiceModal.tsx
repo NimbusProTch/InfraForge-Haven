@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -25,10 +26,11 @@ import { Plus } from "lucide-react";
 interface AddServiceModalProps {
   tenantSlug: string;
   accessToken?: string;
-  onCreated: (service: ManagedService) => void;
+  onCreated?: (service: ManagedService) => void;
 }
 
 export function AddServiceModal({ tenantSlug, accessToken, onCreated }: AddServiceModalProps) {
+  const router = useRouter();
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [serviceType, setServiceType] = useState<string>("postgres");
@@ -46,11 +48,12 @@ export function AddServiceModal({ tenantSlug, accessToken, onCreated }: AddServi
         { name, service_type: serviceType, tier },
         accessToken
       );
-      onCreated(svc);
+      onCreated?.(svc);
       setOpen(false);
       setName("");
       setServiceType("postgres");
       setTier("dev");
+      router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create service");
     } finally {
