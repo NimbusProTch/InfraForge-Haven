@@ -1,4 +1,4 @@
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8001";
 const API_PREFIX = "/api/v1";
 
 async function apiFetch<T>(
@@ -53,6 +53,7 @@ export interface Application {
   branch: string;
   replicas: number;
   image_tag: string | null;
+  webhook_token: string;
   created_at: string;
   updated_at: string;
 }
@@ -82,17 +83,46 @@ export interface Deployment {
   updated_at: string;
 }
 
+export interface ClusterHealth {
+  status: "ok" | "degraded";
+  kubernetes: {
+    status: string;
+    [key: string]: unknown;
+  };
+}
+
+export interface GitHubRepo {
+  id: number;
+  full_name: string;
+  name: string;
+  clone_url: string;
+  html_url: string;
+  default_branch: string;
+  private: boolean;
+}
+
+export interface GitHubBranch {
+  name: string;
+  commit: { sha: string };
+}
+
+// ---- Logs SSE URL helper ----
+export function getLogsUrl(tenantSlug: string, appSlug: string): string {
+  return `${API_BASE}${API_PREFIX}/tenants/${tenantSlug}/apps/${appSlug}/logs`;
+}
+
 // ---- API functions ----
 
 export const api = {
+  health: {
+    status: () => apiFetch<{ status: string }>("/health"),
+    cluster: () => apiFetch<ClusterHealth>("/health/cluster"),
+  },
   tenants: {
     list: (token?: string) => apiFetch<Tenant[]>("/tenants", {}, token),
     get: (slug: string, token?: string) =>
       apiFetch<Tenant>(`/tenants/${slug}`, {}, token),
-    create: (
-      body: { slug: string; name: string },
-      token?: string
-    ) =>
+    create: (body: { slug: string; name: string }, token?: string) =>
       apiFetch<Tenant>("/tenants", { method: "POST", body: JSON.stringify(body) }, token),
     delete: (slug: string, token?: string) =>
       apiFetch<void>(`/tenants/${slug}`, { method: "DELETE" }, token),
@@ -102,6 +132,46 @@ export const api = {
       apiFetch<Application[]>(`/tenants/${tenantSlug}/apps`, {}, token),
     get: (tenantSlug: string, appSlug: string, token?: string) =>
       apiFetch<Application>(`/tenants/${tenantSlug}/apps/${appSlug}`, {}, token),
+    create: (
+      tenantSlug: string,
+      body: { slug: string; name: string; repo_url: string; branch: string; replicas?: number },
+      token?: string
+    ) =>
+      apiFetch<Application>(
+        `/tenants/${tenantSlug}/apps`,
+        { method: "POST", body: JSON.stringify(body) },
+        token
+      ),
+    delete: (tenantSlug: string, appSlug: string, token?: string) =>
+      apiFetch<void>(`/tenants/${tenantSlug}/apps/${appSlug}`, { method: "DELETE" }, token),
+  },
+  deployments: {
+    list: (tenantSlug: string, appSlug: string, token?: string) =>
+      apiFetch<Deployment[]>(`/tenants/${tenantSlug}/apps/${appSlug}/deployments`, {}, token),
+    get: (tenantSlug: string, appSlug: string, deploymentId: string, token?: string) =>
+      apiFetch<Deployment>(
+        `/tenants/${tenantSlug}/apps/${appSlug}/deployments/${deploymentId}`,
+        {},
+        token
+      ),
+    build: (tenantSlug: string, appSlug: string, token?: string) =>
+      apiFetch<Deployment>(
+        `/tenants/${tenantSlug}/apps/${appSlug}/build`,
+        { method: "POST" },
+        token
+      ),
+    deploy: (tenantSlug: string, appSlug: string, token?: string) =>
+      apiFetch<Deployment>(
+        `/tenants/${tenantSlug}/apps/${appSlug}/deploy`,
+        { method: "POST" },
+        token
+      ),
+    rollback: (tenantSlug: string, appSlug: string, deploymentId: string, token?: string) =>
+      apiFetch<Deployment>(
+        `/tenants/${tenantSlug}/apps/${appSlug}/deployments/${deploymentId}/rollback`,
+        { method: "POST" },
+        token
+      ),
   },
   services: {
     list: (tenantSlug: string, token?: string) =>
@@ -121,6 +191,14 @@ export const api = {
         `/tenants/${tenantSlug}/services/${serviceName}`,
         { method: "DELETE" },
         token
+      ),
+  },
+  github: {
+    repos: (pat: string) =>
+      apiFetch<GitHubRepo[]>(`/github/repos?token=${encodeURIComponent(pat)}`),
+    branches: (owner: string, repo: string, pat: string) =>
+      apiFetch<GitHubBranch[]>(
+        `/github/repos/${owner}/${repo}/branches?token=${encodeURIComponent(pat)}`
       ),
   },
 };

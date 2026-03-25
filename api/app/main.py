@@ -3,10 +3,11 @@ from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
 from app.k8s.client import k8s_client
-from app.routers import applications, deployments, health, services, tenants, webhooks
+from app.routers import applications, deployments, github, health, services, tenants, webhooks
 
 logging.basicConfig(level=logging.DEBUG if settings.debug else logging.INFO)
 logger = logging.getLogger(__name__)
@@ -28,9 +29,24 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:3000",
+        "http://localhost:3001",
+        "http://localhost:3002",
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:3001",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 app.include_router(health.router)
 app.include_router(tenants.router, prefix=settings.api_prefix)
 app.include_router(applications.router, prefix=settings.api_prefix)
 app.include_router(deployments.router, prefix=settings.api_prefix)
 app.include_router(services.router, prefix=settings.api_prefix)
 app.include_router(webhooks.router, prefix=settings.api_prefix)
+app.include_router(github.router, prefix=settings.api_prefix)

@@ -1,188 +1,322 @@
-import { getServerSession } from "next-auth";
-import { redirect, notFound } from "next/navigation";
-import Link from "next/link";
-import { authOptions } from "@/lib/auth";
-import { api, type Application, type ManagedService, type Tenant } from "@/lib/api";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { AddServiceModal } from "@/components/AddServiceModal";
-import { ArrowLeft, Box, Database, Layers } from "lucide-react";
+"use client";
 
-const SERVICE_TYPE_ICONS: Record<string, string> = {
+import { useEffect, useState, useCallback } from "react";
+import { useSession } from "next-auth/react";
+import { useRouter, useParams } from "next/navigation";
+import Link from "next/link";
+import { AppShell } from "@/components/AppShell";
+import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { AddServiceModal } from "@/components/AddServiceModal";
+import { api, type Tenant, type Application, type ManagedService } from "@/lib/api";
+import {
+  ArrowLeft,
+  Plus,
+  Box,
+  Database,
+  Loader2,
+  GitBranch,
+  Server,
+  Copy,
+  Check,
+  Trash2,
+} from "lucide-react";
+
+const SERVICE_ICONS: Record<string, string> = {
   postgres: "🐘",
   redis: "🔴",
   rabbitmq: "🐰",
 };
 
-const STATUS_VARIANT: Record<string, "default" | "success" | "warning" | "destructive" | "secondary"> = {
-  ready: "success",
-  provisioning: "warning",
-  failed: "destructive",
-  deleting: "secondary",
-};
+const SERVICE_STATUS_VARIANT: Record<string, "success" | "warning" | "destructive" | "secondary"> =
+  {
+    ready: "success",
+    provisioning: "warning",
+    failed: "destructive",
+    deleting: "secondary",
+  };
 
-interface TenantDetailPageProps {
-  params: { slug: string };
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      onClick={() => {
+        navigator.clipboard.writeText(text);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1500);
+      }}
+      className="text-gray-400 dark:text-[#555] hover:text-gray-700 dark:hover:text-white transition-colors"
+    >
+      {copied ? <Check className="w-3 h-3 text-green-500" /> : <Copy className="w-3 h-3" />}
+    </button>
+  );
 }
 
-export default async function TenantDetailPage({ params }: TenantDetailPageProps) {
-  const session = await getServerSession(authOptions);
-  if (!session) redirect("/auth/signin");
+export default function TenantDetailPage() {
+  const { data: session, status } = useSession();
+  const router = useRouter();
+  const params = useParams();
+  const slug = params.slug as string;
 
-  const accessToken = (session as typeof session & { accessToken?: string }).accessToken;
+  const [tenant, setTenant] = useState<Tenant | null>(null);
+  const [apps, setApps] = useState<Application[]>([]);
+  const [services, setServices] = useState<ManagedService[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [deletingService, setDeletingService] = useState<string | null>(null);
 
-  let tenant: Tenant;
-  let apps: Application[];
-  let services: ManagedService[];
+  const accessToken = (session as typeof session & { accessToken?: string })?.accessToken;
 
-  try {
-    [tenant, apps, services] = await Promise.all([
-      api.tenants.get(params.slug, accessToken),
-      api.apps.list(params.slug, accessToken),
-      api.services.list(params.slug, accessToken),
-    ]);
-  } catch {
-    notFound();
+  useEffect(() => {
+    if (status === "unauthenticated") router.push("/auth/signin");
+  }, [status, router]);
+
+  const load = useCallback(async () => {
+    if (status !== "authenticated") return;
+    try {
+      const [t, a, s] = await Promise.all([
+        api.tenants.get(slug, accessToken),
+        api.apps.list(slug, accessToken),
+        api.services.list(slug, accessToken),
+      ]);
+      setTenant(t);
+      setApps(a);
+      setServices(s);
+    } catch {
+      router.push("/tenants");
+    } finally {
+      setLoading(false);
+    }
+  }, [slug, status, accessToken, router]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  async function deleteService(serviceName: string) {
+    if (!confirm(`Delete service "${serviceName}"?`)) return;
+    setDeletingService(serviceName);
+    try {
+      await api.services.delete(slug, serviceName, accessToken);
+      setServices((s) => s.filter((svc) => svc.name !== serviceName));
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to delete service");
+    } finally {
+      setDeletingService(null);
+    }
   }
 
+  if (status === "loading" || loading) {
+    return (
+      <AppShell userEmail={session?.user?.email}>
+        <div className="flex items-center justify-center h-full min-h-[400px]">
+          <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
+        </div>
+      </AppShell>
+    );
+  }
+
+  if (!tenant) return null;
+
   return (
-    <div className="min-h-screen bg-background">
-      <header className="border-b">
-        <div className="container flex h-16 items-center gap-4">
-          <Button variant="ghost" size="sm" asChild>
-            <Link href="/dashboard">
-              <ArrowLeft className="h-4 w-4 mr-1" />
-              Back
+    <AppShell userEmail={session?.user?.email}>
+      <div className="p-6 max-w-5xl">
+        {/* Header */}
+        <div className="flex items-start justify-between mb-6">
+          <div className="flex items-center gap-3">
+            <Link
+              href="/tenants"
+              className="text-gray-400 dark:text-[#555] hover:text-gray-900 dark:hover:text-white transition-colors"
+            >
+              <ArrowLeft className="w-4 h-4" />
             </Link>
-          </Button>
-          <div className="flex items-center gap-2">
-            <Layers className="h-5 w-5 text-primary" />
-            <span className="font-semibold">{tenant.name}</span>
-            <Badge variant={tenant.active ? "success" : "secondary"} className="ml-1">
-              {tenant.active ? "Active" : "Inactive"}
-            </Badge>
+            <div>
+              <div className="flex items-center gap-2">
+                <h1 className="text-xl font-semibold text-gray-900 dark:text-white">
+                  {tenant.name}
+                </h1>
+                <Badge variant={tenant.active ? "success" : "secondary"}>
+                  {tenant.active ? "active" : "inactive"}
+                </Badge>
+              </div>
+              <p className="text-sm text-gray-400 dark:text-[#555] font-mono mt-0.5">
+                {tenant.namespace}
+              </p>
+            </div>
           </div>
         </div>
-      </header>
 
-      <main className="container py-8 space-y-8">
-        {/* Tenant info */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base font-medium text-muted-foreground">
-              Tenant Details
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <dl className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-              <div>
-                <dt className="text-muted-foreground">Slug</dt>
-                <dd className="font-mono font-medium">{tenant.slug}</dd>
-              </div>
-              <div>
-                <dt className="text-muted-foreground">Namespace</dt>
-                <dd className="font-mono font-medium">{tenant.namespace}</dd>
-              </div>
-              <div>
-                <dt className="text-muted-foreground">CPU Limit</dt>
-                <dd className="font-medium">{tenant.cpu_limit}</dd>
-              </div>
-              <div>
-                <dt className="text-muted-foreground">Memory Limit</dt>
-                <dd className="font-medium">{tenant.memory_limit}</dd>
-              </div>
-            </dl>
-          </CardContent>
-        </Card>
+        {/* Info bar */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+          {[
+            { label: "Slug", value: tenant.slug },
+            { label: "CPU", value: tenant.cpu_limit },
+            { label: "Memory", value: tenant.memory_limit },
+            { label: "Storage", value: tenant.storage_limit },
+          ].map(({ label, value }) => (
+            <div
+              key={label}
+              className="bg-white dark:bg-[#141414] border border-gray-200 dark:border-[#222] rounded-lg px-3 py-2.5"
+            >
+              <p className="text-xs text-gray-400 dark:text-[#555]">{label}</p>
+              <p className="text-sm font-medium text-gray-900 dark:text-white font-mono mt-0.5">
+                {value}
+              </p>
+            </div>
+          ))}
+        </div>
 
-        {/* Applications */}
-        <section>
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl font-semibold flex items-center gap-2">
-              <Box className="h-5 w-5" />
+        {/* Tabs */}
+        <Tabs defaultValue="apps">
+          <TabsList>
+            <TabsTrigger value="apps">
               Applications
-              <span className="text-sm font-normal text-muted-foreground">({apps.length})</span>
-            </h2>
-          </div>
+              <span className="ml-1.5 text-xs text-gray-400 dark:text-[#555]">
+                {apps.length}
+              </span>
+            </TabsTrigger>
+            <TabsTrigger value="services">
+              Services
+              <span className="ml-1.5 text-xs text-gray-400 dark:text-[#555]">
+                {services.length}
+              </span>
+            </TabsTrigger>
+          </TabsList>
 
-          {apps.length === 0 ? (
-            <p className="text-muted-foreground text-sm py-4">No applications deployed yet.</p>
-          ) : (
-            <div className="grid gap-3 md:grid-cols-2">
-              {apps.map((app) => (
-                <Link key={app.id} href={`/tenants/${params.slug}/apps/${app.slug}`}>
-                  <Card className="hover:shadow-md transition-shadow cursor-pointer">
-                    <CardHeader className="pb-2">
-                      <div className="flex items-center justify-between">
-                        <CardTitle className="text-base">{app.name}</CardTitle>
-                      </div>
-                      <CardDescription className="font-mono text-xs">{app.repo_url}</CardDescription>
-                    </CardHeader>
-                    <CardContent className="pt-0">
-                      <p className="text-sm text-muted-foreground">
-                        Branch: <span className="font-medium text-foreground">{app.branch}</span>
-                        {" · "}
-                        Replicas: <span className="font-medium text-foreground">{app.replicas}</span>
-                      </p>
-                    </CardContent>
-                  </Card>
+          {/* Applications tab */}
+          <TabsContent value="apps" className="pt-5">
+            <div className="flex items-center justify-between mb-4">
+              <p className="text-sm text-gray-500 dark:text-[#888]">
+                Deployed applications
+              </p>
+              <Link
+                href={`/tenants/${slug}/apps/new`}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium transition-colors"
+              >
+                <Plus className="w-3 h-3" />
+                New App
+              </Link>
+            </div>
+
+            {apps.length === 0 ? (
+              <div className="text-center py-16 text-gray-400 dark:text-[#555]">
+                <Box className="w-8 h-8 mx-auto mb-2 opacity-40" />
+                <p className="text-sm">No applications yet.</p>
+                <Link
+                  href={`/tenants/${slug}/apps/new`}
+                  className="inline-block mt-2 text-xs text-blue-600 hover:text-blue-500"
+                >
+                  Deploy your first app →
                 </Link>
-              ))}
-            </div>
-          )}
-        </section>
-
-        {/* Managed Services */}
-        <section>
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl font-semibold flex items-center gap-2">
-              <Database className="h-5 w-5" />
-              Managed Services
-              <span className="text-sm font-normal text-muted-foreground">({services.length})</span>
-            </h2>
-            <AddServiceModal
-              tenantSlug={params.slug}
-              accessToken={accessToken}
-              onCreated={() => {}}
-            />
-          </div>
-
-          {services.length === 0 ? (
-            <p className="text-muted-foreground text-sm py-4">
-              No managed services. Add PostgreSQL, Redis, or RabbitMQ.
-            </p>
-          ) : (
-            <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-              {services.map((svc) => (
-                <Card key={svc.id}>
-                  <CardHeader className="pb-2">
-                    <div className="flex items-center justify-between">
-                      <CardTitle className="text-base flex items-center gap-1.5">
-                        <span>{SERVICE_TYPE_ICONS[svc.service_type]}</span>
-                        {svc.name}
-                      </CardTitle>
-                      <Badge variant={STATUS_VARIANT[svc.status] ?? "secondary"}>
-                        {svc.status}
-                      </Badge>
+              </div>
+            ) : (
+              <div className="grid gap-3 sm:grid-cols-2">
+                {apps.map((app) => (
+                  <Link
+                    key={app.id}
+                    href={`/tenants/${slug}/apps/${app.slug}`}
+                    className="block bg-white dark:bg-[#141414] border border-gray-200 dark:border-[#222] rounded-lg p-4 hover:bg-gray-50 dark:hover:bg-[#1a1a1a] transition-colors group"
+                  >
+                    <div className="flex items-start justify-between">
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-8 h-8 rounded-md bg-gray-100 dark:bg-[#1f1f1f] flex items-center justify-center shrink-0">
+                          <Server className="w-4 h-4 text-gray-500 dark:text-[#666]" />
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium text-gray-900 dark:text-white">
+                            {app.name}
+                          </p>
+                          <p className="text-xs text-gray-400 dark:text-[#555] font-mono mt-0.5 truncate max-w-[200px]">
+                            {app.slug}
+                          </p>
+                        </div>
+                      </div>
                     </div>
-                    <CardDescription>
-                      {svc.service_type} · {svc.tier}
-                    </CardDescription>
-                  </CardHeader>
-                  {svc.connection_hint && (
-                    <CardContent className="pt-0">
-                      <p className="text-xs font-mono text-muted-foreground truncate">
-                        {svc.connection_hint}
-                      </p>
-                    </CardContent>
-                  )}
-                </Card>
-              ))}
+                    <div className="mt-3 flex items-center gap-3 text-xs text-gray-400 dark:text-[#555]">
+                      <span className="flex items-center gap-1">
+                        <GitBranch className="w-3 h-3" />
+                        {app.branch}
+                      </span>
+                      <span>{app.replicas} replica{app.replicas !== 1 ? "s" : ""}</span>
+                    </div>
+                    <p className="mt-2 text-xs text-gray-400 dark:text-[#555] font-mono truncate">
+                      {app.repo_url}
+                    </p>
+                  </Link>
+                ))}
+              </div>
+            )}
+          </TabsContent>
+
+          {/* Services tab */}
+          <TabsContent value="services" className="pt-5">
+            <div className="flex items-center justify-between mb-4">
+              <p className="text-sm text-gray-500 dark:text-[#888]">
+                Managed services (PostgreSQL, Redis, RabbitMQ)
+              </p>
+              <AddServiceModal
+                tenantSlug={slug}
+                accessToken={accessToken}
+                onCreated={() => load()}
+              />
             </div>
-          )}
-        </section>
-      </main>
-    </div>
+
+            {services.length === 0 ? (
+              <div className="text-center py-16 text-gray-400 dark:text-[#555]">
+                <Database className="w-8 h-8 mx-auto mb-2 opacity-40" />
+                <p className="text-sm">No managed services yet.</p>
+              </div>
+            ) : (
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {services.map((svc) => (
+                  <div
+                    key={svc.id}
+                    className="bg-white dark:bg-[#141414] border border-gray-200 dark:border-[#222] rounded-lg p-4"
+                  >
+                    <div className="flex items-start justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="text-lg">{SERVICE_ICONS[svc.service_type]}</span>
+                        <div>
+                          <p className="text-sm font-medium text-gray-900 dark:text-white">
+                            {svc.name}
+                          </p>
+                          <p className="text-xs text-gray-400 dark:text-[#555]">
+                            {svc.service_type} · {svc.tier}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Badge variant={SERVICE_STATUS_VARIANT[svc.status] ?? "secondary"}>
+                          {svc.status}
+                        </Badge>
+                        <button
+                          onClick={() => deleteService(svc.name)}
+                          disabled={deletingService === svc.name}
+                          className="text-gray-400 dark:text-[#444] hover:text-red-500 transition-colors disabled:opacity-50"
+                        >
+                          {deletingService === svc.name ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          ) : (
+                            <Trash2 className="w-3.5 h-3.5" />
+                          )}
+                        </button>
+                      </div>
+                    </div>
+
+                    {svc.connection_hint && (
+                      <div className="mt-3 flex items-center gap-1">
+                        <p className="text-xs font-mono text-gray-400 dark:text-[#555] truncate flex-1">
+                          {svc.connection_hint}
+                        </p>
+                        <CopyButton text={svc.connection_hint} />
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </TabsContent>
+        </Tabs>
+      </div>
+    </AppShell>
   );
 }
