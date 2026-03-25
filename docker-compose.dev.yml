@@ -1,6 +1,6 @@
 # Haven Platform - Local Development
 # Ports:
-#   8081 -> Keycloak (8080 occupied by other project)
+#   8080 -> Keycloak
 # External services (already running):
 #   localhost:5432 -> OrbStack PostgreSQL (haven_platform DB)
 #   localhost:6379 -> sesver-redis (reused)
@@ -21,7 +21,7 @@ services:
       KC_HTTP_PORT: 8080
       KC_HEALTH_ENABLED: "true"
     ports:
-      - "8081:8080"
+      - "8080:8080"
     volumes:
       - keycloak_data:/opt/keycloak/data
     healthcheck:
