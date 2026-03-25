@@ -42,6 +42,7 @@ override.tf.json
 .env
 .env.*
 !.env.example
+!.env.local.example
 *.pem
 *.key
 *.crt

@@ -1,0 +1,50 @@
+{
+  "realm": "haven",
+  "displayName": "Haven Platform",
+  "enabled": true,
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "resetPasswordAllowed": true,
+  "editUsernameAllowed": false,
+  "bruteForceProtected": false,
+  "clients": [
+    {
+      "clientId": "haven-ui",
+      "name": "Haven UI",
+      "enabled": true,
+      "publicClient": false,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": true,
+      "serviceAccountsEnabled": false,
+      "redirectUris": [
+        "http://localhost:3001/*",
+        "http://localhost:3000/*"
+      ],
+      "webOrigins": [
+        "http://localhost:3001",
+        "http://localhost:3000"
+      ],
+      "protocol": "openid-connect",
+      "secret": "haven-ui-secret"
+    }
+  ],
+  "users": [
+    {
+      "username": "admin",
+      "email": "admin@haven.dev",
+      "firstName": "Haven",
+      "lastName": "Admin",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "HavenAdmin2026!",
+          "temporary": false
+        }
+      ],
+      "realmRoles": ["default-roles-haven"]
+    }
+  ]
+}

@@ -1,0 +1,35 @@
+# Haven Platform - Local Development
+# Ports:
+#   8081 -> Keycloak (8080 occupied by other project)
+# External services (already running):
+#   localhost:5432 -> OrbStack PostgreSQL (haven_platform DB)
+#   localhost:6379 -> sesver-redis (reused)
+#
+# Usage:
+#   docker compose -f docker-compose.dev.yml up -d
+#   cd api && uvicorn app.main:app --reload --port 8001
+#   cd ui  && npm run dev -- --port 3001
+
+services:
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.1
+    container_name: haven-keycloak
+    command: start-dev
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+      KC_HTTP_PORT: 8080
+      KC_HEALTH_ENABLED: "true"
+    ports:
+      - "8081:8080"
+    volumes:
+      - keycloak_data:/opt/keycloak/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8080/health/ready || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 18
+      start_period: 30s
+
+volumes:
+  keycloak_data:

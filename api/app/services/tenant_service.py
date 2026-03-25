@@ -156,7 +156,10 @@ class TenantService:
                 body=policy,
             )
         except ApiException as e:
-            if e.status != 409:
+            if e.status == 404:
+                # CRD not installed (e.g. local dev without Cilium) — skip gracefully
+                logger.warning("CiliumNetworkPolicy CRD not found, skipping network policy for %s", namespace)
+            elif e.status != 409:
                 raise
 
     async def _create_rbac(self, namespace: str, slug: str) -> None:
