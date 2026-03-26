@@ -510,25 +510,23 @@ resource "helm_release" "keycloak" {
 }
 
 # --- 21. Platform Namespaces ---
-resource "kubernetes_namespace" "haven_system" {
-  metadata {
-    name = "haven-system"
-    labels = {
-      project     = "haven"
-      environment = var.environment
-    }
-  }
-  depends_on = [ssh_resource.wait_cluster_ready]
-}
+resource "ssh_resource" "platform_namespaces" {
+  host        = hcloud_server.master[0].ipv4_address
+  user        = local.node_username
+  private_key = tls_private_key.global_key.private_key_pem
+  timeout     = "5m"
 
-resource "kubernetes_namespace" "haven_builds" {
-  metadata {
-    name = "haven-builds"
-    labels = {
-      project     = "haven"
-      environment = var.environment
-    }
-  }
+  commands = [
+    <<-EOT
+      export KUBECONFIG=/etc/rancher/rke2/rke2.yaml
+      export PATH=$PATH:/var/lib/rancher/rke2/bin
+      kubectl create namespace haven-system --dry-run=client -o yaml | kubectl apply -f -
+      kubectl create namespace haven-builds --dry-run=client -o yaml | kubectl apply -f -
+      kubectl label namespace haven-system project=haven environment=${var.environment} --overwrite
+      kubectl label namespace haven-builds project=haven environment=${var.environment} --overwrite
+    EOT
+  ]
+
   depends_on = [ssh_resource.wait_cluster_ready]
 }
 
@@ -565,80 +563,71 @@ resource "ssh_resource" "gateway_api" {
   depends_on = [ssh_resource.wait_cluster_ready, helm_release.cert_manager]
 }
 
-# ClusterIssuer for Let's Encrypt
-resource "kubernetes_manifest" "letsencrypt_issuer" {
-  manifest = {
-    apiVersion = "cert-manager.io/v1"
-    kind       = "ClusterIssuer"
-    metadata = {
-      name = "letsencrypt-gateway"
-    }
-    spec = {
-      acme = {
-        server = "https://acme-v02.api.letsencrypt.org/directory"
-        email  = "admin@haven.dev"
-        privateKeySecretRef = {
-          name = "letsencrypt-gateway-key"
-        }
-        solvers = [{
-          http01 = {
-            gatewayHTTPRoute = {
-              parentRefs = [{
-                name      = "haven-gateway"
-                namespace = "haven-gateway"
-              }]
-            }
-          }
-        }]
-      }
-    }
-  }
+# Gateway + ClusterIssuer applied via kubectl on first master
+resource "ssh_resource" "gateway_resources" {
+  host        = hcloud_server.master[0].ipv4_address
+  user        = local.node_username
+  private_key = tls_private_key.global_key.private_key_pem
+  timeout     = "5m"
 
-  depends_on = [helm_release.cert_manager, ssh_resource.gateway_api]
-}
+  commands = [
+    <<-EOT
+      export KUBECONFIG=/etc/rancher/rke2/rke2.yaml
+      export PATH=$PATH:/var/lib/rancher/rke2/bin
 
-# Gateway resource
-resource "kubernetes_manifest" "haven_gateway" {
-  manifest = {
-    apiVersion = "gateway.networking.k8s.io/v1"
-    kind       = "Gateway"
-    metadata = {
-      name      = "haven-gateway"
-      namespace = "haven-gateway"
-      annotations = {
-        "cert-manager.io/cluster-issuer" = "letsencrypt-gateway"
-      }
-    }
-    spec = {
-      gatewayClassName = "cilium"
-      listeners = [
-        {
-          name     = "http"
-          port     = 80
-          protocol = "HTTP"
-          allowedRoutes = {
-            namespaces = { from = "All" }
-          }
-        },
-        {
-          name     = "https"
-          port     = 443
-          protocol = "HTTPS"
-          tls = {
-            mode = "Terminate"
-            certificateRefs = [{
-              name = "haven-gateway-tls"
-            }]
-          }
-          allowedRoutes = {
-            namespaces = { from = "All" }
-          }
-        }
-      ]
-    }
-  }
+      # ClusterIssuer for Let's Encrypt
+      cat <<'YAML' | kubectl apply -f -
+      apiVersion: cert-manager.io/v1
+      kind: ClusterIssuer
+      metadata:
+        name: letsencrypt-gateway
+      spec:
+        acme:
+          server: https://acme-v02.api.letsencrypt.org/directory
+          email: admin@haven.dev
+          privateKeySecretRef:
+            name: letsencrypt-gateway-key
+          solvers:
+            - http01:
+                gatewayHTTPRoute:
+                  parentRefs:
+                    - name: haven-gateway
+                      namespace: haven-gateway
+      YAML
 
-  depends_on = [ssh_resource.gateway_api]
+      # Gateway resource
+      cat <<'YAML' | kubectl apply -f -
+      apiVersion: gateway.networking.k8s.io/v1
+      kind: Gateway
+      metadata:
+        name: haven-gateway
+        namespace: haven-gateway
+        annotations:
+          cert-manager.io/cluster-issuer: letsencrypt-gateway
+      spec:
+        gatewayClassName: cilium
+        listeners:
+          - name: http
+            port: 80
+            protocol: HTTP
+            allowedRoutes:
+              namespaces:
+                from: All
+          - name: https
+            port: 443
+            protocol: HTTPS
+            tls:
+              mode: Terminate
+              certificateRefs:
+                - name: haven-gateway-tls
+            allowedRoutes:
+              namespaces:
+                from: All
+      YAML
+    EOT
+  ]
+
+  depends_on = [ssh_resource.gateway_api, helm_release.cert_manager]
 }
 
 # --- 23. External-DNS (optional) ---
