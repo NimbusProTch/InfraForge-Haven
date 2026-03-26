@@ -1,0 +1,101 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "haven-app.fullname" . }}
+  labels:
+    {{- include "haven-app.labels" . | nindent 4 }}
+spec:
+  {{- if not .Values.autoscaling.enabled }}
+  replicas: {{ include "haven-app.effectiveReplicas" . }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "haven-app.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "haven-app.labels" . | nindent 8 }}
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+    spec:
+      {{- with .Values.image.pullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: {{ include "haven-app.fullname" . }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.port }}
+              protocol: TCP
+          env:
+            - name: PORT
+              value: {{ .Values.port | quote }}
+          envFrom:
+            {{- if .Values.env }}
+            - configMapRef:
+                name: {{ include "haven-app.fullname" . }}
+            {{- end }}
+            {{- range .Values.envSecrets }}
+            - secretRef:
+                name: {{ . }}
+            {{- end }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          {{- if .Values.probes.liveness.enabled }}
+          livenessProbe:
+            {{- $lPort := .Values.probes.liveness.port | default .Values.port }}
+            {{- if eq .Values.probes.liveness.type "http" }}
+            httpGet:
+              path: {{ .Values.probes.liveness.path }}
+              port: {{ $lPort }}
+            {{- else }}
+            tcpSocket:
+              port: {{ $lPort }}
+            {{- end }}
+            initialDelaySeconds: {{ .Values.probes.liveness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.probes.liveness.periodSeconds }}
+          {{- end }}
+          {{- if .Values.probes.readiness.enabled }}
+          readinessProbe:
+            {{- $rPort := .Values.probes.readiness.port | default .Values.port }}
+            {{- if eq .Values.probes.readiness.type "http" }}
+            httpGet:
+              path: {{ .Values.probes.readiness.path }}
+              port: {{ $rPort }}
+            {{- else }}
+            tcpSocket:
+              port: {{ $rPort }}
+            {{- end }}
+            initialDelaySeconds: {{ .Values.probes.readiness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.probes.readiness.periodSeconds }}
+          {{- end }}
+          {{- if .Values.probes.startup.enabled }}
+          startupProbe:
+            {{- $sPort := .Values.probes.startup.port | default .Values.port }}
+            {{- if eq .Values.probes.startup.type "http" }}
+            httpGet:
+              path: {{ .Values.probes.startup.path }}
+              port: {{ $sPort }}
+            {{- else }}
+            tcpSocket:
+              port: {{ $sPort }}
+            {{- end }}
+            failureThreshold: {{ .Values.probes.startup.failureThreshold }}
+            periodSeconds: {{ .Values.probes.startup.periodSeconds }}
+          {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if or .Values.topologySpread.enabled (eq .Values.preset "prod") }}
+      topologySpreadConstraints:
+        - maxSkew: {{ .Values.topologySpread.maxSkew | default 1 }}
+          topologyKey: {{ .Values.topologySpread.topologyKey | default "topology.kubernetes.io/zone" }}
+          whenUnsatisfiable: {{ .Values.topologySpread.whenUnsatisfiable | default "DoNotSchedule" }}
+          labelSelector:
+            matchLabels:
+              {{- include "haven-app.selectorLabels" . | nindent 14 }}
+      {{- end }}

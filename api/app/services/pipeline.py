@@ -2,6 +2,10 @@
 
 Runs as a background asyncio task so the webhook handler can return 202
 immediately while the pipeline runs asynchronously.
+
+Supports two deployment modes:
+  1. GitOps: writes Helm values to git → ArgoCD syncs (preferred)
+  2. Direct: calls K8s API directly (fallback when GitOps not configured)
 """
 
 import logging
@@ -13,10 +17,18 @@ from app.config import settings
 from app.k8s.client import K8sClient
 from app.models.application import Application
 from app.models.deployment import Deployment, DeploymentStatus
+from app.services.argocd_service import ArgoCDService
 from app.services.build_service import BuildService
 from app.services.deploy_service import DeployService, get_service_secret_names
+from app.services.gitops_service import GitOpsService
+from app.services.helm_values_builder import build_app_values
 
 logger = logging.getLogger(__name__)
+
+
+def _use_gitops() -> bool:
+    """Check if GitOps mode is available (gitops repo URL configured)."""
+    return bool(settings.gitops_repo_url)
 
 
 async def run_pipeline(
@@ -36,6 +48,18 @@ async def run_pipeline(
     session_factory: async_sessionmaker[AsyncSession],
     k8s: K8sClient,
     github_token: str | None = None,
+    gitops: GitOpsService | None = None,
+    argocd: ArgoCDService | None = None,
+    # Extended app config
+    custom_domain: str = "",
+    health_check_path: str = "",
+    resource_cpu_request: str = "50m",
+    resource_cpu_limit: str = "500m",
+    resource_memory_request: str = "64Mi",
+    resource_memory_limit: str = "512Mi",
+    min_replicas: int = 1,
+    max_replicas: int = 5,
+    cpu_threshold: int = 70,
 ) -> None:
     """Run full build → deploy pipeline, persisting status to DB at each step."""
     harbor_host = settings.harbor_url.removeprefix("https://").removeprefix("http://")
@@ -96,27 +120,71 @@ async def run_pipeline(
             deployment.image_tag = image_name
             await db.commit()
 
-        # Collect managed service secrets to inject into the app
         secret_names = await get_service_secret_names(db, tenant_id)
 
+    # Choose deployment mode: GitOps or Direct K8s API
+    use_gitops = _use_gitops() and gitops is not None
+
     try:
-        await deploy_svc.deploy(
-            namespace=namespace,
-            tenant_slug=tenant_slug,
-            app_slug=app_slug,
-            image=image_name,
-            replicas=replicas,
-            env_vars=env_vars,
-            service_secret_names=secret_names,
-            port=port,
-        )
+        if use_gitops:
+            # GitOps mode: write values to git → ArgoCD syncs
+            values = build_app_values(
+                tenant_slug=tenant_slug,
+                app_slug=app_slug,
+                namespace=namespace,
+                image=image_name,
+                replicas=replicas,
+                env_vars=env_vars,
+                service_secret_names=secret_names,
+                port=port,
+                custom_domain=custom_domain,
+                health_check_path=health_check_path,
+                resource_cpu_request=resource_cpu_request,
+                resource_cpu_limit=resource_cpu_limit,
+                resource_memory_request=resource_memory_request,
+                resource_memory_limit=resource_memory_limit,
+                min_replicas=min_replicas,
+                max_replicas=max_replicas,
+                cpu_threshold=cpu_threshold,
+            )
+            gitops_sha = await gitops.write_app_values(tenant_slug, app_slug, values)
+
+            # Store gitops commit SHA
+            async with session_factory() as db:
+                deployment = await db.get(Deployment, deployment_id)
+                if deployment and hasattr(deployment, "gitops_commit_sha"):
+                    deployment.gitops_commit_sha = gitops_sha
+                    await db.commit()
+
+            # Trigger ArgoCD sync for faster feedback
+            if argocd:
+                await argocd.trigger_sync(f"{tenant_slug}-{app_slug}")
+
+        else:
+            # Direct K8s API mode (fallback)
+            await deploy_svc.deploy(
+                namespace=namespace,
+                tenant_slug=tenant_slug,
+                app_slug=app_slug,
+                image=image_name,
+                replicas=replicas,
+                env_vars=env_vars,
+                service_secret_names=secret_names,
+                port=port,
+            )
     except Exception as exc:
         logger.exception("Deploy failed for deployment %s", deployment_id)
         await _fail(deployment_id, str(exc), session_factory)
         return
 
     # --- WAIT FOR READY -------------------------------------------------
-    ready, msg = await deploy_svc.wait_for_ready(namespace, app_slug)
+    if use_gitops and argocd:
+        # Wait for ArgoCD to sync and report healthy
+        ready, msg = await argocd.wait_for_healthy(f"{tenant_slug}-{app_slug}")
+    else:
+        # Direct K8s mode: wait for deployment ready replicas
+        ready, msg = await deploy_svc.wait_for_ready(namespace, app_slug)
+
     if not ready:
         logger.error("Deployment not ready: %s (deployment=%s)", msg, deployment_id)
         await _fail(deployment_id, msg, session_factory)
@@ -135,11 +203,12 @@ async def run_pipeline(
             await db.commit()
 
     logger.info(
-        "Pipeline complete: deployment=%s image=%s namespace=%s app=%s",
+        "Pipeline complete: deployment=%s image=%s namespace=%s app=%s mode=%s",
         deployment_id,
         image_name,
         namespace,
         app_slug,
+        "gitops" if use_gitops else "direct",
     )
 
 

@@ -1,0 +1,51 @@
+# kube-prometheus-stack values
+prometheus:
+  prometheusSpec:
+    retention: 7d
+    retentionSize: 10GB
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: ${storage_class}
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 50Gi
+    resources:
+      requests:
+        cpu: 250m
+        memory: 512Mi
+      limits:
+        memory: 2Gi
+    tolerations:
+      - operator: "Exists"
+    podMonitorSelectorNilUsesHelmValues: false
+    serviceMonitorSelectorNilUsesHelmValues: false
+
+grafana:
+  persistence:
+    enabled: true
+    storageClassName: ${storage_class}
+    size: 10Gi
+  adminPassword: "HavenAdmin2026!"
+  tolerations:
+    - operator: "Exists"
+
+alertmanager:
+  alertmanagerSpec:
+    storage:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: ${storage_class}
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 5Gi
+    tolerations:
+      - operator: "Exists"
+
+# Disable components we don't need
+kubeEtcd:
+  enabled: false
+kubeProxy:
+  enabled: false

@@ -1,8 +1,3 @@
-output "management_ip" {
-  description = "Rancher management node public IP"
-  value       = hcloud_server.management.ipv4_address
-}
-
 output "load_balancer_ip" {
   description = "Load balancer public IP"
   value       = hcloud_load_balancer.haven.ipv4
@@ -14,7 +9,7 @@ output "network_id" {
 }
 
 output "subnet_id" {
-  description = "Subnet ID (for server_network dependency ordering)"
+  description = "Subnet ID"
   value       = hcloud_network_subnet.haven.id
 }
 

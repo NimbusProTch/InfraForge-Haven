@@ -1,0 +1,54 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: haven-tenant-apps
+  namespace: argocd
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+  generators:
+    - git:
+        repoURL: https://github.com/NimbusProTch/haven-gitops.git
+        revision: main
+        directories:
+          - path: "tenants/*/*"
+          # Exclude services subdirectories
+          - path: "tenants/*/services"
+            exclude: true
+          - path: "tenants/*/services/*"
+            exclude: true
+  template:
+    metadata:
+      name: "{{ index .path.segments 1 }}-{{ index .path.segments 2 }}"
+      namespace: argocd
+      labels:
+        haven.io/managed: "true"
+        haven.io/tenant: "{{ index .path.segments 1 }}"
+        haven.io/app: "{{ index .path.segments 2 }}"
+      finalizers:
+        - resources-finalizer.argocd.argoproj.io
+    spec:
+      project: default
+      source:
+        repoURL: https://github.com/NimbusProTch/haven-gitops.git
+        targetRevision: main
+        path: "charts/haven-app"
+        helm:
+          valueFiles:
+            - "/{{ .path.path }}/values.yaml"
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: "tenant-{{ index .path.segments 1 }}"
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=false
+          - ServerSideApply=true
+        retry:
+          limit: 3
+          backoff:
+            duration: 5s
+            factor: 2
+            maxDuration: 3m

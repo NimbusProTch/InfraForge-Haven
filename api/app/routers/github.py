@@ -1,6 +1,5 @@
 import logging
 import secrets
-from typing import Optional
 from urllib.parse import quote, urlencode
 
 import httpx
@@ -22,7 +21,7 @@ GITHUB_TOKEN_URL = "https://github.com/login/oauth/access_token"
 _HEADERS = {"Accept": "application/vnd.github.v3+json"}
 
 
-def _resolve_token(authorization: Optional[str], token: Optional[str]) -> str:
+def _resolve_token(authorization: str | None, token: str | None) -> str:
     """Resolve GitHub token from Authorization: Bearer header or legacy query param."""
     if authorization and authorization.startswith("Bearer "):
         return authorization[7:]
@@ -144,8 +143,8 @@ async def disconnect_github(
 
 @router.get("/user")
 async def get_user(
-    authorization: Optional[str] = Header(None),
-    token: Optional[str] = Query(None, description="Deprecated: use Authorization: Bearer header"),
+    authorization: str | None = Header(None),
+    token: str | None = Query(None, description="Deprecated: use Authorization: Bearer header"),
 ) -> dict:
     """Return authenticated GitHub user info (debug/verification)."""
     t = _resolve_token(authorization, token)
@@ -165,8 +164,8 @@ async def get_user(
 
 @router.get("/repos")
 async def list_repos(
-    authorization: Optional[str] = Header(None),
-    token: Optional[str] = Query(None, description="Deprecated: use Authorization: Bearer header"),
+    authorization: str | None = Header(None),
+    token: str | None = Query(None, description="Deprecated: use Authorization: Bearer header"),
 ) -> list:
     """List repositories accessible with the provided GitHub token.
 
@@ -242,12 +241,53 @@ async def list_repos(
     return all_repos
 
 
+@router.get("/repos/{owner}/{repo}/tree")
+async def list_repo_tree(
+    owner: str,
+    repo: str,
+    ref: str = "main",
+    authorization: str | None = Header(None),
+    token: str | None = Query(None, description="Deprecated: use Authorization: Bearer header"),
+) -> list:
+    """List files/directories in a repository (for monorepo support)."""
+    t = _resolve_token(authorization, token)
+    async with httpx.AsyncClient() as client:
+        response = await client.get(
+            f"{GITHUB_API}/repos/{owner}/{repo}/git/trees/{ref}?recursive=1",
+            headers=_auth_headers(t),
+            timeout=15.0,
+        )
+    if response.status_code == 401:
+        raise HTTPException(status_code=401, detail="Invalid GitHub token")
+    if response.status_code == 404:
+        raise HTTPException(status_code=404, detail="Repository or ref not found")
+    if not response.is_success:
+        raise HTTPException(status_code=502, detail=f"GitHub API error: {response.status_code}")
+    tree = response.json().get("tree", [])
+    return [{"path": item["path"], "type": item["type"], "size": item.get("size")} for item in tree]
+
+
+@router.get("/repos/{owner}/{repo}/detect")
+async def detect_repo_deps(
+    owner: str,
+    repo: str,
+    ref: str = "main",
+    authorization: str | None = Header(None),
+    token: str | None = Query(None, description="Deprecated: use Authorization: Bearer header"),
+) -> dict:
+    """Detect language, framework, and service dependencies for a repository."""
+    from app.services.detection_service import detect_dependencies
+
+    t = _resolve_token(authorization, token)
+    return await detect_dependencies(owner, repo, branch=ref, github_token=t)
+
+
 @router.get("/repos/{owner}/{repo}/branches")
 async def list_branches(
     owner: str,
     repo: str,
-    authorization: Optional[str] = Header(None),
-    token: Optional[str] = Query(None, description="Deprecated: use Authorization: Bearer header"),
+    authorization: str | None = Header(None),
+    token: str | None = Query(None, description="Deprecated: use Authorization: Bearer header"),
 ) -> list:
     """List branches for a repository."""
     t = _resolve_token(authorization, token)

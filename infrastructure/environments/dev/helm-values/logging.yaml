@@ -1,0 +1,18 @@
+# Loki Stack (Loki + Promtail)
+loki:
+  persistence:
+    enabled: true
+    storageClassName: longhorn
+    size: 10Gi
+  config:
+    limits_config:
+      retention_period: 168h  # 7 days
+  tolerations:
+    - operator: "Exists"
+
+promtail:
+  tolerations:
+    - operator: "Exists"
+
+grafana:
+  enabled: false  # Using kube-prometheus-stack Grafana

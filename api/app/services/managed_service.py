@@ -86,16 +86,82 @@ def _rabbitmq_body(name: str, namespace: str, tier: ServiceTier) -> dict:
 # ---------------------------------------------------------------------------
 
 _SECRET_NAME_MAP = {
-    ServiceType.POSTGRES: lambda name: f"{name}-app",     # CNPG app user secret
-    ServiceType.REDIS: lambda name: f"{name}-redis",      # OpsTree Redis secret
+    ServiceType.POSTGRES: lambda name: f"{name}-app",           # CNPG/Percona app user secret
+    ServiceType.MYSQL: lambda name: f"{name}-pxc-secrets",      # Percona XtraDB secret
+    ServiceType.MONGODB: lambda name: f"{name}-psmdb-secrets",  # Percona MongoDB secret
+    ServiceType.REDIS: lambda name: f"{name}-redis",            # OpsTree Redis secret
     ServiceType.RABBITMQ: lambda name: f"{name}-default-user",  # RabbitMQ Operator default user
 }
 
 _CONNECTION_HINT_MAP = {
     ServiceType.POSTGRES: lambda name, ns: f"postgresql://{name}-app@{name}-rw.{ns}.svc:5432/{name.replace('-', '_')}",
+    ServiceType.MYSQL: lambda name, ns: f"mysql://{name}-pxc@{name}-haproxy.{ns}.svc:3306/{name.replace('-', '_')}",
+    ServiceType.MONGODB: lambda name, ns: f"mongodb://{name}-rs0@{name}-mongos.{ns}.svc:27017/{name.replace('-', '_')}",
     ServiceType.REDIS: lambda name, ns: f"redis://{name}-redis.{ns}.svc:6379",
     ServiceType.RABBITMQ: lambda name, ns: f"amqp://{name}-default-user@{name}.{ns}.svc:5672",
 }
+
+def _mysql_body(name: str, namespace: str, tier: ServiceTier) -> dict:
+    """Build a Percona XtraDB Cluster manifest."""
+    instances = 1 if tier == ServiceTier.DEV else 3
+    storage = "5Gi" if tier == ServiceTier.DEV else "20Gi"
+    return {
+        "apiVersion": "pxc.percona.com/v1",
+        "kind": "PerconaXtraDBCluster",
+        "metadata": {"name": name, "namespace": namespace},
+        "spec": {
+            "crVersion": "1.15.0",
+            "allowUnsafeConfigurations": tier == ServiceTier.DEV,
+            "pxc": {
+                "size": instances,
+                "image": "percona/percona-xtradb-cluster:8.0",
+                "resources": {"requests": {"cpu": "100m", "memory": "256Mi"}, "limits": {"memory": "1Gi"}},
+                "volumeSpec": {
+                    "persistentVolumeClaim": {
+                        "storageClassName": "longhorn",
+                        "resources": {"requests": {"storage": storage}},
+                    }
+                },
+                "affinity": {"advanced": {"tolerations": [{"operator": "Exists"}]}},
+            },
+            "haproxy": {
+                "enabled": True,
+                "size": 1 if tier == ServiceTier.DEV else 2,
+                "image": "percona/haproxy:2.8.5",
+                "tolerations": [{"operator": "Exists"}],
+            },
+        },
+    }
+
+
+def _mongodb_body(name: str, namespace: str, tier: ServiceTier) -> dict:
+    """Build a Percona Server for MongoDB manifest."""
+    instances = 1 if tier == ServiceTier.DEV else 3
+    storage = "5Gi" if tier == ServiceTier.DEV else "20Gi"
+    return {
+        "apiVersion": "psmdb.percona.com/v1",
+        "kind": "PerconaServerMongoDB",
+        "metadata": {"name": name, "namespace": namespace},
+        "spec": {
+            "crVersion": "1.17.0",
+            "image": "percona/percona-server-mongodb:7.0",
+            "allowUnsafeConfigurations": tier == ServiceTier.DEV,
+            "replsets": [{
+                "name": "rs0",
+                "size": instances,
+                "resources": {"requests": {"cpu": "100m", "memory": "256Mi"}, "limits": {"memory": "1Gi"}},
+                "volumeSpec": {
+                    "persistentVolumeClaim": {
+                        "storageClassName": "longhorn",
+                        "resources": {"requests": {"storage": storage}},
+                    }
+                },
+                "affinity": {"advanced": {"tolerations": [{"operator": "Exists"}]}},
+            }],
+            "sharding": {"enabled": False},
+        },
+    }
+
 
 _CRD_CONFIG = {
     ServiceType.POSTGRES: {
@@ -103,6 +169,18 @@ _CRD_CONFIG = {
         "version": "v1",
         "plural": "clusters",
         "body_fn": _cnpg_cluster_body,
+    },
+    ServiceType.MYSQL: {
+        "group": "pxc.percona.com",
+        "version": "v1",
+        "plural": "perconaxtradbclusters",
+        "body_fn": _mysql_body,
+    },
+    ServiceType.MONGODB: {
+        "group": "psmdb.percona.com",
+        "version": "v1",
+        "plural": "perconaservermongodbs",
+        "body_fn": _mongodb_body,
     },
     ServiceType.REDIS: {
         "group": "redis.redis.opstreelabs.in",
@@ -161,8 +239,19 @@ class ManagedServiceProvisioner:
             ready = k8s_status.get("readyReplicas", 0)
             if ready and ready > 0:
                 service.status = ServiceStatus.READY
+        elif svc_type == ServiceType.MYSQL:
+            state = k8s_status.get("state", "")
+            if state == "ready":
+                service.status = ServiceStatus.READY
+            elif state in ("error", "failed"):
+                service.status = ServiceStatus.FAILED
+        elif svc_type == ServiceType.MONGODB:
+            state = k8s_status.get("state", "")
+            if state == "ready":
+                service.status = ServiceStatus.READY
+            elif state in ("error", "failed"):
+                service.status = ServiceStatus.FAILED
         elif svc_type == ServiceType.RABBITMQ:
-            ready_replicas = k8s_status.get("observedGeneration")
             conditions = k8s_status.get("conditions", [])
             for cond in conditions:
                 if cond.get("type") == "AllReplicasReady" and cond.get("status") == "True":

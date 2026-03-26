@@ -14,33 +14,26 @@ variable "environment" {
 variable "location_primary" {
   description = "Primary datacenter (Multi-AZ - Haven Check 1)"
   type        = string
-  default     = "nbg1" # Nuremberg (eu-central)
+  default     = "nbg1" # Nuremberg
 }
 
 variable "location_secondary" {
   description = "Secondary datacenter (Multi-AZ - Haven Check 1)"
   type        = string
-  default     = "fsn1" # Falkenstein (eu-central) - same network zone, stable cross-AZ connectivity
+  default     = "fsn1" # Falkenstein
 }
 
-# Management node (Rancher server)
-variable "management_server_type" {
-  description = "Rancher management node VM type"
-  type        = string
-  default     = "cpx32" # 4 vCPU, 8GB RAM (AMD)
-}
-
-# Cluster nodes
+# ===== Cluster Nodes =====
 variable "master_server_type" {
   description = "RKE2 master node VM type"
   type        = string
-  default     = "cpx32" # 4 vCPU, 8GB RAM (AMD)
+  default     = "cpx32" # 4 vCPU, 8GB RAM
 }
 
 variable "worker_server_type" {
   description = "RKE2 worker node VM type"
   type        = string
-  default     = "cpx42" # 8 vCPU, 16GB RAM (AMD)
+  default     = "cpx42" # 8 vCPU, 16GB RAM
 }
 
 variable "master_count" {
@@ -53,6 +46,12 @@ variable "worker_count" {
   description = "Number of worker nodes (Haven Check 2: min 3)"
   type        = number
   default     = 3
+}
+
+variable "os_image" {
+  description = "Hetzner OS image"
+  type        = string
+  default     = "ubuntu-22.04"
 }
 
 # ===== Network =====
@@ -68,43 +67,7 @@ variable "subnet_cidr" {
   default     = "10.0.1.0/24"
 }
 
-# ===== Rancher =====
-variable "rancher_admin_password" {
-  description = "Rancher admin password (set in terraform.tfvars)"
-  type        = string
-  sensitive   = true
-}
-
-variable "rancher_bootstrap_password" {
-  description = "Known bootstrap password for initial Rancher login"
-  type        = string
-  default     = "admin"
-}
-
-variable "rancher_version" {
-  description = "Rancher server version"
-  type        = string
-  default     = "v2.10.3"
-}
-
-variable "rancher_chart_version" {
-  description = "Rancher Helm chart version (from rancher-stable repo)"
-  type        = string
-  default     = "2.10.3"
-}
-
-variable "rancher_helm_repository" {
-  description = "Rancher Helm chart repository URL"
-  type        = string
-  default     = "https://releases.rancher.com/server-charts/stable"
-}
-
-variable "k3s_version" {
-  description = "K3s version for Rancher management node"
-  type        = string
-  default     = "v1.30.6+k3s1"
-}
-
+# ===== RKE2 Cluster =====
 variable "cluster_name" {
   description = "RKE2 cluster name"
   type        = string
@@ -112,67 +75,61 @@ variable "cluster_name" {
 }
 
 variable "kubernetes_version" {
-  description = "RKE2 Kubernetes version (Haven Check: max 3 minor versions behind current)"
+  description = "RKE2 Kubernetes version"
   type        = string
   default     = "v1.32.3+rke2r1"
 }
 
-variable "os_image" {
-  description = "Hetzner OS image (Ubuntu 22.04 - RKE2 compatible)"
-  type        = string
-  default     = "ubuntu-22.04"
-}
-
 # ===== Longhorn =====
 variable "enable_longhorn" {
-  description = "Enable Longhorn distributed storage (Haven Check 10: RWX)"
+  description = "Enable Longhorn distributed storage (Haven Check 10)"
   type        = bool
   default     = true
 }
 
 variable "longhorn_version" {
-  description = "Longhorn Helm chart version (from Rancher marketplace)"
+  description = "Longhorn Helm chart version"
   type        = string
-  default     = "104.2.0+up1.7.1"
+  default     = "1.7.1"
 }
 
 # ===== Cert-Manager =====
 variable "enable_cert_manager" {
-  description = "Enable Cert-Manager (Haven Check 12: auto HTTPS)"
+  description = "Enable Cert-Manager (Haven Check 12)"
   type        = bool
   default     = true
 }
 
 variable "cert_manager_version" {
-  description = "Cert-Manager Helm chart version (from Jetstack repo)"
+  description = "Cert-Manager Helm chart version"
   type        = string
   default     = "v1.16.2"
 }
 
 # ===== Monitoring =====
 variable "enable_monitoring" {
-  description = "Enable rancher-monitoring (Haven Check 14: Prometheus + Grafana)"
+  description = "Enable kube-prometheus-stack (Haven Check 14)"
   type        = bool
   default     = true
 }
 
 variable "monitoring_version" {
-  description = "rancher-monitoring Helm chart version (from Rancher marketplace)"
+  description = "kube-prometheus-stack Helm chart version"
   type        = string
-  default     = "104.1.2+up57.0.3"
+  default     = "67.4.0"
 }
 
 # ===== Logging =====
 variable "enable_logging" {
-  description = "Enable rancher-logging (Haven Check 13: log aggregation)"
+  description = "Enable Loki Stack (Haven Check 13)"
   type        = bool
   default     = true
 }
 
 variable "logging_version" {
-  description = "rancher-logging Helm chart version (from Rancher marketplace)"
+  description = "Loki Stack Helm chart version"
   type        = string
-  default     = "104.1.2+up4.8.0"
+  default     = "2.10.2"
 }
 
 # ===== Harbor =====
@@ -192,7 +149,6 @@ variable "harbor_admin_password" {
   description = "Harbor admin password"
   type        = string
   sensitive   = true
-  default     = "Harbor12345"
 }
 
 variable "harbor_registry_storage_size" {
@@ -224,27 +180,12 @@ variable "minio_root_password" {
   description = "MinIO root password"
   type        = string
   sensitive   = true
-  default     = "MinIO12345!"
 }
 
 variable "minio_storage_size" {
   description = "MinIO PVC size"
   type        = string
   default     = "20Gi"
-}
-
-# ===== Cloudflare =====
-variable "cloudflare_api_token" {
-  description = "Cloudflare API token"
-  type        = string
-  sensitive   = true
-  default     = ""
-}
-
-variable "domain" {
-  description = "Platform domain"
-  type        = string
-  default     = "haven.dev"
 }
 
 # ===== ArgoCD =====
@@ -255,7 +196,7 @@ variable "enable_argocd" {
 }
 
 variable "argocd_version" {
-  description = "ArgoCD Helm chart version (from argo-helm repo)"
+  description = "ArgoCD Helm chart version"
   type        = string
   default     = "7.7.3"
 }
@@ -267,56 +208,35 @@ variable "enable_keycloak" {
   default     = true
 }
 
-variable "keycloak_version" {
-  description = "Keycloak Helm chart version (Bitnami)"
+variable "keycloak_chart_version" {
+  description = "Keycloak Helm chart version (codecentric)"
   type        = string
-  default     = "22.2.2"
+  default     = "2.4.4"
 }
 
 variable "keycloak_admin_password" {
   description = "Keycloak admin password"
   type        = string
   sensitive   = true
-  default     = "Keycloak12345!"
 }
 
-variable "keycloak_db_password" {
-  description = "Keycloak embedded PostgreSQL password (Sprint 1)"
-  type        = string
-  sensitive   = true
-  default     = "KeycloakDB12345!"
-}
-
-# ===== CloudNativePG =====
-variable "enable_cnpg" {
-  description = "Enable CloudNativePG operator"
+# ===== Percona Everest =====
+variable "enable_everest" {
+  description = "Enable Percona Everest (PostgreSQL, MySQL, MongoDB)"
   type        = bool
   default     = true
 }
 
-variable "cnpg_version" {
-  description = "CloudNativePG Helm chart version"
+variable "everest_operator_version" {
+  description = "Percona Everest operator Helm chart version"
   type        = string
-  default     = "0.22.1"
+  default     = "1.4.0"
 }
 
-# ===== External-DNS =====
-variable "enable_external_dns" {
-  description = "Enable External-DNS (requires cloudflare_api_token to be set)"
-  type        = bool
-  default     = false
-}
-
-variable "external_dns_version" {
-  description = "External-DNS Helm chart version"
+variable "everest_version" {
+  description = "Percona Everest server Helm chart version"
   type        = string
-  default     = "1.15.0"
-}
-
-variable "external_dns_domain_filters" {
-  description = "Domain filters for External-DNS"
-  type        = list(string)
-  default     = []
+  default     = "1.4.0"
 }
 
 # ===== Redis Operator =====
@@ -327,9 +247,9 @@ variable "enable_redis_operator" {
 }
 
 variable "redis_operator_version" {
-  description = "Redis Operator Helm chart version (ot-helm repo)"
+  description = "Redis Operator Helm chart version"
   type        = string
-  default     = "0.15.0"
+  default     = "0.18.0"
 }
 
 # ===== RabbitMQ Operator =====
@@ -340,7 +260,39 @@ variable "enable_rabbitmq_operator" {
 }
 
 variable "rabbitmq_operator_version" {
-  description = "RabbitMQ Cluster Operator Helm chart version (bitnami repo)"
+  description = "RabbitMQ Cluster Operator Helm chart version"
   type        = string
   default     = "4.3.26"
+}
+
+# ===== External-DNS =====
+variable "enable_external_dns" {
+  description = "Enable External-DNS (requires cloudflare_api_token)"
+  type        = bool
+  default     = false
+}
+
+variable "external_dns_version" {
+  description = "External-DNS Helm chart version"
+  type        = string
+  default     = "1.15.0"
+}
+
+variable "cloudflare_api_token" {
+  description = "Cloudflare API token"
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "external_dns_domain_filters" {
+  description = "Domain filters for External-DNS"
+  type        = list(string)
+  default     = []
+}
+
+variable "domain" {
+  description = "Platform domain"
+  type        = string
+  default     = "haven.dev"
 }

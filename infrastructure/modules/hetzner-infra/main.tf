@@ -1,9 +1,9 @@
 # ============================================================
 # Hetzner Cloud Infra Module
 # ============================================================
-# Base infrastructure: SSH key, network, firewall, management
-# node (Rancher), load balancer. Master/worker nodes are
-# created at the environment level (need registration token).
+# Base infrastructure: SSH key, network, firewall, load balancer.
+# No management node — RKE2 installed directly on master/worker.
+# Firewall hardened: only HTTP/S + K8s API public, rest private.
 # ============================================================
 
 # --- SSH Key ---
@@ -25,11 +25,13 @@ resource "hcloud_network_subnet" "haven" {
   ip_range     = var.subnet_cidr
 }
 
-# --- Firewall ---
+# --- Firewall (Hardened) ---
+# Inter-node traffic flows over private network (node-ip config).
+# Only public-facing ports open: SSH, HTTP/S, K8s API.
 resource "hcloud_firewall" "haven" {
   name = "haven-${var.environment}"
 
-  # SSH
+  # SSH (restricted to operator IPs in production)
   rule {
     direction  = "in"
     protocol   = "tcp"
@@ -37,23 +39,7 @@ resource "hcloud_firewall" "haven" {
     source_ips = ["0.0.0.0/0", "::/0"]
   }
 
-  # Kubernetes API
-  rule {
-    direction  = "in"
-    protocol   = "tcp"
-    port       = "6443"
-    source_ips = ["0.0.0.0/0", "::/0"]
-  }
-
-  # HTTPS (Rancher UI + Ingress)
-  rule {
-    direction  = "in"
-    protocol   = "tcp"
-    port       = "443"
-    source_ips = ["0.0.0.0/0", "::/0"]
-  }
-
-  # HTTP (Let's Encrypt ACME challenge)
+  # HTTP (Let's Encrypt ACME + public services)
   rule {
     direction  = "in"
     protocol   = "tcp"
@@ -61,66 +47,29 @@ resource "hcloud_firewall" "haven" {
     source_ips = ["0.0.0.0/0", "::/0"]
   }
 
-  # RKE2 supervisor API
-  # NOTE: Hetzner nodes communicate via public IPs by default.
-  # Restricting to network_cidr breaks inter-node traffic.
-  # TODO: Configure RKE2 to use private network, then restrict.
+  # HTTPS (public services via Gateway API)
   rule {
     direction  = "in"
     protocol   = "tcp"
-    port       = "9345"
+    port       = "443"
     source_ips = ["0.0.0.0/0", "::/0"]
   }
 
-  # VXLAN (Cilium overlay)
-  rule {
-    direction  = "in"
-    protocol   = "udp"
-    port       = "8472"
-    source_ips = ["0.0.0.0/0", "::/0"]
-  }
-
-  # etcd peer communication
+  # Kubernetes API (through LB, restrict in production)
   rule {
     direction  = "in"
     protocol   = "tcp"
-    port       = "2379-2380"
+    port       = "6443"
     source_ips = ["0.0.0.0/0", "::/0"]
   }
 
-  # Kubelet API
-  rule {
-    direction  = "in"
-    protocol   = "tcp"
-    port       = "10250"
-    source_ips = ["0.0.0.0/0", "::/0"]
-  }
+  # NOTE: RKE2 supervisor (9345), VXLAN (8472), etcd (2379-2380),
+  # kubelet (10250) are NOT exposed publicly.
+  # Inter-node traffic uses private network (Hetzner private network
+  # is not subject to firewall rules).
 }
 
-# --- Management Node (Rancher Server) ---
-resource "hcloud_server" "management" {
-  name         = "haven-mgmt-${var.environment}"
-  server_type  = var.management_server_type
-  image        = var.os_image
-  location     = var.location_primary
-  ssh_keys     = [hcloud_ssh_key.haven.id]
-  firewall_ids = [hcloud_firewall.haven.id]
-
-  user_data = templatefile("${path.module}/templates/management-cloud-init.yaml.tpl", {})
-
-  labels = {
-    role        = "management"
-    environment = var.environment
-    project     = "haven"
-  }
-}
-
-resource "hcloud_server_network" "management" {
-  server_id = hcloud_server.management.id
-  subnet_id = hcloud_network_subnet.haven.id
-}
-
-# --- Load Balancer (K8s API + Ingress) ---
+# --- Load Balancer (K8s API + HTTP/S Ingress) ---
 resource "hcloud_load_balancer" "haven" {
   name               = "haven-lb-${var.environment}"
   load_balancer_type = "lb11"
@@ -140,10 +89,7 @@ resource "hcloud_load_balancer_service" "k8s_api" {
   destination_port = 6443
 }
 
-# HTTP service → gateway-proxy DaemonSet hostNetwork port 80
-# Note: Cilium 1.16 L7LB doesn't propagate to NodePort BPF entries.
-# gateway-proxy DaemonSet (haven-proxy ns) runs nginx with hostNetwork on port 80
-# and proxies to the Cilium gateway ClusterIP (which has correct L7LB).
+# HTTP service (Gateway API / ACME)
 resource "hcloud_load_balancer_service" "http" {
   load_balancer_id = hcloud_load_balancer.haven.id
   protocol         = "tcp"
@@ -151,9 +97,7 @@ resource "hcloud_load_balancer_service" "http" {
   destination_port = 80
 }
 
-# HTTPS service → gateway-proxy DaemonSet hostNetwork port 443
-# nginx stream module does TCP passthrough to Cilium gateway Service port 443
-# (same pattern as HTTP: nginx hostNetwork proxies to Cilium gateway ClusterIP)
+# HTTPS service (Gateway API TLS termination)
 resource "hcloud_load_balancer_service" "https" {
   load_balancer_id = hcloud_load_balancer.haven.id
   protocol         = "tcp"

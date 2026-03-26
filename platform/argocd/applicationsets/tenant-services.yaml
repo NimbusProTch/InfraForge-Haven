@@ -1,0 +1,43 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: haven-tenant-services
+  namespace: argocd
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+  generators:
+    - git:
+        repoURL: https://github.com/NimbusProTch/haven-gitops.git
+        revision: main
+        directories:
+          - path: "tenants/*/services/*"
+  template:
+    metadata:
+      name: "svc-{{ index .path.segments 1 }}-{{ index .path.segments 3 }}"
+      namespace: argocd
+      labels:
+        haven.io/managed: "true"
+        haven.io/tenant: "{{ index .path.segments 1 }}"
+        haven.io/service: "{{ index .path.segments 3 }}"
+      finalizers:
+        - resources-finalizer.argocd.argoproj.io
+    spec:
+      project: default
+      source:
+        repoURL: https://github.com/NimbusProTch/haven-gitops.git
+        targetRevision: main
+        path: "charts/haven-managed-service"
+        helm:
+          valueFiles:
+            - "/{{ .path.path }}/values.yaml"
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: "tenant-{{ index .path.segments 1 }}"
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=false
+          - ServerSideApply=true

@@ -52,23 +52,57 @@ export interface Application {
   repo_url: string;
   branch: string;
   replicas: number;
+  port: number;
   image_tag: string | null;
   webhook_token: string;
+  env_vars: Record<string, string>;
+  // Monorepo
+  dockerfile_path: string | null;
+  build_context: string | null;
+  use_dockerfile: boolean;
+  detected_deps: DetectedDeps | null;
+  // Production hardening
+  custom_domain: string | null;
+  health_check_path: string | null;
+  resource_cpu_request: string;
+  resource_cpu_limit: string;
+  resource_memory_request: string;
+  resource_memory_limit: string;
+  min_replicas: number;
+  max_replicas: number;
+  cpu_threshold: number;
+  auto_deploy: boolean;
   created_at: string;
   updated_at: string;
+}
+
+export interface DetectedDeps {
+  language: string;
+  framework: string | null;
+  databases: string[];
+  caches: string[];
+  queues: string[];
+  has_dockerfile: boolean;
+  suggested_services: Array<{ type: string; reason: string }>;
 }
 
 export interface ManagedService {
   id: string;
   tenant_id: string;
   name: string;
-  service_type: "postgres" | "redis" | "rabbitmq";
+  service_type: "postgres" | "mysql" | "mongodb" | "redis" | "rabbitmq";
   tier: "dev" | "prod";
   status: "provisioning" | "ready" | "failed" | "deleting";
   secret_name: string | null;
   connection_hint: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface RepoTreeItem {
+  path: string;
+  type: "blob" | "tree";
+  size: number | null;
 }
 
 export interface Deployment {
@@ -138,7 +172,7 @@ export const api = {
       apiFetch<Application>(`/tenants/${tenantSlug}/apps/${appSlug}`, {}, token),
     create: (
       tenantSlug: string,
-      body: { slug: string; name: string; repo_url: string; branch: string; replicas?: number },
+      body: Partial<Application> & { name: string; repo_url: string },
       token?: string
     ) =>
       apiFetch<Application>(
@@ -149,7 +183,7 @@ export const api = {
     update: (
       tenantSlug: string,
       appSlug: string,
-      body: { name?: string; repo_url?: string; branch?: string; replicas?: number; env_vars?: Record<string, string> },
+      body: Partial<Application>,
       token?: string
     ) =>
       apiFetch<Application>(
@@ -228,5 +262,11 @@ export const api = {
         { method: "DELETE" },
         accessToken
       ),
+    /** List files in a repository (monorepo support) */
+    tree: (owner: string, repo: string, ref: string, token: string) =>
+      apiFetch<RepoTreeItem[]>(`/github/repos/${owner}/${repo}/tree?ref=${ref}`, {}, token),
+    /** Detect dependencies for a repository */
+    detect: (owner: string, repo: string, ref: string, token: string) =>
+      apiFetch<DetectedDeps>(`/github/repos/${owner}/${repo}/detect?ref=${ref}`, {}, token),
   },
 };

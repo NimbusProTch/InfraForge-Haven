@@ -1,0 +1,24 @@
+Haven App deployed successfully!
+
+  App:    {{ .Values.appSlug }}
+  Tenant: {{ .Values.tenantSlug }}
+  Image:  {{ .Values.image.repository }}:{{ .Values.image.tag }}
+  Port:   {{ .Values.port }}
+
+{{- if .Values.httproute.enabled }}
+
+  URL: http://{{ include "haven-app.hostname" . }}
+{{- if .Values.httproute.customDomain }}
+  Custom domain: http://{{ .Values.httproute.customDomain }}
+{{- end }}
+{{- end }}
+
+{{- if .Values.autoscaling.enabled }}
+
+  Autoscaling: {{ .Values.autoscaling.minReplicas }}-{{ .Values.autoscaling.maxReplicas }} replicas (target CPU: {{ .Values.autoscaling.targetCPUUtilizationPercentage }}%)
+{{- else }}
+
+  Replicas: {{ include "haven-app.effectiveReplicas" . }}
+{{- end }}
+
+  Preset: {{ .Values.preset }}

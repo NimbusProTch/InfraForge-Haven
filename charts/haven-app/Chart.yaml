@@ -1,0 +1,13 @@
+apiVersion: v2
+name: haven-app
+description: Helm chart for deploying tenant applications on the Haven PaaS platform
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
+keywords:
+  - haven
+  - paas
+  - tenant
+  - application
+maintainers:
+  - name: Haven Platform Team

@@ -1,0 +1,24 @@
+# External-DNS
+provider: cloudflare
+env:
+  - name: CF_API_TOKEN
+    value: "${cloudflare_api_token}"
+sources:
+  - service
+  - ingress
+  - gateway-httproute
+policy: sync
+%{ if length(domain_filters) > 0 ~}
+domainFilters:
+%{ for domain in domain_filters ~}
+  - ${domain}
+%{ endfor ~}
+%{ endif ~}
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    memory: 128Mi
+tolerations:
+  - operator: "Exists"

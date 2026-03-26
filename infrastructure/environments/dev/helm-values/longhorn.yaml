@@ -1,0 +1,15 @@
+defaultSettings:
+  defaultReplicaCount: ${replica_count}
+  nodeDownPodDeletionPolicy: delete-both-statefulset-and-deployment-pod
+  defaultDataLocality: best-effort
+persistence:
+  defaultClassReplicaCount: ${replica_count}
+longhornUI:
+  replicas: 1
+csi:
+  attacherReplicaCount: 1
+  provisionerReplicaCount: 1
+  resizerReplicaCount: 1
+  snapshotterReplicaCount: 1
+tolerations:
+  - operator: "Exists"

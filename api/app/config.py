@@ -35,6 +35,16 @@ class Settings(BaseSettings):
     # GitHub webhook secret — set via WEBHOOK_SECRET env var, never hard-coded
     webhook_secret: str = ""
 
+    # GitOps
+    gitops_repo_url: str = ""
+    gitops_branch: str = "main"
+    gitops_clone_dir: str = "/tmp/haven-gitops"
+    gitops_deploy_key_path: str = ""
+
+    # ArgoCD API
+    argocd_url: str = "http://argocd-server.argocd.svc.cluster.local:80"
+    argocd_auth_token: str = ""
+
     # App
     debug: bool = False
     secret_key: str = "change-me-in-production"

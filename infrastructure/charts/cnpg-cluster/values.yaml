@@ -1,0 +1,7 @@
+name: ""
+instances: 1
+database: ""
+owner: ""
+storage:
+  size: 10Gi
+  storageClass: longhorn

@@ -7,6 +7,8 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from app.auth.jwt import verify_token
 from app.config import settings
 from app.k8s.client import K8sClient, k8s_client
+from app.services.argocd_service import ArgoCDService
+from app.services.gitops_service import GitOpsService
 
 # ---------------------------------------------------------------------------
 # Database
@@ -37,6 +39,24 @@ def get_k8s() -> K8sClient:
 
 K8sDep = Annotated[K8sClient, Depends(get_k8s)]
 
+
+# ---------------------------------------------------------------------------
+# GitOps
+# ---------------------------------------------------------------------------
+_gitops_service = GitOpsService()
+_argocd_service = ArgoCDService()
+
+
+def get_gitops() -> GitOpsService:
+    return _gitops_service
+
+
+def get_argocd() -> ArgoCDService:
+    return _argocd_service
+
+
+GitOpsDep = Annotated[GitOpsService, Depends(get_gitops)]
+ArgoCDDep = Annotated[ArgoCDService, Depends(get_argocd)]
 
 # ---------------------------------------------------------------------------
 # Auth

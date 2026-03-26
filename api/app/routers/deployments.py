@@ -2,12 +2,12 @@ import asyncio
 import logging
 import uuid
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, status
+from fastapi import APIRouter, BackgroundTasks, HTTPException, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 
 from app.config import settings
-from app.deps import DBSession, K8sDep, get_session_factory
+from app.deps import ArgoCDDep, DBSession, GitOpsDep, K8sDep, get_session_factory
 from app.models.application import Application
 from app.models.deployment import Deployment, DeploymentStatus
 from app.models.tenant import Tenant
@@ -89,6 +89,8 @@ async def trigger_build(
     app_slug: str,
     db: DBSession,
     k8s: K8sDep,
+    gitops: GitOpsDep,
+    argocd: ArgoCDDep,
     background_tasks: BackgroundTasks,
 ) -> Deployment:
     """Manually trigger a full build + deploy pipeline.
@@ -125,6 +127,17 @@ async def trigger_build(
         session_factory=get_session_factory(),
         k8s=k8s,
         github_token=tenant.github_token,
+        gitops=gitops,
+        argocd=argocd,
+        custom_domain=app.custom_domain or "",
+        health_check_path=app.health_check_path or "",
+        resource_cpu_request=app.resource_cpu_request,
+        resource_cpu_limit=app.resource_cpu_limit,
+        resource_memory_request=app.resource_memory_request,
+        resource_memory_limit=app.resource_memory_limit,
+        min_replicas=app.min_replicas,
+        max_replicas=app.max_replicas,
+        cpu_threshold=app.cpu_threshold,
     )
     return deployment
 

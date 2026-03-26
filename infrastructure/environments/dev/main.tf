@@ -1,28 +1,37 @@
 # ============================================================
 # Haven Platform - Dev Environment (Hetzner Cloud)
 # ============================================================
-# Following Rancher official quickstart pattern:
-#   1. Hetzner base infra (network, firewall, SSH, LB, mgmt node)
-#   2. SSH: Install K3s on management node
-#   3. SSH: Retrieve kubeconfig
-#   4. Helm: Install cert-manager + Rancher
-#   5. Bootstrap Rancher (rancher2 provider - Go native)
-#   6. RKE2 cluster with Cilium CNI (via rancher-cluster module)
-#   7. Master/Worker nodes (Rancher insecure_node_command)
-#   8. Wait for cluster active (rancher2_cluster_sync)
-#   9. Apps: Longhorn, Cert-Manager, Monitoring, Logging
+# Vanilla RKE2 cluster (no Rancher dependency):
+#   1. Hetzner base infra (network, firewall, LB)
+#   2. RKE2 cluster via cloud-init (direct install)
+#   3. Kubeconfig retrieval via SSH
+#   4. Platform operators via Helm provider
+#   5. Platform services (ArgoCD, Keycloak, Harbor, etc.)
 # ============================================================
 
 locals {
-  node_username      = "root"
-  rancher_server_dns = join(".", ["rancher", module.hetzner_infra.management_ip, "sslip.io"])
+  node_username = "root"
 
   # Multi-AZ distribution: first 2 nodes primary, rest secondary
   master_locations = [for i in range(var.master_count) : i < 2 ? var.location_primary : var.location_secondary]
   worker_locations = [for i in range(var.worker_count) : i < 2 ? var.location_primary : var.location_secondary]
+
+  # First master gets a static private IP for other nodes to join
+  first_master_private_ip = "10.0.1.10"
+
+  # sslip.io hostnames (replaced by External-DNS + real domain in production)
+  lb_dns = module.hetzner_infra.load_balancer_ip
+  harbor_host    = "harbor.${local.lb_dns}.sslip.io"
+  argocd_host    = "argocd.${local.lb_dns}.sslip.io"
+  keycloak_host  = "keycloak.${local.lb_dns}.sslip.io"
+  api_host       = "api.${local.lb_dns}.sslip.io"
+  ui_host        = "ui.${local.lb_dns}.sslip.io"
+  minio_host     = "minio.${local.lb_dns}.sslip.io"
+  s3_host        = "s3.${local.lb_dns}.sslip.io"
+  everest_host   = "everest.${local.lb_dns}.sslip.io"
 }
 
-# --- 1. SSH Key (generated, like official quickstart) ---
+# --- 1. SSH Key ---
 resource "tls_private_key" "global_key" {
   algorithm = "RSA"
   rsa_bits  = 2048
@@ -34,156 +43,39 @@ resource "local_sensitive_file" "ssh_private_key_pem" {
   file_permission = "0600"
 }
 
-# --- 2. Base Infrastructure ---
+# Cluster token for RKE2 node registration
+resource "random_password" "cluster_token" {
+  length  = 64
+  special = false
+}
+
+# --- 2. Base Infrastructure (network, firewall, LB — no management node) ---
 module "hetzner_infra" {
   source = "../../modules/hetzner-infra"
 
-  environment            = var.environment
-  location_primary       = var.location_primary
-  location_secondary     = var.location_secondary
-  management_server_type = var.management_server_type
-  ssh_public_key         = tls_private_key.global_key.public_key_openssh
-  network_cidr           = var.network_cidr
-  subnet_cidr            = var.subnet_cidr
+  environment      = var.environment
+  location_primary = var.location_primary
+  ssh_public_key   = tls_private_key.global_key.public_key_openssh
+  network_cidr     = var.network_cidr
+  subnet_cidr      = var.subnet_cidr
 }
 
-# --- 3. Install K3s via SSH (official pattern) ---
-resource "ssh_resource" "install_k3s" {
-  host = module.hetzner_infra.management_ip
-  commands = [
-    "bash -c 'curl https://get.k3s.io | INSTALL_K3S_EXEC=\"server --node-external-ip ${module.hetzner_infra.management_ip}\" INSTALL_K3S_VERSION=${var.k3s_version} sh -'"
-  ]
-  user        = local.node_username
-  private_key = tls_private_key.global_key.private_key_pem
-}
+# --- 3. RKE2 Cluster Config (cloud-init generation) ---
+module "rke2_cluster" {
+  source = "../../modules/rke2-cluster"
 
-# --- 4. Install cert-manager + Rancher via SSH (remote Helm) ---
-# Uses Helm on the management node itself - no local port 6443 access needed
-resource "ssh_resource" "install_cert_manager" {
-  depends_on = [ssh_resource.install_k3s]
-  host       = module.hetzner_infra.management_ip
-  commands = [
-    <<-EOT
-      bash -c '
-        export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
-
-        # Wait for K3s API to be ready
-        echo "Waiting for K3s API..."
-        for i in $(seq 1 60); do
-          if kubectl get nodes >/dev/null 2>&1; then
-            echo "K3s API ready!"
-            break
-          fi
-          echo "Attempt $i/60..."
-          sleep 5
-        done
-
-        # Install Helm if not present
-        if ! command -v helm &>/dev/null; then
-          echo "Installing Helm..."
-          curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
-        fi
-
-        # Add Jetstack repo and install cert-manager
-        helm repo add jetstack https://charts.jetstack.io
-        helm repo update jetstack
-        helm upgrade --install cert-manager jetstack/cert-manager \
-          --namespace cert-manager --create-namespace \
-          --version ${var.cert_manager_version} \
-          --set installCRDs=true \
-          --wait --timeout 5m
-
-        echo "cert-manager installed successfully"
-      '
-    EOT
-  ]
-  user        = local.node_username
-  private_key = tls_private_key.global_key.private_key_pem
-  timeout     = "10m"
-}
-
-# --- 5. Install Rancher via SSH (remote Helm) ---
-resource "ssh_resource" "install_rancher" {
-  depends_on = [ssh_resource.install_cert_manager]
-  host       = module.hetzner_infra.management_ip
-  commands = [
-    <<-EOT
-      bash -c '
-        export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
-
-        # Add Rancher repo and install
-        helm repo add rancher-stable ${var.rancher_helm_repository}
-        helm repo update rancher-stable
-        helm upgrade --install rancher rancher-stable/rancher \
-          --namespace cattle-system --create-namespace \
-          --version ${var.rancher_chart_version} \
-          --set hostname=${local.rancher_server_dns} \
-          --set replicas=1 \
-          --set bootstrapPassword=${var.rancher_bootstrap_password} \
-          --wait --timeout 10m
-
-        echo "Rancher installed successfully"
-      '
-    EOT
-  ]
-  user        = local.node_username
-  private_key = tls_private_key.global_key.private_key_pem
-  timeout     = "15m"
-}
-
-# --- 6. Bootstrap Rancher (Go native) ---
-resource "rancher2_bootstrap" "admin" {
-  depends_on = [ssh_resource.install_rancher]
-  provider   = rancher2.bootstrap
-
-  initial_password = var.rancher_bootstrap_password
-  password         = var.rancher_admin_password
-}
-
-# --- 7. RKE2 Cluster (module: Cilium CNI + templates) ---
-module "rancher_cluster" {
-  source = "../../modules/rancher-cluster"
-  providers = {
-    rancher2 = rancher2.admin
-  }
-
-  cluster_name       = var.cluster_name
-  kubernetes_version = var.kubernetes_version
-
-  # Cilium CNI settings
-  enable_hubble            = true
+  cluster_name            = var.cluster_name
+  kubernetes_version      = var.kubernetes_version
+  cluster_token           = random_password.cluster_token.result
+  first_master_private_ip = local.first_master_private_ip
+  lb_ip                   = module.hetzner_infra.load_balancer_ip
+  enable_hubble           = true
   cilium_operator_replicas = 1
-  disable_kube_proxy       = true
-
-  # Longhorn values (rendered by module, used below)
-  longhorn_replica_count = var.worker_count >= 3 ? 3 : var.worker_count
-
-  # Harbor
-  harbor_host                  = join(".", ["harbor", module.hetzner_infra.load_balancer_ip, "sslip.io"])
-  harbor_admin_password        = var.harbor_admin_password
-  harbor_registry_storage_size = var.harbor_registry_storage_size
-
-  # MinIO
-  minio_root_user     = var.minio_root_user
-  minio_root_password = var.minio_root_password
-  minio_storage_size  = var.minio_storage_size
-  minio_console_host  = join(".", ["minio", module.hetzner_infra.load_balancer_ip, "sslip.io"])
-  minio_api_host      = join(".", ["s3", module.hetzner_infra.load_balancer_ip, "sslip.io"])
-
-  # ArgoCD
-  argocd_host = join(".", ["argocd", module.hetzner_infra.load_balancer_ip, "sslip.io"])
-
-  # Keycloak
-  keycloak_host           = join(".", ["keycloak", module.hetzner_infra.load_balancer_ip, "sslip.io"])
-  keycloak_admin_password = var.keycloak_admin_password
-  keycloak_db_password    = var.keycloak_db_password
-
-  # External-DNS
-  external_dns_cloudflare_token = var.cloudflare_api_token
-  external_dns_domain_filters   = var.external_dns_domain_filters
+  disable_kube_proxy      = true
+  enable_cis_profile      = true
 }
 
-# --- 9. Master Nodes (Rancher insecure_node_command) ---
+# --- 4. Master Nodes ---
 resource "hcloud_server" "master" {
   count        = var.master_count
   name         = "haven-master-${var.environment}-${count.index + 1}"
@@ -193,10 +85,8 @@ resource "hcloud_server" "master" {
   ssh_keys     = [module.hetzner_infra.ssh_key_id]
   firewall_ids = [module.hetzner_infra.firewall_id]
 
-  user_data = templatefile("${path.module}/templates/node-cloud-init.yaml.tpl", {
-    register_command = nonsensitive(module.rancher_cluster.insecure_node_command)
-    node_roles       = "--etcd --controlplane"
-  })
+  # First master bootstraps, others join
+  user_data = count.index == 0 ? module.rke2_cluster.first_master_cloud_init : module.rke2_cluster.joining_master_cloud_init
 
   labels = {
     role        = "master"
@@ -206,13 +96,16 @@ resource "hcloud_server" "master" {
   }
 }
 
+# Attach masters to private network
 resource "hcloud_server_network" "master" {
   count     = var.master_count
   server_id = hcloud_server.master[count.index].id
   subnet_id = module.hetzner_infra.subnet_id
+  # First master gets static IP for cluster join
+  ip = count.index == 0 ? local.first_master_private_ip : null
 }
 
-# --- 10. Worker Nodes (Rancher insecure_node_command) ---
+# --- 5. Worker Nodes ---
 resource "hcloud_server" "worker" {
   count        = var.worker_count
   name         = "haven-worker-${var.environment}-${count.index + 1}"
@@ -222,10 +115,7 @@ resource "hcloud_server" "worker" {
   ssh_keys     = [module.hetzner_infra.ssh_key_id]
   firewall_ids = [module.hetzner_infra.firewall_id]
 
-  user_data = templatefile("${path.module}/templates/node-cloud-init.yaml.tpl", {
-    register_command = nonsensitive(module.rancher_cluster.insecure_node_command)
-    node_roles       = "--worker"
-  })
+  user_data = module.rke2_cluster.worker_cloud_init
 
   labels = {
     role        = "worker"
@@ -233,6 +123,8 @@ resource "hcloud_server" "worker" {
     project     = "haven"
     node_index  = tostring(count.index + 1)
   }
+
+  depends_on = [hcloud_server.master, hcloud_server_network.master]
 }
 
 resource "hcloud_server_network" "worker" {
@@ -241,9 +133,7 @@ resource "hcloud_server_network" "worker" {
   subnet_id = module.hetzner_infra.subnet_id
 }
 
-# --- 11. Load Balancer Targets (master + worker nodes via private network) ---
-# use_private_ip = true: LB reaches nodes via private network, bypassing Hetzner firewall.
-# This allows NodePort 30080/30443 to be reached without opening them in the public firewall.
+# --- 6. Load Balancer Targets ---
 resource "hcloud_load_balancer_target" "master" {
   count            = var.master_count
   type             = "server"
@@ -262,600 +152,511 @@ resource "hcloud_load_balancer_target" "worker" {
   depends_on       = [hcloud_server_network.worker]
 }
 
-# --- 12. Wait for Cluster Active (native rancher2_cluster_sync) ---
-resource "rancher2_cluster_sync" "cluster" {
-  provider      = rancher2.admin
-  cluster_id    = module.rancher_cluster.cluster_id
-  wait_catalogs = true
-  state_confirm = 3
+# --- 7. Retrieve Kubeconfig from First Master ---
+resource "ssh_resource" "kubeconfig" {
+  host        = hcloud_server.master[0].ipv4_address
+  user        = local.node_username
+  private_key = tls_private_key.global_key.private_key_pem
+  timeout     = "20m"
 
-  timeouts {
-    create = "45m"
-    update = "45m"
-  }
+  commands = [
+    # Wait for RKE2 API to be ready (cloud-init can take 5-10 min)
+    <<-EOT
+      for i in $(seq 1 120); do
+        if [ -f /etc/rancher/rke2/rke2.yaml ]; then
+          if /var/lib/rancher/rke2/bin/kubectl --kubeconfig=/etc/rancher/rke2/rke2.yaml get nodes >/dev/null 2>&1; then
+            echo "RKE2_READY"
+            break
+          fi
+        fi
+        sleep 10
+      done
+    EOT
+    ,
+    "cat /etc/rancher/rke2/rke2.yaml",
+  ]
 
   depends_on = [
     hcloud_server.master,
-    hcloud_server.worker,
     hcloud_server_network.master,
+  ]
+}
+
+# Process kubeconfig: replace 127.0.0.1 with LB IP for external access
+locals {
+  raw_kubeconfig = ssh_resource.kubeconfig.result
+  kubeconfig = replace(
+    local.raw_kubeconfig,
+    "https://127.0.0.1:6443",
+    "https://${module.hetzner_infra.load_balancer_ip}:6443"
+  )
+}
+
+resource "local_sensitive_file" "kubeconfig" {
+  filename        = "${path.module}/kubeconfig"
+  content         = local.kubeconfig
+  file_permission = "0600"
+}
+
+# --- 8. Wait for All Nodes Ready ---
+resource "ssh_resource" "wait_cluster_ready" {
+  host        = hcloud_server.master[0].ipv4_address
+  user        = local.node_username
+  private_key = tls_private_key.global_key.private_key_pem
+  timeout     = "30m"
+
+  commands = [
+    <<-EOT
+      export KUBECONFIG=/etc/rancher/rke2/rke2.yaml
+      export PATH=$PATH:/var/lib/rancher/rke2/bin
+      EXPECTED_NODES=${var.master_count + var.worker_count}
+      echo "Waiting for $EXPECTED_NODES nodes to be Ready..."
+      for i in $(seq 1 180); do
+        READY=$(kubectl get nodes --no-headers 2>/dev/null | grep -c " Ready" || echo "0")
+        echo "Ready nodes: $READY / $EXPECTED_NODES (attempt $i)"
+        if [ "$READY" -ge "$EXPECTED_NODES" ]; then
+          echo "ALL_NODES_READY"
+          kubectl get nodes -o wide
+          break
+        fi
+        sleep 10
+      done
+    EOT
+  ]
+
+  depends_on = [
+    ssh_resource.kubeconfig,
+    hcloud_server.worker,
     hcloud_server_network.worker,
+    hcloud_load_balancer_target.master,
+    hcloud_load_balancer_target.worker,
   ]
 }
 
-# --- 13. Longhorn Storage (via Rancher marketplace) ---
-resource "rancher2_app_v2" "longhorn" {
-  count         = var.enable_longhorn ? 1 : 0
-  provider      = rancher2.admin
-  cluster_id    = module.rancher_cluster.cluster_id
-  name          = "longhorn"
-  namespace     = "longhorn-system"
-  repo_name     = "rancher-charts"
-  chart_name    = "longhorn"
-  chart_version = var.longhorn_version
-
-  values = module.rancher_cluster.longhorn_values
-
-  timeouts {
-    create = "15m"
-    update = "15m"
-    delete = "10m"
-  }
-
-  depends_on = [rancher2_cluster_sync.cluster]
-}
-
-# --- 14. Cert-Manager on workload cluster (Haven Check #12) ---
-resource "rancher2_catalog_v2" "jetstack" {
-  count      = var.enable_cert_manager ? 1 : 0
-  provider   = rancher2.admin
-  cluster_id = module.rancher_cluster.cluster_id
-  name       = "jetstack"
-  url        = "https://charts.jetstack.io"
-
-  depends_on = [rancher2_cluster_sync.cluster]
-}
-
-resource "rancher2_app_v2" "cert_manager" {
-  count         = var.enable_cert_manager ? 1 : 0
-  provider      = rancher2.admin
-  cluster_id    = module.rancher_cluster.cluster_id
-  name          = "cert-manager"
-  namespace     = "cert-manager"
-  repo_name     = "jetstack"
-  chart_name    = "cert-manager"
-  chart_version = var.cert_manager_version
-
-  values = module.rancher_cluster.cert_manager_values
-
-  timeouts {
-    create = "10m"
-    update = "10m"
-    delete = "10m"
-  }
-
-  depends_on = [rancher2_catalog_v2.jetstack, rancher2_app_v2.longhorn]
-}
-
-# --- 15. Rancher Monitoring (Haven Check #14) ---
-resource "rancher2_app_v2" "monitoring_crd" {
-  count         = var.enable_monitoring ? 1 : 0
-  provider      = rancher2.admin
-  cluster_id    = module.rancher_cluster.cluster_id
-  name          = "rancher-monitoring-crd"
-  namespace     = "cattle-monitoring-system"
-  repo_name     = "rancher-charts"
-  chart_name    = "rancher-monitoring-crd"
-  chart_version = var.monitoring_version
-
-  timeouts {
-    create = "10m"
-    update = "10m"
-    delete = "10m"
-  }
-
-  depends_on = [rancher2_cluster_sync.cluster]
-}
-
-resource "rancher2_app_v2" "monitoring" {
-  count         = var.enable_monitoring ? 1 : 0
-  provider      = rancher2.admin
-  cluster_id    = module.rancher_cluster.cluster_id
-  name          = "rancher-monitoring"
-  namespace     = "cattle-monitoring-system"
-  repo_name     = "rancher-charts"
-  chart_name    = "rancher-monitoring"
-  chart_version = var.monitoring_version
-
-  values = module.rancher_cluster.monitoring_values
-
-  timeouts {
-    create = "15m"
-    update = "15m"
-    delete = "15m"
-  }
-
-  depends_on = [rancher2_app_v2.monitoring_crd, rancher2_app_v2.longhorn]
-}
-
-# --- 16. Rancher Logging (Haven Check #13) ---
-resource "rancher2_app_v2" "logging_crd" {
-  count         = var.enable_logging ? 1 : 0
-  provider      = rancher2.admin
-  cluster_id    = module.rancher_cluster.cluster_id
-  name          = "rancher-logging-crd"
-  namespace     = "cattle-logging-system"
-  repo_name     = "rancher-charts"
-  chart_name    = "rancher-logging-crd"
-  chart_version = var.logging_version
-
-  timeouts {
-    create = "10m"
-    update = "10m"
-    delete = "10m"
-  }
-
-  depends_on = [rancher2_cluster_sync.cluster]
-}
-
-resource "rancher2_app_v2" "logging" {
-  count         = var.enable_logging ? 1 : 0
-  provider      = rancher2.admin
-  cluster_id    = module.rancher_cluster.cluster_id
-  name          = "rancher-logging"
-  namespace     = "cattle-logging-system"
-  repo_name     = "rancher-charts"
-  chart_name    = "rancher-logging"
-  chart_version = var.logging_version
-
-  values = module.rancher_cluster.logging_values
-
-  timeouts {
-    create = "15m"
-    update = "15m"
-    delete = "15m"
-  }
-
-  depends_on = [rancher2_app_v2.logging_crd, rancher2_app_v2.longhorn]
-}
-
-# --- 17. Harbor Image Registry ---
-resource "rancher2_catalog_v2" "harbor" {
-  count      = var.enable_harbor ? 1 : 0
-  provider   = rancher2.admin
-  cluster_id = module.rancher_cluster.cluster_id
-  name       = "harbor"
-  url        = "https://helm.goharbor.io"
-
-  depends_on = [rancher2_cluster_sync.cluster]
-}
-
-resource "rancher2_app_v2" "harbor" {
-  count         = var.enable_harbor ? 1 : 0
-  provider      = rancher2.admin
-  cluster_id    = module.rancher_cluster.cluster_id
-  name          = "harbor"
-  namespace     = "harbor-system"
-  repo_name     = "harbor"
-  chart_name    = "harbor"
-  chart_version = var.harbor_version
-
-  values = module.rancher_cluster.harbor_values
-
-  timeouts {
-    create = "25m"
-    update = "15m"
-    delete = "20m"
-  }
-
-  depends_on = [rancher2_catalog_v2.harbor, rancher2_app_v2.longhorn, rancher2_app_v2.cert_manager]
-}
-
-# --- 18. MinIO Object Storage ---
-resource "rancher2_catalog_v2" "minio" {
-  count      = var.enable_minio ? 1 : 0
-  provider   = rancher2.admin
-  cluster_id = module.rancher_cluster.cluster_id
-  name       = "minio"
-  url        = "https://charts.min.io"
-
-  depends_on = [rancher2_cluster_sync.cluster]
-}
-
-resource "rancher2_app_v2" "minio" {
-  count         = var.enable_minio ? 1 : 0
-  provider      = rancher2.admin
-  cluster_id    = module.rancher_cluster.cluster_id
-  name          = "minio"
-  namespace     = "minio-system"
-  repo_name     = "minio"
-  chart_name    = "minio"
-  chart_version = var.minio_version
-
-  values = module.rancher_cluster.minio_values
-
-  timeouts {
-    create = "25m"
-    update = "15m"
-    delete = "20m"
-  }
-
-  depends_on = [rancher2_catalog_v2.minio, rancher2_app_v2.longhorn]
-}
-
-# --- 19. CloudNativePG Operator ---
-resource "rancher2_catalog_v2" "cnpg" {
-  count      = var.enable_cnpg ? 1 : 0
-  provider   = rancher2.admin
-  cluster_id = module.rancher_cluster.cluster_id
-  name       = "cnpg"
-  url        = "https://cloudnative-pg.github.io/charts"
-
-  depends_on = [rancher2_cluster_sync.cluster]
-}
-
-resource "rancher2_app_v2" "cnpg" {
-  count         = var.enable_cnpg ? 1 : 0
-  provider      = rancher2.admin
-  cluster_id    = module.rancher_cluster.cluster_id
-  name          = "cloudnative-pg"
-  namespace     = "cnpg-system"
-  repo_name     = "cnpg"
-  chart_name    = "cloudnative-pg"
-  chart_version = var.cnpg_version
-
-  values = module.rancher_cluster.cnpg_values
-
-  timeouts {
-    create = "10m"
-    update = "10m"
-    delete = "10m"
-  }
-
-  depends_on = [rancher2_catalog_v2.cnpg, rancher2_app_v2.longhorn]
-}
-
-# --- 20. ArgoCD ---
-resource "rancher2_catalog_v2" "argocd" {
-  count      = var.enable_argocd ? 1 : 0
-  provider   = rancher2.admin
-  cluster_id = module.rancher_cluster.cluster_id
-  name       = "argo"
-  url        = "https://argoproj.github.io/argo-helm"
-
-  depends_on = [rancher2_cluster_sync.cluster]
-}
-
-resource "rancher2_app_v2" "argocd" {
-  count         = var.enable_argocd ? 1 : 0
-  provider      = rancher2.admin
-  cluster_id    = module.rancher_cluster.cluster_id
-  name          = "argocd"
-  namespace     = "argocd"
-  repo_name     = "argo"
-  chart_name    = "argo-cd"
-  chart_version = var.argocd_version
-
-  values = module.rancher_cluster.argocd_values
-
-  timeouts {
-    create = "15m"
-    update = "15m"
-    delete = "10m"
-  }
-
-  depends_on = [rancher2_catalog_v2.argocd, rancher2_app_v2.cert_manager]
-}
-
-# --- 21. Keycloak ---
-# NOTE: Bitnami Keycloak images removed from all public registries (Docker Hub, registry.bitnami.com).
-# Using official quay.io/keycloak/keycloak image via kubectl apply (ssh_resource).
-# Sprint 1: dev mode (H2 in-memory). Sprint 2: migrate to CNPG PostgreSQL.
-#
-# rancher2_catalog_v2.bitnami kept so existing state entry is not destroyed.
-resource "rancher2_catalog_v2" "bitnami" {
-  count      = var.enable_keycloak ? 1 : 0
-  provider   = rancher2.admin
-  cluster_id = module.rancher_cluster.cluster_id
-  name       = "bitnami"
-  url        = "https://charts.bitnami.com/bitnami"
-
-  depends_on = [rancher2_cluster_sync.cluster]
-}
-
-locals {
-  keycloak_manifest_yaml = <<-YAML
-    apiVersion: v1
-    kind: Secret
-    metadata:
-      name: keycloak-admin
-      namespace: keycloak
-    type: Opaque
-    stringData:
-      KEYCLOAK_ADMIN: admin
-      KEYCLOAK_ADMIN_PASSWORD: "${var.keycloak_admin_password}"
-    ---
-    apiVersion: apps/v1
-    kind: Deployment
-    metadata:
-      name: keycloak
-      namespace: keycloak
-      labels:
-        app: keycloak
-    spec:
-      replicas: 1
-      selector:
-        matchLabels:
-          app: keycloak
-      template:
-        metadata:
-          labels:
-            app: keycloak
-        spec:
-          containers:
-            - name: keycloak
-              image: quay.io/keycloak/keycloak:26.1
-              args: ["start-dev"]
-              env:
-                - name: KEYCLOAK_ADMIN
-                  valueFrom:
-                    secretKeyRef:
-                      name: keycloak-admin
-                      key: KEYCLOAK_ADMIN
-                - name: KEYCLOAK_ADMIN_PASSWORD
-                  valueFrom:
-                    secretKeyRef:
-                      name: keycloak-admin
-                      key: KEYCLOAK_ADMIN_PASSWORD
-                - name: KC_PROXY_HEADERS
-                  value: "xforwarded"
-                - name: KC_HOSTNAME_STRICT
-                  value: "false"
-                - name: KC_HTTP_ENABLED
-                  value: "true"
-              ports:
-                - name: http
-                  containerPort: 8080
-              readinessProbe:
-                tcpSocket:
-                  port: 8080
-                initialDelaySeconds: 30
-                periodSeconds: 10
-                failureThreshold: 6
-              resources:
-                requests:
-                  cpu: "500m"
-                  memory: "512Mi"
-                limits:
-                  memory: "1Gi"
-          tolerations:
-            - operator: "Exists"
-    ---
-    apiVersion: v1
-    kind: Service
-    metadata:
-      name: keycloak
-      namespace: keycloak
-    spec:
-      selector:
-        app: keycloak
-      ports:
-        - name: http
-          port: 80
-          targetPort: 8080
-      type: ClusterIP
-  YAML
-}
-
-resource "ssh_resource" "keycloak" {
-  count       = var.enable_keycloak ? 1 : 0
-  host        = module.hetzner_infra.management_ip
-  user        = local.node_username
-  private_key = tls_private_key.global_key.private_key_pem
-  timeout     = "5m"
-
-  commands = [
-    "kubectl get secret -n fleet-default ${var.cluster_name}-kubeconfig -o jsonpath='{.data.value}' | base64 -d > /tmp/workload-kubeconfig",
-    # Delete existing Service first to avoid stale selector from old Bitnami install
-    "KUBECONFIG=/tmp/workload-kubeconfig kubectl delete svc keycloak -n keycloak --ignore-not-found",
-    "echo '${base64encode(local.keycloak_manifest_yaml)}' | base64 -d | KUBECONFIG=/tmp/workload-kubeconfig kubectl apply -f -",
-  ]
-
-  depends_on = [rancher2_cluster_sync.cluster]
-}
-
-# --- 22. External-DNS (optional, requires cloudflare_api_token) ---
-resource "rancher2_catalog_v2" "external_dns" {
-  count      = var.enable_external_dns ? 1 : 0
-  provider   = rancher2.admin
-  cluster_id = module.rancher_cluster.cluster_id
-  name       = "external-dns"
-  url        = "https://kubernetes-sigs.github.io/external-dns"
-
-  depends_on = [rancher2_cluster_sync.cluster]
-}
-
-resource "rancher2_app_v2" "external_dns" {
-  count         = var.enable_external_dns ? 1 : 0
-  provider      = rancher2.admin
-  cluster_id    = module.rancher_cluster.cluster_id
-  name          = "external-dns"
-  namespace     = "external-dns"
-  repo_name     = "external-dns"
-  chart_name    = "external-dns"
-  chart_version = var.external_dns_version
-
-  values = module.rancher_cluster.external_dns_values
-
-  timeouts {
-    create = "10m"
-    update = "10m"
-    delete = "10m"
-  }
-
-  depends_on = [rancher2_catalog_v2.external_dns, rancher2_cluster_sync.cluster]
-}
-
-# --- 22a. ArgoCD: apply app-of-apps (after ArgoCD is ready) ---
-# Applies the root app-of-apps manifest so ArgoCD starts managing platform services.
-# The repo URL placeholder in app-of-apps.yaml must be updated before this runs.
-resource "ssh_resource" "argocd_app_of_apps" {
-  count       = var.enable_argocd ? 1 : 0
-  host        = module.hetzner_infra.management_ip
-  user        = local.node_username
-  private_key = tls_private_key.global_key.private_key_pem
-  timeout     = "5m"
-
-  commands = [
-    "kubectl get secret -n fleet-default ${var.cluster_name}-kubeconfig -o jsonpath='{.data.value}' | base64 -d > /tmp/workload-kubeconfig",
-    # Wait for ArgoCD server to be ready
-    "KUBECONFIG=/tmp/workload-kubeconfig kubectl rollout status deployment/argocd-server -n argocd --timeout=5m || true",
-  ]
-
-  depends_on = [rancher2_app_v2.argocd]
-}
-
-# --- 23a. Redis Operator (OpsTree) ---
-resource "rancher2_catalog_v2" "ot_helm" {
-  count      = var.enable_redis_operator ? 1 : 0
-  provider   = rancher2.admin
-  cluster_id = module.rancher_cluster.cluster_id
-  name       = "ot-helm"
-  url        = "https://ot-container-kit.github.io/helm-charts"
-
-  depends_on = [rancher2_cluster_sync.cluster]
-}
-
-resource "rancher2_app_v2" "redis_operator" {
-  count         = var.enable_redis_operator ? 1 : 0
-  provider      = rancher2.admin
-  cluster_id    = module.rancher_cluster.cluster_id
-  name          = "redis-operator"
-  namespace     = "redis-system"
-  repo_name     = "ot-helm"
-  chart_name    = "redis-operator"
-  chart_version = var.redis_operator_version
-
-  values = module.rancher_cluster.redis_operator_values
-
-  timeouts {
-    create = "10m"
-    update = "10m"
-    delete = "10m"
-  }
-
-  depends_on = [rancher2_catalog_v2.ot_helm, rancher2_cluster_sync.cluster]
-}
-
-# --- 23b. RabbitMQ Cluster Operator ---
-resource "rancher2_catalog_v2" "rabbitmq_operator_repo" {
-  count      = var.enable_rabbitmq_operator ? 1 : 0
-  provider   = rancher2.admin
-  cluster_id = module.rancher_cluster.cluster_id
-  name       = "rabbitmq"
-  url        = "https://charts.bitnami.com/bitnami"
-
-  depends_on = [rancher2_cluster_sync.cluster]
-}
-
-resource "rancher2_app_v2" "rabbitmq_operator" {
-  count         = var.enable_rabbitmq_operator ? 1 : 0
-  provider      = rancher2.admin
-  cluster_id    = module.rancher_cluster.cluster_id
-  name          = "rabbitmq-cluster-operator"
-  namespace     = "rabbitmq-system"
-  repo_name     = "rabbitmq"
-  chart_name    = "rabbitmq-cluster-operator"
-  chart_version = var.rabbitmq_operator_version
-
-  values = module.rancher_cluster.rabbitmq_operator_values
-
-  timeouts {
-    create = "10m"
-    update = "10m"
-    delete = "10m"
-  }
-
-  depends_on = [rancher2_catalog_v2.rabbitmq_operator_repo, rancher2_cluster_sync.cluster]
-}
-
-# --- 23. Platform Namespaces (haven-system, haven-builds) ---
-resource "ssh_resource" "platform_namespaces" {
-  host        = module.hetzner_infra.management_ip
-  user        = local.node_username
-  private_key = tls_private_key.global_key.private_key_pem
-  timeout     = "5m"
-
-  commands = [
-    "kubectl get secret -n fleet-default ${var.cluster_name}-kubeconfig -o jsonpath='{.data.value}' | base64 -d > /tmp/workload-kubeconfig",
-    "KUBECONFIG=/tmp/workload-kubeconfig kubectl create namespace haven-system --dry-run=client -o yaml | KUBECONFIG=/tmp/workload-kubeconfig kubectl apply -f -",
-    "KUBECONFIG=/tmp/workload-kubeconfig kubectl create namespace haven-builds --dry-run=client -o yaml | KUBECONFIG=/tmp/workload-kubeconfig kubectl apply -f -",
-    "KUBECONFIG=/tmp/workload-kubeconfig kubectl label namespace haven-system project=haven environment=${var.environment} --overwrite",
-    "KUBECONFIG=/tmp/workload-kubeconfig kubectl label namespace haven-builds project=haven environment=${var.environment} --overwrite",
-  ]
-
-  depends_on = [rancher2_cluster_sync.cluster]
-}
-
-# --- 24. CNPG Cluster (haven_platform database) ---
-# Applied after CNPG operator is ready. Uses base64-encoded manifest to avoid heredoc issues.
-locals {
-  cnpg_cluster_yaml = <<-YAML
-    apiVersion: postgresql.cnpg.io/v1
-    kind: Cluster
-    metadata:
-      name: haven-platform
-      namespace: cnpg-system
-    spec:
-      instances: 1
-      storage:
-        storageClass: longhorn
-        size: 20Gi
-      bootstrap:
-        initdb:
-          database: haven_platform
-          owner: haven_api
-      affinity:
-        tolerations:
-          - operator: "Exists"
-  YAML
-}
-
-resource "ssh_resource" "cnpg_cluster" {
-  count       = var.enable_cnpg ? 1 : 0
-  host        = module.hetzner_infra.management_ip
-  user        = local.node_username
-  private_key = tls_private_key.global_key.private_key_pem
-  timeout     = "10m"
-
-  commands = [
-    "kubectl get secret -n fleet-default ${var.cluster_name}-kubeconfig -o jsonpath='{.data.value}' | base64 -d > /tmp/workload-kubeconfig",
-    "echo '${base64encode(local.cnpg_cluster_yaml)}' | base64 -d | KUBECONFIG=/tmp/workload-kubeconfig kubectl apply -f -",
-  ]
-
-  depends_on = [rancher2_app_v2.cnpg]
-}
-
-# --- 25. Node Topology Labels (Haven Check #1: Multi-AZ) ---
-# Labels nodes with topology.kubernetes.io/zone so Haven checker detects multi-AZ.
-# The Haven infraMultiAZ check reads this label; without it all nodes appear in the same zone.
+# --- 9. Node Topology Labels (Haven Check #1: Multi-AZ) ---
 resource "ssh_resource" "node_topology_labels" {
-  host        = module.hetzner_infra.management_ip
+  host        = hcloud_server.master[0].ipv4_address
   user        = local.node_username
   private_key = tls_private_key.global_key.private_key_pem
   timeout     = "5m"
 
   commands = concat(
-    # Get workload cluster kubeconfig via fleet-default secret
-    ["kubectl get secret -n fleet-default ${var.cluster_name}-kubeconfig -o jsonpath='{.data.value}' | base64 -d > /tmp/workload-kubeconfig"],
-    # Label master nodes with their zone
+    ["export KUBECONFIG=/etc/rancher/rke2/rke2.yaml && export PATH=$PATH:/var/lib/rancher/rke2/bin"],
     [for i in range(var.master_count) :
-      "KUBECONFIG=/tmp/workload-kubeconfig kubectl label node haven-master-${var.environment}-${i + 1} topology.kubernetes.io/zone=${local.master_locations[i]} topology.kubernetes.io/region=eu --overwrite"
+      "kubectl label node haven-master-${var.environment}-${i + 1} topology.kubernetes.io/zone=${local.master_locations[i]} topology.kubernetes.io/region=eu --overwrite"
     ],
-    # Label worker nodes with their zone
     [for i in range(var.worker_count) :
-      "KUBECONFIG=/tmp/workload-kubeconfig kubectl label node haven-worker-${var.environment}-${i + 1} topology.kubernetes.io/zone=${local.worker_locations[i]} topology.kubernetes.io/region=eu --overwrite"
+      "kubectl label node haven-worker-${var.environment}-${i + 1} topology.kubernetes.io/zone=${local.worker_locations[i]} topology.kubernetes.io/region=eu --overwrite"
     ]
   )
 
-  depends_on = [rancher2_cluster_sync.cluster]
+  depends_on = [ssh_resource.wait_cluster_ready]
+}
+
+# ============================================================
+# Platform Operators (via Helm provider)
+# ============================================================
+
+# --- 10. Longhorn Storage (Haven Check #10: RWX) ---
+resource "helm_release" "longhorn" {
+  count            = var.enable_longhorn ? 1 : 0
+  name             = "longhorn"
+  namespace        = "longhorn-system"
+  create_namespace = true
+  repository       = "https://charts.longhorn.io"
+  chart            = "longhorn"
+  version          = var.longhorn_version
+  timeout          = 900
+  wait             = true
+
+  values = [templatefile("${path.module}/helm-values/longhorn.yaml", {
+    replica_count = var.worker_count >= 3 ? 3 : var.worker_count
+  })]
+
+  depends_on = [ssh_resource.wait_cluster_ready]
+}
+
+# --- 11. Cert-Manager (Haven Check #12: Auto HTTPS) ---
+resource "helm_release" "cert_manager" {
+  count            = var.enable_cert_manager ? 1 : 0
+  name             = "cert-manager"
+  namespace        = "cert-manager"
+  create_namespace = true
+  repository       = "https://charts.jetstack.io"
+  chart            = "cert-manager"
+  version          = var.cert_manager_version
+  timeout          = 600
+  wait             = true
+
+  set {
+    name  = "installCRDs"
+    value = "true"
+  }
+
+  depends_on = [helm_release.longhorn]
+}
+
+# --- 12. Kube-Prometheus-Stack (Haven Check #14: Monitoring) ---
+resource "helm_release" "monitoring" {
+  count            = var.enable_monitoring ? 1 : 0
+  name             = "kube-prometheus-stack"
+  namespace        = "monitoring"
+  create_namespace = true
+  repository       = "https://prometheus-community.github.io/helm-charts"
+  chart            = "kube-prometheus-stack"
+  version          = var.monitoring_version
+  timeout          = 900
+  wait             = true
+
+  values = [templatefile("${path.module}/helm-values/monitoring.yaml", {
+    storage_class = "longhorn"
+  })]
+
+  depends_on = [helm_release.longhorn]
+}
+
+# --- 13. Logging (Haven Check #13: Log Aggregation) ---
+resource "helm_release" "loki_stack" {
+  count            = var.enable_logging ? 1 : 0
+  name             = "loki-stack"
+  namespace        = "logging"
+  create_namespace = true
+  repository       = "https://grafana.github.io/helm-charts"
+  chart            = "loki-stack"
+  version          = var.logging_version
+  timeout          = 600
+  wait             = true
+
+  values = [templatefile("${path.module}/helm-values/logging.yaml", {})]
+
+  depends_on = [helm_release.longhorn]
+}
+
+# --- 14. Harbor Image Registry ---
+resource "helm_release" "harbor" {
+  count            = var.enable_harbor ? 1 : 0
+  name             = "harbor"
+  namespace        = "harbor-system"
+  create_namespace = true
+  repository       = "https://helm.goharbor.io"
+  chart            = "harbor"
+  version          = var.harbor_version
+  timeout          = 1500
+  wait             = true
+
+  values = [templatefile("${path.module}/helm-values/harbor.yaml", {
+    harbor_host            = local.harbor_host
+    admin_password         = var.harbor_admin_password
+    registry_storage_size  = var.harbor_registry_storage_size
+  })]
+
+  depends_on = [helm_release.longhorn, helm_release.cert_manager]
+}
+
+# --- 15. MinIO Object Storage ---
+resource "helm_release" "minio" {
+  count            = var.enable_minio ? 1 : 0
+  name             = "minio"
+  namespace        = "minio-system"
+  create_namespace = true
+  repository       = "https://charts.min.io"
+  chart            = "minio"
+  version          = var.minio_version
+  timeout          = 900
+  wait             = true
+
+  values = [templatefile("${path.module}/helm-values/minio.yaml", {
+    root_user     = var.minio_root_user
+    root_password = var.minio_root_password
+    storage_size  = var.minio_storage_size
+  })]
+
+  depends_on = [helm_release.longhorn]
+}
+
+# --- 16. ArgoCD ---
+resource "helm_release" "argocd" {
+  count            = var.enable_argocd ? 1 : 0
+  name             = "argocd"
+  namespace        = "argocd"
+  create_namespace = true
+  repository       = "https://argoproj.github.io/argo-helm"
+  chart            = "argo-cd"
+  version          = var.argocd_version
+  timeout          = 900
+  wait             = true
+
+  values = [templatefile("${path.module}/helm-values/argocd.yaml", {
+    argocd_host = local.argocd_host
+  })]
+
+  depends_on = [helm_release.cert_manager]
+}
+
+# --- 17. Percona Everest (Database Platform) ---
+# Installs Percona Everest operator + UI for PostgreSQL, MySQL, MongoDB
+resource "helm_release" "everest_operator" {
+  count            = var.enable_everest ? 1 : 0
+  name             = "everest-operator"
+  namespace        = "everest-system"
+  create_namespace = true
+  repository       = "https://percona.github.io/percona-helm-charts"
+  chart            = "everest-operator"
+  version          = var.everest_operator_version
+  timeout          = 900
+  wait             = true
+
+  depends_on = [helm_release.longhorn]
+}
+
+# Percona Everest server (UI + API)
+resource "helm_release" "everest" {
+  count            = var.enable_everest ? 1 : 0
+  name             = "everest"
+  namespace        = "everest-system"
+  create_namespace = false
+  repository       = "https://percona.github.io/percona-helm-charts"
+  chart            = "everest"
+  version          = var.everest_version
+  timeout          = 600
+  wait             = true
+
+  depends_on = [helm_release.everest_operator]
+}
+
+# --- 18. Redis Operator (OpsTree) ---
+resource "helm_release" "redis_operator" {
+  count            = var.enable_redis_operator ? 1 : 0
+  name             = "redis-operator"
+  namespace        = "redis-system"
+  create_namespace = true
+  repository       = "https://ot-container-kit.github.io/helm-charts"
+  chart            = "redis-operator"
+  version          = var.redis_operator_version
+  timeout          = 600
+  wait             = true
+
+  depends_on = [ssh_resource.wait_cluster_ready]
+}
+
+# --- 19. RabbitMQ Cluster Operator ---
+resource "helm_release" "rabbitmq_operator" {
+  count            = var.enable_rabbitmq_operator ? 1 : 0
+  name             = "rabbitmq-cluster-operator"
+  namespace        = "rabbitmq-system"
+  create_namespace = true
+  repository       = "https://charts.bitnami.com/bitnami"
+  chart            = "rabbitmq-cluster-operator"
+  version          = var.rabbitmq_operator_version
+  timeout          = 600
+  wait             = true
+
+  depends_on = [ssh_resource.wait_cluster_ready]
+}
+
+# --- 20. Keycloak (Production mode + CNPG PostgreSQL) ---
+# First create the Keycloak database via CNPG
+resource "helm_release" "keycloak_db" {
+  count            = var.enable_keycloak ? 1 : 0
+  name             = "keycloak-db"
+  namespace        = "keycloak"
+  create_namespace = true
+  chart            = "${path.module}/../../charts/cnpg-cluster"
+  timeout          = 600
+  wait             = true
+
+  set {
+    name  = "name"
+    value = "keycloak-db"
+  }
+  set {
+    name  = "instances"
+    value = "1"
+  }
+  set {
+    name  = "database"
+    value = "keycloak"
+  }
+  set {
+    name  = "owner"
+    value = "keycloak"
+  }
+  set {
+    name  = "storage.size"
+    value = "10Gi"
+  }
+
+  depends_on = [helm_release.longhorn, helm_release.everest_operator]
+}
+
+resource "helm_release" "keycloak" {
+  count            = var.enable_keycloak ? 1 : 0
+  name             = "keycloak"
+  namespace        = "keycloak"
+  create_namespace = false
+  repository       = "https://codecentric.github.io/helm-charts"
+  chart            = "keycloakx"
+  version          = var.keycloak_chart_version
+  timeout          = 600
+  wait             = true
+
+  values = [templatefile("${path.module}/helm-values/keycloak.yaml", {
+    keycloak_host     = local.keycloak_host
+    admin_password    = var.keycloak_admin_password
+    db_secret_name    = "keycloak-db-app"
+  })]
+
+  depends_on = [helm_release.keycloak_db]
+}
+
+# --- 21. Platform Namespaces ---
+resource "kubernetes_namespace" "haven_system" {
+  metadata {
+    name = "haven-system"
+    labels = {
+      project     = "haven"
+      environment = var.environment
+    }
+  }
+  depends_on = [ssh_resource.wait_cluster_ready]
+}
+
+resource "kubernetes_namespace" "haven_builds" {
+  metadata {
+    name = "haven-builds"
+    labels = {
+      project     = "haven"
+      environment = var.environment
+    }
+  }
+  depends_on = [ssh_resource.wait_cluster_ready]
+}
+
+# --- 22. Gateway API Resources ---
+# Applied after Cilium is running and cert-manager is installed
+resource "ssh_resource" "gateway_api" {
+  host        = hcloud_server.master[0].ipv4_address
+  user        = local.node_username
+  private_key = tls_private_key.global_key.private_key_pem
+  timeout     = "5m"
+
+  commands = [
+    <<-EOT
+      export KUBECONFIG=/etc/rancher/rke2/rke2.yaml
+      export PATH=$PATH:/var/lib/rancher/rke2/bin
+
+      # Create gateway namespace
+      kubectl create namespace haven-gateway --dry-run=client -o yaml | kubectl apply -f -
+
+      # Apply Gateway API experimental CRDs (for TLSRoute support)
+      kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.2.1/experimental-install.yaml 2>/dev/null || true
+
+      # Wait for Cilium GatewayClass
+      for i in $(seq 1 30); do
+        if kubectl get gatewayclass cilium >/dev/null 2>&1; then
+          echo "GatewayClass cilium found"
+          break
+        fi
+        sleep 10
+      done
+    EOT
+  ]
+
+  depends_on = [ssh_resource.wait_cluster_ready, helm_release.cert_manager]
+}
+
+# ClusterIssuer for Let's Encrypt
+resource "kubernetes_manifest" "letsencrypt_issuer" {
+  manifest = {
+    apiVersion = "cert-manager.io/v1"
+    kind       = "ClusterIssuer"
+    metadata = {
+      name = "letsencrypt-gateway"
+    }
+    spec = {
+      acme = {
+        server = "https://acme-v02.api.letsencrypt.org/directory"
+        email  = "admin@haven.dev"
+        privateKeySecretRef = {
+          name = "letsencrypt-gateway-key"
+        }
+        solvers = [{
+          http01 = {
+            gatewayHTTPRoute = {
+              parentRefs = [{
+                name      = "haven-gateway"
+                namespace = "haven-gateway"
+              }]
+            }
+          }
+        }]
+      }
+    }
+  }
+
+  depends_on = [helm_release.cert_manager, ssh_resource.gateway_api]
+}
+
+# Gateway resource
+resource "kubernetes_manifest" "haven_gateway" {
+  manifest = {
+    apiVersion = "gateway.networking.k8s.io/v1"
+    kind       = "Gateway"
+    metadata = {
+      name      = "haven-gateway"
+      namespace = "haven-gateway"
+      annotations = {
+        "cert-manager.io/cluster-issuer" = "letsencrypt-gateway"
+      }
+    }
+    spec = {
+      gatewayClassName = "cilium"
+      listeners = [
+        {
+          name     = "http"
+          port     = 80
+          protocol = "HTTP"
+          allowedRoutes = {
+            namespaces = { from = "All" }
+          }
+        },
+        {
+          name     = "https"
+          port     = 443
+          protocol = "HTTPS"
+          tls = {
+            mode = "Terminate"
+            certificateRefs = [{
+              name = "haven-gateway-tls"
+            }]
+          }
+          allowedRoutes = {
+            namespaces = { from = "All" }
+          }
+        }
+      ]
+    }
+  }
+
+  depends_on = [ssh_resource.gateway_api]
+}
+
+# --- 23. External-DNS (optional) ---
+resource "helm_release" "external_dns" {
+  count            = var.enable_external_dns ? 1 : 0
+  name             = "external-dns"
+  namespace        = "external-dns"
+  create_namespace = true
+  repository       = "https://kubernetes-sigs.github.io/external-dns"
+  chart            = "external-dns"
+  version          = var.external_dns_version
+  timeout          = 600
+  wait             = true
+
+  values = [templatefile("${path.module}/helm-values/external-dns.yaml", {
+    cloudflare_api_token = var.cloudflare_api_token
+    domain_filters       = var.external_dns_domain_filters
+  })]
+
+  depends_on = [ssh_resource.wait_cluster_ready]
 }

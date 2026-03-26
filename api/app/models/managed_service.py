@@ -13,6 +13,8 @@ if TYPE_CHECKING:
 
 class ServiceType(PyEnum):
     POSTGRES = "postgres"
+    MYSQL = "mysql"
+    MONGODB = "mongodb"
     REDIS = "redis"
     RABBITMQ = "rabbitmq"
 

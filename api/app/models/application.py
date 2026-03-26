@@ -2,7 +2,7 @@ import secrets
 import uuid
 from typing import TYPE_CHECKING
 
-from sqlalchemy import JSON, ForeignKey, String
+from sqlalchemy import JSON, Boolean, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TimestampMixin
@@ -33,6 +33,24 @@ class Application(Base, TimestampMixin):
     webhook_token: Mapped[str] = mapped_column(
         String(64), unique=True, index=True, default=_generate_webhook_token
     )
+
+    # Sprint 3: Monorepo support
+    dockerfile_path: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    build_context: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    use_dockerfile: Mapped[bool] = mapped_column(Boolean, default=False)
+    detected_deps: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+
+    # Sprint 6: Production hardening
+    custom_domain: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    health_check_path: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    resource_cpu_request: Mapped[str] = mapped_column(String(32), default="50m")
+    resource_cpu_limit: Mapped[str] = mapped_column(String(32), default="500m")
+    resource_memory_request: Mapped[str] = mapped_column(String(32), default="64Mi")
+    resource_memory_limit: Mapped[str] = mapped_column(String(32), default="512Mi")
+    min_replicas: Mapped[int] = mapped_column(Integer, default=1)
+    max_replicas: Mapped[int] = mapped_column(Integer, default=5)
+    cpu_threshold: Mapped[int] = mapped_column(Integer, default=70)
+    auto_deploy: Mapped[bool] = mapped_column(Boolean, default=True)
 
     tenant: Mapped["Tenant"] = relationship(back_populates="applications")
     deployments: Mapped[list["Deployment"]] = relationship(

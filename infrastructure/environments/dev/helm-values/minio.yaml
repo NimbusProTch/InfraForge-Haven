@@ -1,0 +1,16 @@
+# MinIO Object Storage
+mode: standalone
+rootUser: "${root_user}"
+rootPassword: "${root_password}"
+persistence:
+  enabled: true
+  storageClass: longhorn
+  size: ${storage_size}
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    memory: 1Gi
+tolerations:
+  - operator: "Exists"

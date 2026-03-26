@@ -6,10 +6,6 @@ terraform {
       source  = "hetznercloud/hcloud"
       version = "~> 1.49"
     }
-    rancher2 = {
-      source  = "rancher/rancher2"
-      version = "~> 5.0" # Compatible with Rancher 2.9.x - 2.10.x
-    }
     ssh = {
       source  = "loafoe/ssh"
       version = "~> 2.6"
@@ -21,6 +17,18 @@ terraform {
     local = {
       source  = "hashicorp/local"
       version = "~> 2.4"
+    }
+    helm = {
+      source  = "hashicorp/helm"
+      version = "~> 2.17"
+    }
+    kubernetes = {
+      source  = "hashicorp/kubernetes"
+      version = "~> 2.35"
+    }
+    random = {
+      source  = "hashicorp/random"
+      version = "~> 3.6"
     }
   }
 }

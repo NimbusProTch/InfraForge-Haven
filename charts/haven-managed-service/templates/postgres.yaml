@@ -1,0 +1,39 @@
+{{- if eq .Values.serviceType "postgres" }}
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: {{ .Values.name }}
+  labels:
+    {{- include "managed-service.labels" . | nindent 4 }}
+spec:
+  instances: {{ include "managed-service.instances" . }}
+  storage:
+    storageClass: {{ .Values.postgres.storageClass }}
+    size: {{ include "managed-service.storage" . }}
+  postgresql:
+    parameters:
+      max_connections: "200"
+      shared_buffers: "256MB"
+  bootstrap:
+    initdb:
+      database: {{ .Values.name | replace "-" "_" }}
+      owner: {{ .Values.name | replace "-" "_" }}_user
+  affinity:
+    tolerations:
+      - operator: "Exists"
+  {{- if eq .Values.tier "prod" }}
+  backup:
+    barmanObjectStore:
+      destinationPath: "s3://haven-backups/{{ .Values.name }}"
+      s3Credentials:
+        accessKeyId:
+          name: minio-backup-credentials
+          key: ACCESS_KEY_ID
+        secretAccessKey:
+          name: minio-backup-credentials
+          key: ACCESS_SECRET_KEY
+      wal:
+        compression: gzip
+    retentionPolicy: "30d"
+  {{- end }}
+{{- end }}

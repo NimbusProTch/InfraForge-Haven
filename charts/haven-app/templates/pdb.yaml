@@ -1,0 +1,13 @@
+{{- if or .Values.pdb.enabled (eq .Values.preset "prod") }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "haven-app.fullname" . }}
+  labels:
+    {{- include "haven-app.labels" . | nindent 4 }}
+spec:
+  minAvailable: {{ .Values.pdb.minAvailable }}
+  selector:
+    matchLabels:
+      {{- include "haven-app.selectorLabels" . | nindent 6 }}
+{{- end }}

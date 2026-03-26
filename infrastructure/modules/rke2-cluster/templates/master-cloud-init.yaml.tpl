@@ -1,0 +1,126 @@
+#cloud-config
+package_update: true
+packages:
+  - curl
+  - jq
+  - open-iscsi  # Required for Longhorn
+
+write_files:
+  # RKE2 server config
+  - path: /etc/rancher/rke2/config.yaml
+    permissions: "0600"
+    content: |
+      token: "${cluster_token}"
+      %{ if is_first_master ~}
+      cluster-init: true
+      %{ else ~}
+      server: "https://${first_master_private_ip}:9345"
+      %{ endif ~}
+      node-ip: "__PRIVATE_IP__"
+      node-external-ip: "__PUBLIC_IP__"
+      tls-san:
+        - "${lb_ip}"
+        - "__PRIVATE_IP__"
+        - "__PUBLIC_IP__"
+      %{ if lb_private_ip != "" ~}
+        - "${lb_private_ip}"
+      %{ endif ~}
+      cni: cilium
+      disable:
+        - rke2-ingress-nginx
+      %{ if disable_kube_proxy ~}
+      disable-kube-proxy: true
+      %{ endif ~}
+      %{ if enable_cis_profile ~}
+      profile: cis
+      protect-kernel-defaults: true
+      %{ endif ~}
+      # Write kubeconfig accessible for kubectl
+      write-kubeconfig-mode: "0644"
+
+  # Cilium HelmChartConfig (RKE2 built-in Helm controller)
+  - path: /var/lib/rancher/rke2/server/manifests/rke2-cilium-config.yaml
+    permissions: "0600"
+    content: |
+      apiVersion: helm.cattle.io/v1
+      kind: HelmChartConfig
+      metadata:
+        name: rke2-cilium
+        namespace: kube-system
+      spec:
+        valuesContent: |-
+          kubeProxyReplacement: true
+          k8sServiceHost: "__PRIVATE_IP__"
+          k8sServicePort: "6443"
+          operator:
+            replicas: ${cilium_operator_replicas}
+          gatewayAPI:
+            enabled: true
+          hubble:
+            enabled: ${enable_hubble}
+            relay:
+              enabled: ${enable_hubble}
+            ui:
+              enabled: ${enable_hubble}
+          ipam:
+            mode: "kubernetes"
+          tolerations:
+            - operator: "Exists"
+
+  # Kernel params for CIS hardening
+  - path: /etc/sysctl.d/90-rke2.conf
+    permissions: "0644"
+    content: |
+      vm.panic_on_oom=0
+      vm.overcommit_memory=1
+      kernel.panic=10
+      kernel.panic_on_oops=1
+
+runcmd:
+  # Apply kernel params
+  - sysctl --system
+
+  # Enable and start iscsid for Longhorn
+  - systemctl enable --now iscsid
+
+  # Detect private and public IPs
+  - |
+    PRIVATE_IP=$(ip -4 addr show ens10 2>/dev/null | grep -oP '(?<=inet\s)\d+(\.\d+){3}' || echo "")
+    if [ -z "$PRIVATE_IP" ]; then
+      # Fallback: try to get from metadata
+      PRIVATE_IP=$(curl -sf http://169.254.169.254/hetzner/v1/metadata/private-networks 2>/dev/null | grep -oP 'ip-address: \K[\d.]+' | head -1 || echo "")
+    fi
+    # Wait for private IP (Hetzner attaches network interface async)
+    for i in $(seq 1 30); do
+      if [ -n "$PRIVATE_IP" ]; then break; fi
+      sleep 5
+      PRIVATE_IP=$(ip -4 addr show ens10 2>/dev/null | grep -oP '(?<=inet\s)\d+(\.\d+){3}' || echo "")
+    done
+    if [ -z "$PRIVATE_IP" ]; then
+      echo "ERROR: Could not detect private IP after 150s" >&2
+      exit 1
+    fi
+    PUBLIC_IP=$(curl -sf http://169.254.169.254/hetzner/v1/metadata/public-ipv4 || hostname -I | awk '{print $1}')
+
+    # Replace placeholders in config files
+    sed -i "s/__PRIVATE_IP__/$PRIVATE_IP/g" /etc/rancher/rke2/config.yaml
+    sed -i "s/__PUBLIC_IP__/$PUBLIC_IP/g" /etc/rancher/rke2/config.yaml
+    sed -i "s/__PRIVATE_IP__/$PRIVATE_IP/g" /var/lib/rancher/rke2/server/manifests/rke2-cilium-config.yaml
+
+  # Install RKE2 server
+  - |
+    curl -sfL https://get.rke2.io | INSTALL_RKE2_VERSION="${kubernetes_version}" sh -
+    systemctl enable rke2-server.service
+    systemctl start rke2-server.service
+
+  # Wait for RKE2 to be ready
+  - |
+    export KUBECONFIG=/etc/rancher/rke2/rke2.yaml
+    export PATH=$PATH:/var/lib/rancher/rke2/bin
+    for i in $(seq 1 120); do
+      if kubectl get nodes >/dev/null 2>&1; then
+        echo "RKE2 API ready"
+        break
+      fi
+      sleep 5
+    done

@@ -1,0 +1,95 @@
+# Haven App - Default Values
+# Deploy tenant applications on the Haven PaaS platform
+
+image:
+  repository: ""
+  tag: ""
+  pullPolicy: Always
+  pullSecrets:
+    - name: harbor-registry-secret
+
+appSlug: ""
+tenantSlug: ""
+port: 8000
+replicas: 1
+
+# Environment variables injected via ConfigMap
+env: {}
+
+# K8s Secret references injected via envFrom
+envSecrets: []
+
+# Resource requests and limits
+resources:
+  requests:
+    cpu: "50m"
+    memory: "64Mi"
+  limits:
+    cpu: "500m"
+    memory: "512Mi"
+
+# Health probes configuration
+probes:
+  liveness:
+    enabled: true
+    type: tcp          # tcp | http
+    path: /health
+    port: null         # defaults to .Values.port
+    initialDelaySeconds: 10
+    periodSeconds: 10
+  readiness:
+    enabled: true
+    type: tcp
+    path: /health
+    port: null
+    initialDelaySeconds: 5
+    periodSeconds: 10
+  startup:
+    enabled: false
+    type: tcp
+    path: /health
+    port: null
+    failureThreshold: 30
+    periodSeconds: 10
+
+# Horizontal Pod Autoscaler
+autoscaling:
+  enabled: true
+  minReplicas: 1
+  maxReplicas: 5
+  targetCPUUtilizationPercentage: 70
+
+# Gateway API HTTPRoute
+httproute:
+  enabled: true
+  gateway:
+    name: haven-gateway
+    namespace: haven-gateway
+  hostname: ""       # auto-generated: {appSlug}.{tenantSlug}.apps.{domain}
+  customDomain: ""
+  domain: "sslip.io" # override with real domain
+
+# PodDisruptionBudget
+pdb:
+  enabled: false
+  minAvailable: 1
+
+# Topology spread constraints
+topologySpread:
+  enabled: false
+  maxSkew: 1
+  topologyKey: topology.kubernetes.io/zone
+  whenUnsatisfiable: DoNotSchedule
+
+# Prometheus ServiceMonitor
+serviceMonitor:
+  enabled: false
+  path: /metrics
+  interval: 30s
+
+# Preset: nonProd | prod
+# prod enforces: replicas >= 2, pdb enabled, topology spread enabled
+preset: nonProd
+
+tolerations:
+  - operator: "Exists"
