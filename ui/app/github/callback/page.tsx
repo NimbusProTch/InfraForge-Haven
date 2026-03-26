@@ -1,17 +1,21 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { Loader2, CheckCircle, XCircle } from "lucide-react";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8001";
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 export default function GitHubCallbackPage() {
   const searchParams = useSearchParams();
   const [status, setStatus] = useState<"loading" | "success" | "error">("loading");
   const [message, setMessage] = useState("");
+  const called = useRef(false);
 
   useEffect(() => {
+    if (called.current) return;
+    called.current = true;
+
     const code = searchParams.get("code");
     const error = searchParams.get("error");
 
