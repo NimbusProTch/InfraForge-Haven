@@ -427,12 +427,11 @@ resource "ssh_resource" "node_topology_labels" {
   timeout     = "5m"
 
   commands = concat(
-    ["export KUBECONFIG=/etc/rancher/rke2/rke2.yaml && export PATH=$PATH:/var/lib/rancher/rke2/bin"],
     [for i in range(var.master_count) :
-      "kubectl label node haven-master-${var.environment}-${i + 1} topology.kubernetes.io/zone=${local.master_locations[i]} topology.kubernetes.io/region=eu --overwrite"
+      "export KUBECONFIG=/etc/rancher/rke2/rke2.yaml && /var/lib/rancher/rke2/bin/kubectl label node haven-master-${var.environment}-${i + 1} topology.kubernetes.io/zone=${local.master_locations[i]} topology.kubernetes.io/region=eu --overwrite"
     ],
     [for i in range(var.worker_count) :
-      "kubectl label node haven-worker-${var.environment}-${i + 1} topology.kubernetes.io/zone=${local.worker_locations[i]} topology.kubernetes.io/region=eu --overwrite"
+      "export KUBECONFIG=/etc/rancher/rke2/rke2.yaml && /var/lib/rancher/rke2/bin/kubectl label node haven-worker-${var.environment}-${i + 1} topology.kubernetes.io/zone=${local.worker_locations[i]} topology.kubernetes.io/region=eu --overwrite"
     ]
   )
 
@@ -705,11 +704,11 @@ resource "ssh_resource" "platform_namespaces" {
   commands = [
     <<-EOT
       export KUBECONFIG=/etc/rancher/rke2/rke2.yaml
-      export PATH=$PATH:/var/lib/rancher/rke2/bin
-      kubectl create namespace haven-system --dry-run=client -o yaml | kubectl apply -f -
-      kubectl create namespace haven-builds --dry-run=client -o yaml | kubectl apply -f -
-      kubectl label namespace haven-system project=haven environment=${var.environment} --overwrite
-      kubectl label namespace haven-builds project=haven environment=${var.environment} --overwrite
+      K=/var/lib/rancher/rke2/bin/kubectl
+      $K create namespace haven-system --dry-run=client -o yaml | $K apply -f -
+      $K create namespace haven-builds --dry-run=client -o yaml | $K apply -f -
+      $K label namespace haven-system project=haven environment=${var.environment} --overwrite
+      $K label namespace haven-builds project=haven environment=${var.environment} --overwrite
     EOT
   ]
 
@@ -727,17 +726,17 @@ resource "ssh_resource" "gateway_api" {
   commands = [
     <<-EOT
       export KUBECONFIG=/etc/rancher/rke2/rke2.yaml
-      export PATH=$PATH:/var/lib/rancher/rke2/bin
+      K=/var/lib/rancher/rke2/bin/kubectl
 
       # Create gateway namespace
-      kubectl create namespace haven-gateway --dry-run=client -o yaml | kubectl apply -f -
+      $K create namespace haven-gateway --dry-run=client -o yaml | $K apply -f -
 
-      # Apply Gateway API experimental CRDs (for TLSRoute support)
-      kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.2.1/experimental-install.yaml 2>/dev/null || true
+      # Apply Gateway API experimental CRDs
+      $K apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.2.1/experimental-install.yaml 2>/dev/null || true
 
       # Wait for Cilium GatewayClass
       for i in $(seq 1 30); do
-        if kubectl get gatewayclass cilium >/dev/null 2>&1; then
+        if $K get gatewayclass cilium >/dev/null 2>&1; then
           echo "GatewayClass cilium found"
           break
         fi
@@ -759,10 +758,10 @@ resource "ssh_resource" "gateway_resources" {
   commands = [
     <<-EOT
       export KUBECONFIG=/etc/rancher/rke2/rke2.yaml
-      export PATH=$PATH:/var/lib/rancher/rke2/bin
+      K=/var/lib/rancher/rke2/bin/kubectl
 
       # ClusterIssuer for Let's Encrypt
-      cat <<'YAML' | kubectl apply -f -
+      cat <<'YAML' | $K apply -f -
       apiVersion: cert-manager.io/v1
       kind: ClusterIssuer
       metadata:
@@ -782,7 +781,7 @@ resource "ssh_resource" "gateway_resources" {
       YAML
 
       # Gateway resource
-      cat <<'YAML' | kubectl apply -f -
+      cat <<'YAML' | $K apply -f -
       apiVersion: gateway.networking.k8s.io/v1
       kind: Gateway
       metadata:
