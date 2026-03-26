@@ -13,7 +13,7 @@ from app.models.managed_service import ManagedService
 logger = logging.getLogger(__name__)
 
 # Default container port — apps should bind to PORT env var
-_APP_PORT = 8000
+_DEFAULT_APP_PORT = 8000
 
 
 async def get_service_secret_names(db: AsyncSession, tenant_id: object) -> list[str]:
@@ -43,9 +43,10 @@ class DeployService:
         replicas: int,
         env_vars: dict[str, str],
         service_secret_names: list[str] | None = None,
+        port: int = _DEFAULT_APP_PORT,
     ) -> None:
         """Create or update Deployment + Service + HTTPRoute + HPA."""
-        logger.info("Deploying app: namespace=%s app=%s image=%s", namespace, app_slug, image)
+        logger.info("Deploying app: namespace=%s app=%s image=%s port=%d", namespace, app_slug, image, port)
 
         if not self.k8s.is_available() or self.k8s.apps_v1 is None:
             logger.warning("K8s unavailable — skipping deploy for %s/%s", namespace, app_slug)
@@ -59,8 +60,9 @@ class DeployService:
                 replicas=replicas,
                 env_vars=env_vars,
                 service_secret_names=service_secret_names,
+                port=port,
             ),
-            self._apply_service(namespace=namespace, app_slug=app_slug),
+            self._apply_service(namespace=namespace, app_slug=app_slug, port=port),
         )
 
         # HTTPRoute and HPA after service exists
@@ -74,6 +76,41 @@ class DeployService:
         )
 
         logger.info("Deploy complete: namespace=%s app=%s", namespace, app_slug)
+
+    async def wait_for_ready(self, namespace: str, app_slug: str, timeout: int = 120) -> tuple[bool, str]:
+        """Wait for deployment to have at least 1 ready replica. Returns (success, message)."""
+        for _ in range(timeout // 5):
+            try:
+                dep = await asyncio.to_thread(
+                    self.k8s.apps_v1.read_namespaced_deployment_status,
+                    name=app_slug,
+                    namespace=namespace,
+                )
+                if dep.status.ready_replicas and dep.status.ready_replicas >= 1:
+                    return True, "Deployment ready"
+
+                # Check for pod errors that indicate permanent failure
+                pods = await asyncio.to_thread(
+                    self.k8s.core_v1.list_namespaced_pod,
+                    namespace=namespace,
+                    label_selector=f"app={app_slug}",
+                )
+                for pod in pods.items:
+                    for cs in (pod.status.container_statuses or []):
+                        if cs.state.waiting and cs.state.waiting.reason in (
+                            "CrashLoopBackOff",
+                            "ErrImagePull",
+                            "ImagePullBackOff",
+                        ):
+                            return (
+                                False,
+                                f"Pod {pod.metadata.name}: {cs.state.waiting.reason}"
+                                f" - {cs.state.waiting.message or ''}",
+                            )
+            except Exception:  # noqa: BLE001
+                pass
+            await asyncio.sleep(5)
+        return False, f"Deployment not ready after {timeout}s"
 
     async def scale(self, *, namespace: str, app_slug: str, replicas: int) -> None:
         """Scale deployment replicas."""
@@ -147,8 +184,9 @@ class DeployService:
         replicas: int,
         env_vars: dict[str, str],
         service_secret_names: list[str] | None = None,
+        port: int = _DEFAULT_APP_PORT,
     ) -> None:
-        env_list = [k8s_client_lib.V1EnvVar(name="PORT", value=str(_APP_PORT))]
+        env_list = [k8s_client_lib.V1EnvVar(name="PORT", value=str(port))]
         env_list += [k8s_client_lib.V1EnvVar(name=k, value=v) for k, v in env_vars.items()]
 
         env_from = [
@@ -178,7 +216,7 @@ class DeployService:
                                 image=image,
                                 image_pull_policy="Always",
                                 ports=[
-                                    k8s_client_lib.V1ContainerPort(container_port=_APP_PORT)
+                                    k8s_client_lib.V1ContainerPort(container_port=port)
                                 ],
                                 env=env_list,
                                 env_from=env_from,
@@ -188,7 +226,7 @@ class DeployService:
                                 ),
                                 liveness_probe=k8s_client_lib.V1Probe(
                                     tcp_socket=k8s_client_lib.V1TCPSocketAction(
-                                        port=_APP_PORT
+                                        port=port
                                     ),
                                     initial_delay_seconds=10,
                                     period_seconds=10,
@@ -226,7 +264,7 @@ class DeployService:
             resource=f"Deployment/{app_slug}",
         )
 
-    async def _apply_service(self, *, namespace: str, app_slug: str) -> None:
+    async def _apply_service(self, *, namespace: str, app_slug: str, port: int = _DEFAULT_APP_PORT) -> None:
         service = k8s_client_lib.V1Service(
             api_version="v1",
             kind="Service",
@@ -241,7 +279,7 @@ class DeployService:
                     k8s_client_lib.V1ServicePort(
                         protocol="TCP",
                         port=80,
-                        target_port=_APP_PORT,
+                        target_port=port,
                     )
                 ],
                 type="ClusterIP",
@@ -301,15 +339,19 @@ class DeployService:
             },
         }
 
-        await self._create_or_patch_custom(
-            group="gateway.networking.k8s.io",
-            version="v1",
-            plural="httproutes",
-            namespace=namespace,
-            name=app_slug,
-            body=httproute,
-        )
-        logger.info("HTTPRoute applied: %s → %s", app_slug, hostname)
+        try:
+            await self._create_or_patch_custom(
+                group="gateway.networking.k8s.io",
+                version="v1",
+                plural="httproutes",
+                namespace=namespace,
+                name=app_slug,
+                body=httproute,
+            )
+            logger.info("HTTPRoute applied: %s → %s", app_slug, hostname)
+        except ApiException as e:
+            # Gateway API CRD may not be installed (e.g. local dev)
+            logger.warning("HTTPRoute skipped (CRD not available): %s", e.reason)
 
     async def _apply_hpa(self, *, namespace: str, app_slug: str) -> None:
         if self.k8s.autoscaling_v2 is None:

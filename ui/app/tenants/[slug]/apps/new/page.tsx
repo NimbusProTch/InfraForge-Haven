@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter, useParams } from "next/navigation";
 import Link from "next/link";
@@ -62,14 +62,22 @@ export default function NewAppPage() {
     if (stored) setGithubToken(stored);
   }, []);
 
-  // Auto-load repos when token is available
-  const loadRepos = useCallback(async (token: string) => {
+  // Track the last token that triggered a repo load to detect reconnects
+  const lastLoadedTokenRef = useRef<string | null>(null);
+
+  // Auto-load repos when token is available, with retry for newly issued tokens
+  const loadRepos = useCallback(async (token: string, retries = 2) => {
     setReposLoading(true);
     setReposError("");
     try {
       const data = await api.github.repos(token);
       setRepos(data);
     } catch (err) {
+      if (retries > 0) {
+        // Retry after a short delay — new OAuth tokens may need a moment to activate
+        await new Promise((r) => setTimeout(r, 1000));
+        return loadRepos(token, retries - 1);
+      }
       setReposError(err instanceof Error ? err.message : "Failed to load repositories");
     } finally {
       setReposLoading(false);
@@ -77,10 +85,17 @@ export default function NewAppPage() {
   }, []);
 
   useEffect(() => {
-    if (effectiveToken && repos.length === 0) {
+    if (!effectiveToken) {
+      // Token was cleared (disconnect) — reset tracking so next token triggers reload
+      lastLoadedTokenRef.current = null;
+      return;
+    }
+    // Reload repos when a new/different token arrives, regardless of repos.length
+    if (effectiveToken !== lastLoadedTokenRef.current) {
+      lastLoadedTokenRef.current = effectiveToken;
       loadRepos(effectiveToken);
     }
-  }, [effectiveToken, repos.length, loadRepos]);
+  }, [effectiveToken, loadRepos]);
 
   async function connectGitHub() {
     setConnecting(true);
@@ -94,7 +109,7 @@ export default function NewAppPage() {
         return;
       }
 
-      const handleMessage = (e: MessageEvent) => {
+      const handleMessage = async (e: MessageEvent) => {
         if (e.origin !== window.location.origin) return;
 
         if (e.data?.type === "github_oauth_success") {
@@ -103,6 +118,12 @@ export default function NewAppPage() {
           setGithubToken(token);
           setConnecting(false);
           window.removeEventListener("message", handleMessage);
+          // Also store the token server-side for this tenant (used for builds)
+          try {
+            await api.github.connect(tenantSlug, token, s?.accessToken);
+          } catch (err) {
+            console.warn("Failed to store GitHub token server-side:", err);
+          }
         } else if (e.data?.type === "github_oauth_error") {
           setConnectError(e.data.error || "GitHub authorization failed");
           setConnecting(false);

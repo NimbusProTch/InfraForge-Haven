@@ -26,7 +26,8 @@ class Deployment(Base, TimestampMixin):
     application_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("applications.id"), index=True)
     commit_sha: Mapped[str] = mapped_column(String(40))
     status: Mapped[DeploymentStatus] = mapped_column(
-        Enum(DeploymentStatus), default=DeploymentStatus.PENDING
+        Enum(DeploymentStatus, values_callable=lambda e: [x.value for x in e]),
+        default=DeploymentStatus.PENDING,
     )
     build_job_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     image_tag: Mapped[str | None] = mapped_column(String(512), nullable=True)

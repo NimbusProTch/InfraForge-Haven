@@ -52,6 +52,7 @@ async def create_application(
         branch=body.branch,
         env_vars=body.env_vars,
         replicas=body.replicas,
+        port=body.port,
     )
     db.add(app)
     await db.commit()

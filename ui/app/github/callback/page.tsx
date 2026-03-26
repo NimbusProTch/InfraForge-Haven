@@ -1,23 +1,38 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { Loader2, CheckCircle, XCircle } from "lucide-react";
 
+// Force dynamic rendering - this page should never be statically cached
+export const dynamic = "force-dynamic";
+
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
-export default function GitHubCallbackPage() {
+/**
+ * Inner component that uses useSearchParams().
+ * Must be wrapped in <Suspense> per Next.js 14.2.5 requirements.
+ */
+function GitHubCallbackContent() {
   const searchParams = useSearchParams();
   const [status, setStatus] = useState<"loading" | "success" | "error">("loading");
   const [message, setMessage] = useState("");
   const called = useRef(false);
 
   useEffect(() => {
+    // Guard against duplicate calls
     if (called.current) return;
-    called.current = true;
 
     const code = searchParams.get("code");
     const error = searchParams.get("error");
+
+    // Wait for searchParams to actually populate before processing.
+    // In some Next.js 14 edge cases, searchParams can be empty on the
+    // first effect run; we skip and let the next render retry.
+    if (!code && !error) return;
+
+    // Params are available - lock to prevent re-entry
+    called.current = true;
 
     if (error) {
       setStatus("error");
@@ -30,14 +45,8 @@ export default function GitHubCallbackPage() {
       return;
     }
 
-    if (!code) {
-      setStatus("error");
-      setMessage("No authorization code received from GitHub");
-      return;
-    }
-
     // Exchange code for access token via backend
-    fetch(`${API_BASE}/api/v1/github/auth/callback?code=${encodeURIComponent(code)}`)
+    fetch(`${API_BASE}/api/v1/github/auth/callback?code=${encodeURIComponent(code!)}`)
       .then((res) => {
         if (!res.ok) return res.text().then((t) => Promise.reject(new Error(t)));
         return res.json() as Promise<{ access_token: string }>;
@@ -64,8 +73,7 @@ export default function GitHubCallbackPage() {
           setTimeout(() => window.close(), 2000);
         }
       });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [searchParams]);
 
   return (
     <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center">
@@ -97,5 +105,26 @@ export default function GitHubCallbackPage() {
         )}
       </div>
     </div>
+  );
+}
+
+/**
+ * Wrapper component providing the required Suspense boundary for useSearchParams().
+ * Shows a loading spinner while search params are being resolved.
+ */
+export default function GitHubCallbackPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center">
+          <div className="text-center space-y-4">
+            <Loader2 className="w-8 h-8 text-blue-500 animate-spin mx-auto" />
+            <p className="text-[#888] text-sm">Connecting to GitHub…</p>
+          </div>
+        </div>
+      }
+    >
+      <GitHubCallbackContent />
+    </Suspense>
   );
 }

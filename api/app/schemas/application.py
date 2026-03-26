@@ -22,13 +22,16 @@ class ApplicationCreate(BaseModel):
     branch: str = Field(default="main", max_length=255)
     env_vars: dict[str, str] = Field(default_factory=dict)
     replicas: int = Field(default=1, ge=1, le=20)
+    port: int = Field(default=8000, ge=1, le=65535)
 
 
 class ApplicationUpdate(BaseModel):
     name: str | None = Field(default=None, max_length=255)
+    repo_url: str | None = Field(default=None, max_length=2048)
     branch: str | None = Field(default=None, max_length=255)
     env_vars: dict[str, str] | None = None
     replicas: int | None = Field(default=None, ge=1, le=20)
+    port: int | None = Field(default=None, ge=1, le=65535)
 
 
 class ApplicationResponse(BaseModel):
@@ -43,6 +46,7 @@ class ApplicationResponse(BaseModel):
     env_vars: dict
     image_tag: str | None
     replicas: int
+    port: int
     webhook_token: str
     created_at: datetime
     updated_at: datetime

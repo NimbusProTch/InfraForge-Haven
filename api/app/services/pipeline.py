@@ -32,8 +32,10 @@ async def run_pipeline(
     tenant_id: uuid.UUID,
     env_vars: dict[str, str],
     replicas: int,
+    port: int,
     session_factory: async_sessionmaker[AsyncSession],
     k8s: K8sClient,
+    github_token: str | None = None,
 ) -> None:
     """Run full build → deploy pipeline, persisting status to DB at each step."""
     harbor_host = settings.harbor_url.removeprefix("https://").removeprefix("http://")
@@ -61,6 +63,7 @@ async def run_pipeline(
             branch=branch,
             commit_sha=commit_sha,
             image_name=image_name,
+            github_token=github_token,
         )
     except Exception as exc:
         logger.exception("Failed to submit build job for deployment %s", deployment_id)
@@ -77,10 +80,10 @@ async def run_pipeline(
     final_build_status = await build_svc.wait_for_completion(settings.build_namespace, job_name)
 
     if final_build_status != "succeeded":
-        logs = await build_svc.get_build_logs(settings.build_namespace, job_name)
+        all_logs = await build_svc.get_build_logs(settings.build_namespace, job_name)
         error_msg = f"Build job {job_name} finished with status={final_build_status}"
-        if logs:
-            error_msg += f"\n\n--- Kaniko logs ---\n{logs[-2000:]}"
+        if all_logs:
+            error_msg += f"\n\n{all_logs[-3000:]}"
         logger.error(error_msg)
         await _fail(deployment_id, error_msg, session_factory)
         return
@@ -105,10 +108,18 @@ async def run_pipeline(
             replicas=replicas,
             env_vars=env_vars,
             service_secret_names=secret_names,
+            port=port,
         )
     except Exception as exc:
         logger.exception("Deploy failed for deployment %s", deployment_id)
         await _fail(deployment_id, str(exc), session_factory)
+        return
+
+    # --- WAIT FOR READY -------------------------------------------------
+    ready, msg = await deploy_svc.wait_for_ready(namespace, app_slug)
+    if not ready:
+        logger.error("Deployment not ready: %s (deployment=%s)", msg, deployment_id)
+        await _fail(deployment_id, msg, session_factory)
         return
 
     # --- RUNNING --------------------------------------------------------

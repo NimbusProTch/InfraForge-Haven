@@ -118,8 +118,10 @@ async def github_webhook(
             tenant_id=tenant.id,
             env_vars=dict(app.env_vars),
             replicas=app.replicas,
+            port=app.port,
             session_factory=session_factory,
             k8s=k8s,
+            github_token=tenant.github_token,
         ),
         name=f"pipeline-{deployment.id}",
     )

@@ -27,6 +27,9 @@ class Tenant(Base, TimestampMixin):
 
     active: Mapped[bool] = mapped_column(Boolean, default=True)
 
+    # GitHub OAuth token for private repo access during builds
+    github_token: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
     applications: Mapped[list["Application"]] = relationship(
         back_populates="tenant", cascade="all, delete-orphan"
     )

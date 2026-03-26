@@ -107,8 +107,12 @@ export interface GitHubBranch {
 }
 
 // ---- Logs SSE URL helper ----
-export function getLogsUrl(tenantSlug: string, appSlug: string): string {
-  return `${API_BASE}${API_PREFIX}/tenants/${tenantSlug}/apps/${appSlug}/logs`;
+export function getLogsUrl(tenantSlug: string, appSlug: string, token?: string): string {
+  const base = `${API_BASE}${API_PREFIX}/tenants/${tenantSlug}/apps/${appSlug}/logs`;
+  if (token) {
+    return `${base}?token=${encodeURIComponent(token)}`;
+  }
+  return base;
 }
 
 // ---- API functions ----
@@ -140,6 +144,17 @@ export const api = {
       apiFetch<Application>(
         `/tenants/${tenantSlug}/apps`,
         { method: "POST", body: JSON.stringify(body) },
+        token
+      ),
+    update: (
+      tenantSlug: string,
+      appSlug: string,
+      body: { name?: string; repo_url?: string; branch?: string; replicas?: number; env_vars?: Record<string, string> },
+      token?: string
+    ) =>
+      apiFetch<Application>(
+        `/tenants/${tenantSlug}/apps/${appSlug}`,
+        { method: "PATCH", body: JSON.stringify(body) },
         token
       ),
     delete: (tenantSlug: string, appSlug: string, token?: string) =>
@@ -199,5 +214,19 @@ export const api = {
       apiFetch<GitHubRepo[]>("/github/repos", {}, token),
     branches: (owner: string, repo: string, token: string) =>
       apiFetch<GitHubBranch[]>(`/github/repos/${owner}/${repo}/branches`, {}, token),
+    /** Store the GitHub OAuth token server-side for a tenant (used for builds). */
+    connect: (tenantSlug: string, githubToken: string, accessToken?: string) =>
+      apiFetch<{ status: string; tenant_slug: string }>(
+        `/github/connect/${tenantSlug}`,
+        { method: "POST", body: JSON.stringify({ access_token: githubToken }) },
+        accessToken
+      ),
+    /** Remove the stored GitHub token for a tenant. */
+    disconnect: (tenantSlug: string, accessToken?: string) =>
+      apiFetch<{ status: string; tenant_slug: string }>(
+        `/github/connect/${tenantSlug}`,
+        { method: "DELETE" },
+        accessToken
+      ),
   },
 };

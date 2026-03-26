@@ -28,6 +28,7 @@ class Application(Base, TimestampMixin):
     env_vars: Mapped[dict] = mapped_column(JSON, default=dict)
     image_tag: Mapped[str | None] = mapped_column(String(512), nullable=True)
     replicas: Mapped[int] = mapped_column(default=1)
+    port: Mapped[int] = mapped_column(default=8000)
     # Unique token used to route GitHub webhooks to this application
     webhook_token: Mapped[str] = mapped_column(
         String(64), unique=True, index=True, default=_generate_webhook_token

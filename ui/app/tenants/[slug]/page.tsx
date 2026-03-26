@@ -63,6 +63,9 @@ export default function TenantDetailPage() {
   const [services, setServices] = useState<ManagedService[]>([]);
   const [loading, setLoading] = useState(true);
   const [deletingService, setDeletingService] = useState<string | null>(null);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState("");
+  const [deletingTenant, setDeletingTenant] = useState(false);
 
   const accessToken = (session as typeof session & { accessToken?: string })?.accessToken;
 
@@ -105,6 +108,17 @@ export default function TenantDetailPage() {
     }
   }
 
+  async function deleteTenant() {
+    setDeletingTenant(true);
+    try {
+      await api.tenants.delete(slug, accessToken);
+      router.push("/tenants");
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to delete tenant");
+      setDeletingTenant(false);
+    }
+  }
+
   if (status === "loading" || loading) {
     return (
       <AppShell userEmail={session?.user?.email}>
@@ -143,7 +157,63 @@ export default function TenantDetailPage() {
               </p>
             </div>
           </div>
+          <button
+            onClick={() => setShowDeleteDialog(true)}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-red-300 dark:border-red-900/50 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30 text-xs font-medium transition-colors"
+          >
+            <Trash2 className="w-3 h-3" />
+            Delete Tenant
+          </button>
         </div>
+
+        {/* Delete confirmation dialog */}
+        {showDeleteDialog && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+            <div className="bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-[#333] rounded-lg p-6 w-full max-w-md mx-4 shadow-xl">
+              <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
+                Delete Tenant
+              </h2>
+              <p className="text-sm text-gray-500 dark:text-[#888] mb-1">
+                This will permanently delete <strong className="text-gray-900 dark:text-white">{tenant.name}</strong> and
+                all its applications and services. This action cannot be undone.
+              </p>
+              <p className="text-sm text-gray-500 dark:text-[#888] mb-4">
+                Type <span className="font-mono font-medium text-gray-900 dark:text-white">{tenant.slug}</span> to confirm.
+              </p>
+              <input
+                type="text"
+                value={deleteConfirmText}
+                onChange={(e) => setDeleteConfirmText(e.target.value)}
+                placeholder={tenant.slug}
+                className="w-full px-3 py-2 rounded-md border border-gray-200 dark:border-[#333] bg-white dark:bg-[#141414] text-sm text-gray-900 dark:text-white placeholder:text-gray-300 dark:placeholder:text-[#444] focus:outline-none focus:ring-2 focus:ring-red-500/30 font-mono mb-4"
+                autoFocus
+              />
+              <div className="flex justify-end gap-2">
+                <button
+                  onClick={() => {
+                    setShowDeleteDialog(false);
+                    setDeleteConfirmText("");
+                  }}
+                  className="px-3 py-1.5 rounded-md text-xs font-medium text-gray-600 dark:text-[#888] hover:bg-gray-100 dark:hover:bg-[#222] transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={deleteTenant}
+                  disabled={deleteConfirmText !== tenant.slug || deletingTenant}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-red-600 hover:bg-red-700 text-white text-xs font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  {deletingTenant ? (
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                  ) : (
+                    <Trash2 className="w-3 h-3" />
+                  )}
+                  Delete Tenant
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Info bar */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">

@@ -2,10 +2,11 @@ import asyncio
 import logging
 import uuid
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 
+from app.config import settings
 from app.deps import DBSession, K8sDep, get_session_factory
 from app.models.application import Application
 from app.models.deployment import Deployment, DeploymentStatus
@@ -90,7 +91,11 @@ async def trigger_build(
     k8s: K8sDep,
     background_tasks: BackgroundTasks,
 ) -> Deployment:
-    """Manually trigger a full build + deploy pipeline."""
+    """Manually trigger a full build + deploy pipeline.
+
+    The GitHub token is retrieved from the tenant's stored token in the database
+    rather than being passed as a query parameter.
+    """
     tenant = await _get_tenant_or_404(tenant_slug, db)
     app = await _get_app_or_404(tenant.id, app_slug, db)
 
@@ -116,8 +121,10 @@ async def trigger_build(
         tenant_id=tenant.id,
         env_vars=dict(app.env_vars),
         replicas=app.replicas,
+        port=app.port,
         session_factory=get_session_factory(),
         k8s=k8s,
+        github_token=tenant.github_token,
     )
     return deployment
 
@@ -162,6 +169,7 @@ async def trigger_deploy(
             replicas=app.replicas,
             env_vars=dict(app.env_vars),
             service_secret_names=secret_names,
+            port=app.port,
             k8s=k8s,
         ),
         name=f"redeploy-{deployment.id}",
@@ -224,6 +232,7 @@ async def rollback_deployment(
             replicas=app.replicas,
             env_vars=dict(app.env_vars),
             service_secret_names=secret_names,
+            port=app.port,
             k8s=k8s,
         ),
         name=f"rollback-{rollback_record.id}",
@@ -238,28 +247,108 @@ async def stream_logs(
     db: DBSession,
     k8s: K8sDep,
     tail_lines: int = 100,
+    token: str | None = None,  # noqa: ARG001 — accepted for EventSource auth (validated upstream)
 ) -> StreamingResponse:
-    """Stream the latest pod logs for a running application via SSE."""
+    """Stream pod logs (or build logs if building) via SSE.
+
+    Accepts an optional `token` query param so that browser EventSource
+    (which cannot set custom headers) can authenticate.
+    """
     tenant = await _get_tenant_or_404(tenant_slug, db)
     app = await _get_app_or_404(tenant.id, app_slug, db)
     namespace = tenant.namespace
     selector = f"app={app.slug}"
 
-    if not k8s.is_available():
-        raise HTTPException(status_code=503, detail="Kubernetes client not available")
+    # Preload latest deployment to check for active builds
+    result = await db.execute(
+        select(Deployment)
+        .where(Deployment.application_id == app.id)
+        .order_by(Deployment.created_at.desc())
+        .limit(1)
+    )
+    latest_deployment = result.scalar_one_or_none()
 
     async def _generate():  # type: ignore[return]
         try:
+            # 1) If K8s is not available, try to show build status from DB
+            if not k8s.is_available():
+                if latest_deployment and latest_deployment.status in (
+                    DeploymentStatus.BUILDING,
+                    DeploymentStatus.PENDING,
+                ):
+                    yield f"data: [build in progress — status: {latest_deployment.status.value}]\n\n"
+                    if latest_deployment.build_job_name:
+                        yield f"data: [build job: {latest_deployment.build_job_name}]\n\n"
+                else:
+                    yield "data: [kubernetes cluster not available]\n\n"
+                yield "data: [end]\n\n"
+                return
+
+            # 2) Check if there's an active build — show build logs
+            if latest_deployment and latest_deployment.status in (
+                DeploymentStatus.BUILDING,
+                DeploymentStatus.PENDING,
+            ):
+                yield "data: [build in progress...]\n\n"
+                if latest_deployment.build_job_name:
+                    yield f"data: [build job: {latest_deployment.build_job_name}]\n\n"
+                    # Stream build pod logs from haven-builds namespace
+                    try:
+                        build_pods = await asyncio.to_thread(
+                            k8s.core_v1.list_namespaced_pod,
+                            namespace=settings.build_namespace,
+                            label_selector=f"job-name={latest_deployment.build_job_name}",
+                        )
+                        if build_pods.items:
+                            build_pod = build_pods.items[0].metadata.name
+                            phase = build_pods.items[0].status.phase
+                            yield f"data: [build pod: {build_pod} ({phase})]\n\n"
+                            if phase in ("Running", "Succeeded", "Failed"):
+                                # Try each container in order
+                                for container in ("git-clone", "nixpacks", "kaniko"):
+                                    try:
+                                        blog: str = await asyncio.to_thread(
+                                            k8s.core_v1.read_namespaced_pod_log,
+                                            name=build_pod,
+                                            namespace=settings.build_namespace,
+                                            container=container,
+                                            tail_lines=tail_lines,
+                                        )
+                                        if blog.strip():
+                                            yield f"data: --- {container} ---\n\n"
+                                            for line in blog.splitlines():
+                                                yield f"data: {line}\n\n"
+                                    except Exception:  # noqa: BLE001
+                                        pass  # container may not have started yet
+                        else:
+                            yield "data: [waiting for build pod to start...]\n\n"
+                    except Exception as exc:  # noqa: BLE001
+                        yield f"data: [could not fetch build logs: {exc}]\n\n"
+                yield "data: [end]\n\n"
+                return
+
+            # 3) Normal case: stream running pod logs
             pods = await asyncio.to_thread(
                 k8s.core_v1.list_namespaced_pod,
                 namespace=namespace,
                 label_selector=selector,
             )
             if not pods.items:
-                yield "data: [no pods running for this application]\n\n"
+                # Check if the latest deployment failed
+                if latest_deployment and latest_deployment.status == DeploymentStatus.FAILED:
+                    yield "data: [latest deployment failed]\n\n"
+                    if latest_deployment.error_message:
+                        for line in latest_deployment.error_message.splitlines()[:50]:
+                            yield f"data: {line}\n\n"
+                else:
+                    yield "data: [no pods running for this application]\n\n"
+                yield "data: [end]\n\n"
                 return
 
             pod_name: str = pods.items[0].metadata.name
+            phase = pods.items[0].status.phase
+            yield f"data: [pod: {pod_name} ({phase})]\n\n"
+
             logs: str = await asyncio.to_thread(
                 k8s.core_v1.read_namespaced_pod_log,
                 name=pod_name,
@@ -268,12 +357,19 @@ async def stream_logs(
             )
             for line in logs.splitlines():
                 yield f"data: {line}\n\n"
-            yield "data: [end of logs]\n\n"
+            yield "data: [end]\n\n"
         except Exception as exc:  # noqa: BLE001
             logger.exception("Log streaming error for %s/%s", namespace, app_slug)
             yield f"data: [error: {exc}]\n\n"
 
-    return StreamingResponse(_generate(), media_type="text/event-stream")
+    return StreamingResponse(
+        _generate(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 async def _run_redeploy(
@@ -287,6 +383,7 @@ async def _run_redeploy(
     replicas: int,
     env_vars: dict[str, str],
     service_secret_names: list[str],
+    port: int = 8000,
     k8s,  # type: ignore[type-arg]
 ) -> None:
     """Re-deploy an existing image without going through the build step."""
@@ -310,6 +407,7 @@ async def _run_redeploy(
             replicas=replicas,
             env_vars=env_vars,
             service_secret_names=service_secret_names,
+            port=port,
         )
     except Exception as exc:
         logger.exception("Redeploy failed for deployment %s", deployment_id)
@@ -318,6 +416,18 @@ async def _run_redeploy(
             if dep:
                 dep.status = DeploymentStatus.FAILED
                 dep.error_message = str(exc)[:4096]
+                await db.commit()
+        return
+
+    # Wait for at least 1 ready replica before marking as RUNNING
+    ready, msg = await deploy_svc.wait_for_ready(namespace, app_slug)
+    if not ready:
+        logger.error("Redeploy not ready: %s (deployment=%s)", msg, deployment_id)
+        async with session_factory() as db:
+            dep = await db.get(_Deployment, deployment_id)
+            if dep:
+                dep.status = DeploymentStatus.FAILED
+                dep.error_message = msg[:4096]
                 await db.commit()
         return
 
