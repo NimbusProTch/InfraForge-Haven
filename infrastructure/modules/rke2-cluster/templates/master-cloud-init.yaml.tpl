@@ -84,20 +84,21 @@ runcmd:
   - systemctl enable --now iscsid
 
   # Detect private and public IPs
+  # Hetzner private network interface name varies (enp7s0, ens10, etc.)
+  # Detect by finding the 10.0.x.x IP on any interface
   - |
-    PRIVATE_IP=$(ip -4 addr show ens10 2>/dev/null | grep -oP '(?<=inet\s)\d+(\.\d+){3}' || echo "")
-    if [ -z "$PRIVATE_IP" ]; then
-      # Fallback: try to get from metadata
-      PRIVATE_IP=$(curl -sf http://169.254.169.254/hetzner/v1/metadata/private-networks 2>/dev/null | grep -oP 'ip-address: \K[\d.]+' | head -1 || echo "")
-    fi
-    # Wait for private IP (Hetzner attaches network interface async)
-    for i in $(seq 1 30); do
+    PRIVATE_IP=""
+    for i in $(seq 1 60); do
+      PRIVATE_IP=$(ip -4 addr show | grep -oP '(?<=inet\s)10\.\d+\.\d+\.\d+' | head -1 || echo "")
       if [ -n "$PRIVATE_IP" ]; then break; fi
       sleep 5
-      PRIVATE_IP=$(ip -4 addr show ens10 2>/dev/null | grep -oP '(?<=inet\s)\d+(\.\d+){3}' || echo "")
     done
     if [ -z "$PRIVATE_IP" ]; then
-      echo "ERROR: Could not detect private IP after 150s" >&2
+      # Fallback: Hetzner metadata API
+      PRIVATE_IP=$(curl -sf http://169.254.169.254/hetzner/v1/metadata/private-networks 2>/dev/null | grep -oP 'ip-address: \K[\d.]+' | head -1 || echo "")
+    fi
+    if [ -z "$PRIVATE_IP" ]; then
+      echo "ERROR: Could not detect private IP after 300s" >&2
       exit 1
     fi
     PUBLIC_IP=$(curl -sf http://169.254.169.254/hetzner/v1/metadata/public-ipv4 || hostname -I | awk '{print $1}')

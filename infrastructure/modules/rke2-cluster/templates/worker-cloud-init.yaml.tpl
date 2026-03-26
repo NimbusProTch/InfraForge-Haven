@@ -35,16 +35,19 @@ runcmd:
   # Enable and start iscsid for Longhorn
   - systemctl enable --now iscsid
 
-  # Detect private and public IPs
+  # Detect private and public IPs (interface name varies on Hetzner)
   - |
     PRIVATE_IP=""
-    for i in $(seq 1 30); do
-      PRIVATE_IP=$(ip -4 addr show ens10 2>/dev/null | grep -oP '(?<=inet\s)\d+(\.\d+){3}' || echo "")
+    for i in $(seq 1 60); do
+      PRIVATE_IP=$(ip -4 addr show | grep -oP '(?<=inet\s)10\.\d+\.\d+\.\d+' | head -1 || echo "")
       if [ -n "$PRIVATE_IP" ]; then break; fi
       sleep 5
     done
     if [ -z "$PRIVATE_IP" ]; then
-      echo "ERROR: Could not detect private IP after 150s" >&2
+      PRIVATE_IP=$(curl -sf http://169.254.169.254/hetzner/v1/metadata/private-networks 2>/dev/null | grep -oP 'ip-address: \K[\d.]+' | head -1 || echo "")
+    fi
+    if [ -z "$PRIVATE_IP" ]; then
+      echo "ERROR: Could not detect private IP after 300s" >&2
       exit 1
     fi
     PUBLIC_IP=$(curl -sf http://169.254.169.254/hetzner/v1/metadata/public-ipv4 || hostname -I | awk '{print $1}')
