@@ -248,6 +248,64 @@ haven-platform/
 - [x] Keycloak: ssh_resource ile kubectl apply (quay.io image, Bitnami chart abandon edildi)
 - [x] Service selector fix: `kubectl delete svc` before apply (old Bitnami selector override)
 
+### Phase 1 Sprint 2: Build/Deploy Pipeline + UI ✅
+- [x] GitHub OAuth per-tenant (token stored server-side in DB)
+- [x] Organization repo listing (read:org scope, NimbusProTch)
+- [x] OAuth scope encoding fix (colon preservation in `read:user`)
+- [x] Suspense boundary fix for OAuth callback page (Next.js 14)
+- [x] **BuildKit** build engine (replaced Kaniko, 5x faster builds)
+- [x] Nixpacks smart detection (Python/Node/Go/Ruby/Rust auto-detect start command)
+- [x] Fallback Dockerfile generation when nixpacks fails
+- [x] ARM64 (Apple Silicon) support for nixpacks binary
+- [x] Private repo clone via embedded OAuth token in git URL
+- [x] Init container log capture on build failures (git-clone, nixpacks, buildctl)
+- [x] App CRUD: create, read, update (PATCH), delete with K8s cleanup
+- [x] Tenant CRUD: create, delete with K8s namespace lifecycle
+- [x] Configurable app port (not hardcoded 8000)
+- [x] Pod readiness check before marking deployment as "running"
+- [x] CrashLoopBackOff/ImagePullBackOff early detection → FAILED status
+- [x] Graceful HTTPRoute skip when Gateway API CRD not installed
+- [x] DB enum fix (DeploymentStatus values_callable)
+- [x] CI/CD pipeline step visualization in UI (Clone→Detect→Build→Push→Deploy)
+- [x] Auto-streaming build logs during active builds
+- [x] Deployment status polling (5s interval while building)
+- [x] App Settings tab with GitHub repo/branch dropdowns
+- [x] "Use existing Dockerfile" toggle option
+- [x] Tenant delete with slug confirmation dialog
+
+### Phase 1 Sprint 3: Monorepo + Akıllı Detection (SONRAKI)
+- [ ] `dockerfile_path` — Hangi Dockerfile kullanılacak (`backend/Dockerfile`)
+- [ ] `build_context` — Build root dizini (`./backend`)
+- [ ] Repo içindeki app'leri/dizinleri listeleme (GitHub API tree endpoint)
+- [ ] Akıllı backend detection: framework + dependency analizi
+- [ ] Auto-detect: DB ihtiyacı (SQLAlchemy, Prisma, TypeORM → PostgreSQL provision)
+- [ ] Auto-detect: Redis ihtiyacı (redis-py, ioredis → Redis provision)
+- [ ] Auto-detect: Queue ihtiyacı (pika, amqplib → RabbitMQ provision)
+- [ ] UI'da dependency gösterimi: "Bu app PostgreSQL ve Redis kullanıyor"
+
+### Phase 1 Sprint 4: Managed Services
+- [ ] OpenEverest entegrasyonu (MySQL, PostgreSQL, MongoDB — prod-ready)
+- [ ] Redis Official Operator (Sentinel/Cluster mode)
+- [ ] RabbitMQ Official Operator (queue management)
+- [ ] Env var management UI (key-value editor, K8s Secrets)
+- [ ] Internal service discovery (same-cluster endpoints, auto env injection)
+- [ ] Connection string template: `postgresql://user:pass@cnpg-cluster.ns.svc:5432/db`
+
+### Phase 1 Sprint 5: Observability
+- [ ] Grafana Loki (app log aggregation, per-tenant)
+- [ ] Grafana Mimir (metrics, per-tenant)
+- [ ] Grafana Tempo + OpenTelemetry Collector (distributed tracing)
+- [ ] Per-app dashboard: logs, CPU/RAM, request rate, latency, traces
+- [ ] UI'da log viewer, metric grafikler, trace explorer
+
+### Phase 1 Sprint 6: Production Hardening
+- [ ] Custom domain + TLS (cert-manager + Let's Encrypt)
+- [ ] Webhook auto-deploy (git push → otomatik build+deploy)
+- [ ] One-click rollback
+- [ ] Health check konfigürasyonu (HTTP path, TCP, interval)
+- [ ] Resource limits konfigürasyonu (CPU/RAM per app)
+- [ ] Auto-scaling rules (HPA custom metrics)
+
 ## Teknik Gotchas
 
 - Hetzner primary IP limit ~5 per account → request increase for 3+3 nodes
@@ -278,6 +336,17 @@ haven-platform/
 - **kubectl apply + Service selector**: strategic merge patch does NOT remove extra labels from existing Service. Fix: `kubectl delete svc <name> --ignore-not-found` before `kubectl apply` to reset selector cleanly
 - **ssh_resource via Rancher fleet secret**: `kubectl get secret -n fleet-default ${cluster_name}-kubeconfig -o jsonpath='{.data.value}' | base64 -d > /tmp/workload-kubeconfig` gives RKE2 cluster access from K3s management node
 - **base64encode() trick for kubectl apply**: `echo '${base64encode(yaml)}' | base64 -d | kubectl apply -f -` avoids heredoc/escaping issues in ssh_resource commands
+
+- **BuildKit > Kaniko**: Kaniko 15+dk, BuildKit 3-4dk (5x hız). BuildKit paralel layer build + akıllı cache. `moby/buildkit:rootless` + `--oci-worker-no-process-sandbox` Kind'da çalışır
+- **BuildKit daemon**: `buildkitd` Deployment + Service (`tcp://buildkitd.haven-builds.svc:1234`), `buildctl` Job olarak build submit
+- **Nixpacks ARM64**: `aarch64-unknown-linux-musl` binary indirmeli, `uname -m` ile detect
+- **Nixpacks "No start command"**: Otomatik tespit: Python (main.py, app.py, FastAPI/Flask/Django), Node (package.json scripts.start), Go (main.go), fallback Dockerfile üretimi
+- **Kind insecure registry**: containerd config.toml'a `[plugins."io.containerd.grpc.v1.cri".registry.mirrors]` + `[...registry.configs...tls]` ekle, `/etc/hosts`'a ClusterIP ekle, `systemctl restart containerd`
+- **GitHub OAuth org repos**: `read:org` scope + `/user/orgs` → `/orgs/{login}/repos` endpoint'leri ile org repo'ları listele
+- **GitHub private repo clone**: `https://oauth2:{token}@github.com/owner/repo.git` — token DB'de tenant bazında sakla, build sırasında clone URL'ye inject et
+- **SQLAlchemy Enum case**: `Enum(MyEnum, values_callable=lambda e: [x.value for x in e])` — DB lowercase, Python uppercase uyumsuzluğu
+- **Next.js 14 useSearchParams**: Suspense boundary zorunlu, `export const dynamic = "force-dynamic"` ile cache engelle
+- **App port konfigürasyonu**: Dockerfile EXPOSE portu ile liveness probe portu eşleşmeli, `Application.port` field ile konfigüre et
 
 ## Maliyet
 
