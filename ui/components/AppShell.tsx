@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { signOut } from "next-auth/react";
@@ -27,6 +28,8 @@ interface AppShellProps {
 export function AppShell({ children, userEmail }: AppShellProps) {
   const pathname = usePathname();
   const { theme, setTheme } = useTheme();
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">
@@ -74,12 +77,16 @@ export function AppShell({ children, userEmail }: AppShellProps) {
             onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
             className="flex items-center gap-2.5 w-full px-3 py-2 rounded-md text-sm text-gray-500 dark:text-[#888] hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-[#1a1a1a] transition-colors"
           >
-            {theme === "dark" ? (
-              <Sun className="w-4 h-4 shrink-0" />
+            {mounted ? (
+              theme === "dark" ? (
+                <Sun className="w-4 h-4 shrink-0" />
+              ) : (
+                <Moon className="w-4 h-4 shrink-0" />
+              )
             ) : (
-              <Moon className="w-4 h-4 shrink-0" />
+              <div className="w-4 h-4 shrink-0" />
             )}
-            {theme === "dark" ? "Light mode" : "Dark mode"}
+            {mounted ? (theme === "dark" ? "Light mode" : "Dark mode") : "Toggle theme"}
           </button>
 
           {/* User */}

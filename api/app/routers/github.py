@@ -1,5 +1,6 @@
 import secrets
 from typing import Optional
+from urllib.parse import urlencode
 
 import httpx
 from fastapi import APIRouter, Header, HTTPException, Query
@@ -43,7 +44,7 @@ async def get_auth_url() -> dict:
         "scope": "repo read:user",
         "state": state,
     }
-    query = "&".join(f"{k}={v}" for k, v in params.items())
+    query = urlencode(params)
     return {"url": f"{GITHUB_AUTH_URL}?{query}", "state": state}
 
 
