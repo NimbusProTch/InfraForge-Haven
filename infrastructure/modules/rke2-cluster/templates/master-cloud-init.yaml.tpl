@@ -6,37 +6,32 @@ packages:
   - open-iscsi  # Required for Longhorn
 
 write_files:
-  # RKE2 server config
-  - path: /etc/rancher/rke2/config.yaml
-    permissions: "0600"
+  # RKE2 server config — written as a script to avoid YAML indentation issues
+  - path: /usr/local/bin/write-rke2-config.sh
+    permissions: "0755"
     content: |
+      #!/bin/bash
+      PRIVATE_IP="$1"
+      PUBLIC_IP="$2"
+      mkdir -p /etc/rancher/rke2
+      cat > /etc/rancher/rke2/config.yaml << RKEEOF
       token: "${cluster_token}"
-      %{ if is_first_master ~}
-      cluster-init: true
-      %{ else ~}
-      server: "https://${first_master_private_ip}:9345"
-      %{ endif ~}
-      node-ip: "__PRIVATE_IP__"
-      node-external-ip: "__PUBLIC_IP__"
+      ${ is_first_master ? "cluster-init: true" : "server: \"https://${first_master_private_ip}:9345\"" }
+      node-ip: "$PRIVATE_IP"
+      node-external-ip: "$PUBLIC_IP"
       tls-san:
         - "${lb_ip}"
-        - "__PRIVATE_IP__"
-        - "__PUBLIC_IP__"
-      %{ if lb_private_ip != "" ~}
-        - "${lb_private_ip}"
-      %{ endif ~}
+        - "$PRIVATE_IP"
+        - "$PUBLIC_IP"
       cni: cilium
       disable:
         - rke2-ingress-nginx
-      %{ if disable_kube_proxy ~}
-      disable-kube-proxy: true
-      %{ endif ~}
-      %{ if enable_cis_profile ~}
-      profile: cis
-      protect-kernel-defaults: true
-      %{ endif ~}
-      # Write kubeconfig accessible for kubectl
+      ${ disable_kube_proxy ? "disable-kube-proxy: true" : "" }
+      ${ enable_cis_profile ? "profile: cis\nprotect-kernel-defaults: true" : "" }
       write-kubeconfig-mode: "0644"
+      RKEEOF
+      # Fix indentation (remove leading spaces from heredoc)
+      sed -i 's/^      //' /etc/rancher/rke2/config.yaml
 
   # Cilium HelmChartConfig (RKE2 built-in Helm controller)
   - path: /var/lib/rancher/rke2/server/manifests/rke2-cilium-config.yaml
@@ -103,9 +98,10 @@ runcmd:
     fi
     PUBLIC_IP=$(curl -sf http://169.254.169.254/hetzner/v1/metadata/public-ipv4 || hostname -I | awk '{print $1}')
 
-    # Replace placeholders in config files
-    sed -i "s/__PRIVATE_IP__/$PRIVATE_IP/g" /etc/rancher/rke2/config.yaml
-    sed -i "s/__PUBLIC_IP__/$PUBLIC_IP/g" /etc/rancher/rke2/config.yaml
+    # Write RKE2 config with detected IPs
+    /usr/local/bin/write-rke2-config.sh "$PRIVATE_IP" "$PUBLIC_IP"
+
+    # Write Cilium config with detected IPs
     sed -i "s/__PRIVATE_IP__/$PRIVATE_IP/g" /var/lib/rancher/rke2/server/manifests/rke2-cilium-config.yaml
 
   # Install RKE2 server

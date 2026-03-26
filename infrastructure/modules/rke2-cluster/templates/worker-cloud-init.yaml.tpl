@@ -6,18 +6,22 @@ packages:
   - open-iscsi  # Required for Longhorn
 
 write_files:
-  # RKE2 agent config
-  - path: /etc/rancher/rke2/config.yaml
-    permissions: "0600"
+  # RKE2 agent config script
+  - path: /usr/local/bin/write-rke2-config.sh
+    permissions: "0755"
     content: |
+      #!/bin/bash
+      PRIVATE_IP="$1"
+      PUBLIC_IP="$2"
+      mkdir -p /etc/rancher/rke2
+      cat > /etc/rancher/rke2/config.yaml << RKEEOF
       token: "${cluster_token}"
       server: "https://${first_master_private_ip}:9345"
-      node-ip: "__PRIVATE_IP__"
-      node-external-ip: "__PUBLIC_IP__"
-      %{ if enable_cis_profile ~}
-      profile: cis
-      protect-kernel-defaults: true
-      %{ endif ~}
+      node-ip: "$PRIVATE_IP"
+      node-external-ip: "$PUBLIC_IP"
+      ${ enable_cis_profile ? "profile: cis\nprotect-kernel-defaults: true" : "" }
+      RKEEOF
+      sed -i 's/^      //' /etc/rancher/rke2/config.yaml
 
   # Kernel params for CIS hardening
   - path: /etc/sysctl.d/90-rke2.conf
@@ -52,9 +56,8 @@ runcmd:
     fi
     PUBLIC_IP=$(curl -sf http://169.254.169.254/hetzner/v1/metadata/public-ipv4 || hostname -I | awk '{print $1}')
 
-    # Replace placeholders
-    sed -i "s/__PRIVATE_IP__/$PRIVATE_IP/g" /etc/rancher/rke2/config.yaml
-    sed -i "s/__PUBLIC_IP__/$PUBLIC_IP/g" /etc/rancher/rke2/config.yaml
+    # Write RKE2 config with detected IPs
+    /usr/local/bin/write-rke2-config.sh "$PRIVATE_IP" "$PUBLIC_IP"
 
   # Install RKE2 agent
   - |
