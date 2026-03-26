@@ -85,8 +85,20 @@ resource "hcloud_server" "master" {
   ssh_keys     = [module.hetzner_infra.ssh_key_id]
   firewall_ids = [module.hetzner_infra.firewall_id]
 
-  # First master bootstraps, others join
-  user_data = count.index == 0 ? module.rke2_cluster.first_master_cloud_init : module.rke2_cluster.joining_master_cloud_init
+  # Cloud-init: minimal setup (RKE2 installed via SSH post-provisioning)
+  user_data = <<-EOT
+    #!/bin/bash
+    apt-get update -qq && apt-get install -y -qq curl jq open-iscsi
+    useradd -r -c "etcd user" -s /sbin/nologin -M etcd 2>/dev/null || true
+    systemctl enable --now iscsid
+    cat > /etc/sysctl.d/90-rke2.conf << 'EOF'
+    vm.panic_on_oom=0
+    vm.overcommit_memory=1
+    kernel.panic=10
+    kernel.panic_on_oops=1
+    EOF
+    sysctl --system
+  EOT
 
   labels = {
     role        = "master"
@@ -115,7 +127,19 @@ resource "hcloud_server" "worker" {
   ssh_keys     = [module.hetzner_infra.ssh_key_id]
   firewall_ids = [module.hetzner_infra.firewall_id]
 
-  user_data = module.rke2_cluster.worker_cloud_init
+  # Cloud-init: minimal setup (RKE2 installed via SSH post-provisioning)
+  user_data = <<-EOT
+    #!/bin/bash
+    apt-get update -qq && apt-get install -y -qq curl jq open-iscsi
+    systemctl enable --now iscsid
+    cat > /etc/sysctl.d/90-rke2.conf << 'EOF'
+    vm.panic_on_oom=0
+    vm.overcommit_memory=1
+    kernel.panic=10
+    kernel.panic_on_oops=1
+    EOF
+    sysctl --system
+  EOT
 
   labels = {
     role        = "worker"
@@ -152,7 +176,174 @@ resource "hcloud_load_balancer_target" "worker" {
   depends_on       = [hcloud_server_network.worker]
 }
 
-# --- 7. Retrieve Kubeconfig from First Master ---
+# --- 7a. Install RKE2 on First Master (via SSH) ---
+resource "ssh_resource" "install_rke2_first_master" {
+  host        = hcloud_server.master[0].ipv4_address
+  user        = local.node_username
+  private_key = tls_private_key.global_key.private_key_pem
+  timeout     = "20m"
+
+  commands = [nonsensitive(<<-EOT
+    bash -c '
+      # Wait for cloud-init to finish
+      cloud-init status --wait 2>/dev/null || sleep 30
+
+      PRIVATE_IP=$(ip -4 addr show | grep -oP "(?<=inet\\s)10\\.\\d+\\.\\d+\\.\\d+" | head -1)
+      PUBLIC_IP=$(curl -sf http://169.254.169.254/hetzner/v1/metadata/public-ipv4)
+      echo "IPs: private=$PRIVATE_IP public=$PUBLIC_IP"
+
+      mkdir -p /etc/rancher/rke2
+      cat > /etc/rancher/rke2/config.yaml << RKEEOF
+token: ${random_password.cluster_token.result}
+cluster-init: true
+node-ip: $PRIVATE_IP
+node-external-ip: $PUBLIC_IP
+tls-san:
+  - ${module.hetzner_infra.load_balancer_ip}
+  - $PRIVATE_IP
+  - $PUBLIC_IP
+cni: cilium
+disable:
+  - rke2-ingress-nginx
+disable-kube-proxy: true
+profile: cis
+protect-kernel-defaults: true
+write-kubeconfig-mode: "0644"
+RKEEOF
+
+      mkdir -p /var/lib/rancher/rke2/server/manifests
+      cat > /var/lib/rancher/rke2/server/manifests/rke2-cilium-config.yaml << CILEOF
+apiVersion: helm.cattle.io/v1
+kind: HelmChartConfig
+metadata:
+  name: rke2-cilium
+  namespace: kube-system
+spec:
+  valuesContent: |-
+    kubeProxyReplacement: true
+    k8sServiceHost: "$PRIVATE_IP"
+    k8sServicePort: "6443"
+    operator:
+      replicas: 1
+    gatewayAPI:
+      enabled: true
+    hubble:
+      enabled: true
+      relay:
+        enabled: true
+      ui:
+        enabled: true
+    ipam:
+      mode: kubernetes
+    tolerations:
+      - operator: Exists
+CILEOF
+
+      curl -sfL https://get.rke2.io | INSTALL_RKE2_VERSION=${var.kubernetes_version} sh -
+      systemctl enable rke2-server.service
+      systemctl start rke2-server.service
+
+      # Wait for API
+      export KUBECONFIG=/etc/rancher/rke2/rke2.yaml
+      export PATH=$PATH:/var/lib/rancher/rke2/bin
+      for i in $(seq 1 120); do
+        if kubectl get nodes >/dev/null 2>&1; then
+          echo "RKE2_FIRST_MASTER_READY"
+          break
+        fi
+        sleep 5
+      done
+    '
+  EOT
+  )]
+
+  depends_on = [
+    hcloud_server.master,
+    hcloud_server_network.master,
+  ]
+}
+
+# --- 7b. Install RKE2 on Other Masters ---
+resource "ssh_resource" "install_rke2_other_masters" {
+  count       = var.master_count - 1
+  host        = hcloud_server.master[count.index + 1].ipv4_address
+  user        = local.node_username
+  private_key = tls_private_key.global_key.private_key_pem
+  timeout     = "20m"
+
+  commands = [nonsensitive(<<-EOT
+    bash -c '
+      cloud-init status --wait 2>/dev/null || sleep 30
+      PRIVATE_IP=$(ip -4 addr show | grep -oP "(?<=inet\\s)10\\.\\d+\\.\\d+\\.\\d+" | head -1)
+      PUBLIC_IP=$(curl -sf http://169.254.169.254/hetzner/v1/metadata/public-ipv4)
+
+      useradd -r -c "etcd user" -s /sbin/nologin -M etcd 2>/dev/null || true
+      mkdir -p /etc/rancher/rke2
+      cat > /etc/rancher/rke2/config.yaml << RKEEOF
+token: ${random_password.cluster_token.result}
+server: https://${local.first_master_private_ip}:9345
+node-ip: $PRIVATE_IP
+node-external-ip: $PUBLIC_IP
+tls-san:
+  - ${module.hetzner_infra.load_balancer_ip}
+  - $PRIVATE_IP
+  - $PUBLIC_IP
+cni: cilium
+disable:
+  - rke2-ingress-nginx
+disable-kube-proxy: true
+profile: cis
+protect-kernel-defaults: true
+write-kubeconfig-mode: "0644"
+RKEEOF
+
+      curl -sfL https://get.rke2.io | INSTALL_RKE2_VERSION=${var.kubernetes_version} sh -
+      systemctl enable rke2-server.service
+      systemctl start rke2-server.service
+      echo "MASTER_${count.index + 2}_STARTED"
+    '
+  EOT
+  )]
+
+  depends_on = [ssh_resource.install_rke2_first_master]
+}
+
+# --- 7c. Install RKE2 Agent on Workers ---
+resource "ssh_resource" "install_rke2_workers" {
+  count       = var.worker_count
+  host        = hcloud_server.worker[count.index].ipv4_address
+  user        = local.node_username
+  private_key = tls_private_key.global_key.private_key_pem
+  timeout     = "20m"
+
+  commands = [nonsensitive(<<-EOT
+    bash -c '
+      cloud-init status --wait 2>/dev/null || sleep 30
+      PRIVATE_IP=$(ip -4 addr show | grep -oP "(?<=inet\\s)10\\.\\d+\\.\\d+\\.\\d+" | head -1)
+      PUBLIC_IP=$(curl -sf http://169.254.169.254/hetzner/v1/metadata/public-ipv4)
+
+      mkdir -p /etc/rancher/rke2
+      cat > /etc/rancher/rke2/config.yaml << RKEEOF
+token: ${random_password.cluster_token.result}
+server: https://${local.first_master_private_ip}:9345
+node-ip: $PRIVATE_IP
+node-external-ip: $PUBLIC_IP
+profile: cis
+protect-kernel-defaults: true
+RKEEOF
+
+      curl -sfL https://get.rke2.io | INSTALL_RKE2_TYPE=agent INSTALL_RKE2_VERSION=${var.kubernetes_version} sh -
+      systemctl enable rke2-agent.service
+      systemctl start rke2-agent.service
+      echo "WORKER_${count.index + 1}_STARTED"
+    '
+  EOT
+  )]
+
+  depends_on = [ssh_resource.install_rke2_first_master]
+}
+
+# --- 7d. Retrieve Kubeconfig from First Master ---
 resource "ssh_resource" "kubeconfig" {
   host        = hcloud_server.master[0].ipv4_address
   user        = local.node_username
@@ -176,10 +367,7 @@ resource "ssh_resource" "kubeconfig" {
     "cat /etc/rancher/rke2/rke2.yaml",
   ]
 
-  depends_on = [
-    hcloud_server.master,
-    hcloud_server_network.master,
-  ]
+  depends_on = [ssh_resource.install_rke2_first_master]
 }
 
 # Process kubeconfig: replace 127.0.0.1 with LB IP for external access
@@ -226,10 +414,8 @@ resource "ssh_resource" "wait_cluster_ready" {
 
   depends_on = [
     ssh_resource.kubeconfig,
-    hcloud_server.worker,
-    hcloud_server_network.worker,
-    hcloud_load_balancer_target.master,
-    hcloud_load_balancer_target.worker,
+    ssh_resource.install_rke2_other_masters,
+    ssh_resource.install_rke2_workers,
   ]
 }
 
