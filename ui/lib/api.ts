@@ -194,11 +194,10 @@ export const api = {
       ),
   },
   github: {
-    repos: (pat: string) =>
-      apiFetch<GitHubRepo[]>(`/github/repos?token=${encodeURIComponent(pat)}`),
-    branches: (owner: string, repo: string, pat: string) =>
-      apiFetch<GitHubBranch[]>(
-        `/github/repos/${owner}/${repo}/branches?token=${encodeURIComponent(pat)}`
-      ),
+    authUrl: () => apiFetch<{ url: string; state: string }>("/github/auth/url"),
+    repos: (token: string) =>
+      apiFetch<GitHubRepo[]>("/github/repos", {}, token),
+    branches: (owner: string, repo: string, token: string) =>
+      apiFetch<GitHubBranch[]>(`/github/repos/${owner}/${repo}/branches`, {}, token),
   },
 };

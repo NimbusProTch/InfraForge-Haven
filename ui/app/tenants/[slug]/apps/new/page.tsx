@@ -1,12 +1,14 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter, useParams } from "next/navigation";
 import Link from "next/link";
 import { AppShell } from "@/components/AppShell";
 import { api, GitHubRepo, GitHubBranch } from "@/lib/api";
-import { ArrowLeft, Loader2, Github, ChevronDown, RefreshCw } from "lucide-react";
+import { ArrowLeft, Loader2, Github, ChevronDown, RefreshCw, CheckCircle } from "lucide-react";
+
+const GITHUB_TOKEN_KEY = "haven_github_oauth_token";
 
 function slugify(s: string) {
   return s
@@ -33,9 +35,12 @@ export default function NewAppPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  // GitHub PAT flow
-  const [pat, setPat] = useState("");
-  const [patSaved, setPatSaved] = useState(false);
+  // GitHub OAuth state
+  const [githubToken, setGithubToken] = useState<string | null>(null);
+  const [connecting, setConnecting] = useState(false);
+  const [connectError, setConnectError] = useState("");
+
+  // Repo/branch state
   const [repos, setRepos] = useState<GitHubRepo[]>([]);
   const [reposLoading, setReposLoading] = useState(false);
   const [reposError, setReposError] = useState("");
@@ -44,31 +49,21 @@ export default function NewAppPage() {
   const [branchesLoading, setBranchesLoading] = useState(false);
   const [manualMode, setManualMode] = useState(false);
 
-  const patInputRef = useRef<HTMLInputElement>(null);
-
-  // Session access token (GitHub OAuth)
+  // Session access token from NextAuth GitHub sign-in (fallback)
   const s = session as typeof session & { accessToken?: string; provider?: string };
-  const sessionPat = s?.provider === "github" ? s?.accessToken : undefined;
-  const effectivePat = sessionPat ?? (patSaved ? pat : "");
+  const sessionToken = s?.provider === "github" ? s?.accessToken : undefined;
 
-  // Auto-load repos if signed in via GitHub OAuth
-  useEffect(() => {
-    if (sessionPat && repos.length === 0) {
-      loadRepos(sessionPat);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionPat]);
+  // Effective token: OAuth popup > NextAuth GitHub session
+  const effectiveToken = githubToken ?? sessionToken ?? null;
 
-  // Restore PAT from localStorage
+  // Restore OAuth token from localStorage
   useEffect(() => {
-    const stored = localStorage.getItem("haven_github_pat");
-    if (stored) {
-      setPat(stored);
-      setPatSaved(true);
-    }
+    const stored = localStorage.getItem(GITHUB_TOKEN_KEY);
+    if (stored) setGithubToken(stored);
   }, []);
 
-  async function loadRepos(token: string) {
+  // Auto-load repos when token is available
+  const loadRepos = useCallback(async (token: string) => {
     setReposLoading(true);
     setReposError("");
     try {
@@ -79,6 +74,67 @@ export default function NewAppPage() {
     } finally {
       setReposLoading(false);
     }
+  }, []);
+
+  useEffect(() => {
+    if (effectiveToken && repos.length === 0) {
+      loadRepos(effectiveToken);
+    }
+  }, [effectiveToken, repos.length, loadRepos]);
+
+  async function connectGitHub() {
+    setConnecting(true);
+    setConnectError("");
+    try {
+      const { url } = await api.github.authUrl();
+      const popup = window.open(url, "github_oauth", "width=600,height=700,scrollbars=yes,resizable=yes");
+      if (!popup) {
+        setConnectError("Popup blocked — allow popups for this site and try again");
+        setConnecting(false);
+        return;
+      }
+
+      const handleMessage = (e: MessageEvent) => {
+        if (e.origin !== window.location.origin) return;
+
+        if (e.data?.type === "github_oauth_success") {
+          const token = e.data.access_token as string;
+          localStorage.setItem(GITHUB_TOKEN_KEY, token);
+          setGithubToken(token);
+          setConnecting(false);
+          window.removeEventListener("message", handleMessage);
+        } else if (e.data?.type === "github_oauth_error") {
+          setConnectError(e.data.error || "GitHub authorization failed");
+          setConnecting(false);
+          window.removeEventListener("message", handleMessage);
+        }
+      };
+
+      window.addEventListener("message", handleMessage);
+
+      // Cleanup if popup is closed without completing
+      const pollClosed = setInterval(() => {
+        if (popup.closed) {
+          clearInterval(pollClosed);
+          setConnecting(false);
+          window.removeEventListener("message", handleMessage);
+        }
+      }, 500);
+    } catch (err) {
+      setConnectError(err instanceof Error ? err.message : "Failed to get GitHub auth URL");
+      setConnecting(false);
+    }
+  }
+
+  function disconnectGitHub() {
+    localStorage.removeItem(GITHUB_TOKEN_KEY);
+    setGithubToken(null);
+    setRepos([]);
+    setSelectedRepo(null);
+    setBranches([]);
+    setRepoUrl("");
+    setBranch("main");
+    setReposError("");
   }
 
   async function loadBranches(repo: GitHubRepo, token: string) {
@@ -91,36 +147,17 @@ export default function NewAppPage() {
       const defaultBranch = data.find((b) => b.name === repo.default_branch) ?? data[0];
       if (defaultBranch) setBranch(defaultBranch.name);
     } catch {
-      // fall through — branch input still available
+      // fall through — branch text input still available
     } finally {
       setBranchesLoading(false);
     }
-  }
-
-  function handleSavePat() {
-    if (!pat.trim()) return;
-    localStorage.setItem("haven_github_pat", pat.trim());
-    setPatSaved(true);
-    loadRepos(pat.trim());
-  }
-
-  function handleClearPat() {
-    localStorage.removeItem("haven_github_pat");
-    setPat("");
-    setPatSaved(false);
-    setRepos([]);
-    setSelectedRepo(null);
-    setBranches([]);
-    setRepoUrl("");
-    setBranch("main");
-    setTimeout(() => patInputRef.current?.focus(), 50);
   }
 
   function handleSelectRepo(repo: GitHubRepo) {
     setSelectedRepo(repo);
     setRepoUrl(repo.clone_url);
     setBranch(repo.default_branch);
-    loadBranches(repo, effectivePat);
+    if (effectiveToken) loadBranches(repo, effectiveToken);
   }
 
   function handleNameChange(v: string) {
@@ -153,9 +190,8 @@ export default function NewAppPage() {
     }
   }
 
-  const showGitHubSection = !manualMode;
-  const hasToken = !!effectivePat;
-  const hasRepos = repos.length > 0;
+  const isConnected = !!effectiveToken;
+  const connectedViaSession = !githubToken && !!sessionToken;
 
   return (
     <AppShell userEmail={session?.user?.email}>
@@ -230,72 +266,57 @@ export default function NewAppPage() {
               </button>
             </div>
 
-            {showGitHubSection && (
+            {!manualMode && (
               <>
-                {/* GitHub OAuth already connected */}
-                {sessionPat ? (
-                  <div className="flex items-center gap-2 text-xs text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-md px-3 py-2">
-                    <Github className="w-3.5 h-3.5" />
-                    Connected via GitHub OAuth
+                {/* GitHub connection status */}
+                {isConnected ? (
+                  <div className="flex items-center justify-between gap-2 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-md px-3 py-2">
+                    <div className="flex items-center gap-2 text-xs text-green-700 dark:text-green-400">
+                      <CheckCircle className="w-3.5 h-3.5 flex-shrink-0" />
+                      {connectedViaSession ? "Connected via GitHub Sign-In" : "GitHub connected"}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => effectiveToken && loadRepos(effectiveToken)}
+                        disabled={reposLoading}
+                        title="Reload repos"
+                        className="p-1 rounded hover:bg-green-100 dark:hover:bg-green-900/40 text-green-600 dark:text-green-400 transition-colors disabled:opacity-50"
+                      >
+                        <RefreshCw className={`w-3 h-3 ${reposLoading ? "animate-spin" : ""}`} />
+                      </button>
+                      {!connectedViaSession && (
+                        <button
+                          type="button"
+                          onClick={disconnectGitHub}
+                          className="text-xs text-red-500 hover:text-red-600 transition-colors"
+                        >
+                          Disconnect
+                        </button>
+                      )}
+                    </div>
                   </div>
                 ) : (
-                  /* PAT input */
+                  /* Connect GitHub button */
                   <div className="space-y-2">
-                    <label className="block text-sm font-medium text-gray-700 dark:text-[#ccc]">
-                      GitHub Personal Access Token
-                    </label>
-                    {patSaved ? (
-                      <div className="flex items-center gap-2">
-                        <div className="flex-1 px-3 py-2 rounded-md border border-gray-200 dark:border-[#2e2e2e] bg-gray-50 dark:bg-[#0a0a0a] text-gray-400 dark:text-[#555] text-sm font-mono">
-                          ghp_••••••••••••••••
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => loadRepos(pat)}
-                          disabled={reposLoading}
-                          title="Reload repos"
-                          className="p-2 rounded-md border border-gray-200 dark:border-[#2e2e2e] hover:bg-gray-100 dark:hover:bg-[#1a1a1a] text-gray-500 dark:text-[#888] transition-colors disabled:opacity-50"
-                        >
-                          <RefreshCw className={`w-3.5 h-3.5 ${reposLoading ? "animate-spin" : ""}`} />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={handleClearPat}
-                          className="text-xs text-red-500 hover:text-red-600 transition-colors px-2 py-2"
-                        >
-                          Clear
-                        </button>
-                      </div>
-                    ) : (
-                      <div className="flex gap-2">
-                        <input
-                          ref={patInputRef}
-                          type="password"
-                          value={pat}
-                          onChange={(e) => setPat(e.target.value)}
-                          onKeyDown={(e) =>
-                            e.key === "Enter" && (e.preventDefault(), handleSavePat())
-                          }
-                          placeholder="ghp_..."
-                          className="flex-1 px-3 py-2 rounded-md border border-gray-200 dark:border-[#2e2e2e] bg-white dark:bg-[#0f0f0f] text-gray-900 dark:text-white text-sm font-mono placeholder-gray-400 dark:placeholder-[#444] focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 transition-colors"
-                        />
-                        <button
-                          type="button"
-                          onClick={handleSavePat}
-                          disabled={!pat.trim() || reposLoading}
-                          className="px-3 py-2 rounded-md bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-medium transition-colors whitespace-nowrap"
-                        >
-                          {reposLoading ? (
-                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                          ) : (
-                            "Load repos"
-                          )}
-                        </button>
-                      </div>
+                    <button
+                      type="button"
+                      onClick={connectGitHub}
+                      disabled={connecting}
+                      className="w-full flex items-center justify-center gap-2.5 px-4 py-2.5 rounded-md border border-gray-200 dark:border-[#2e2e2e] bg-white dark:bg-[#0f0f0f] hover:bg-gray-50 dark:hover:bg-[#1a1a1a] text-gray-900 dark:text-white text-sm font-medium transition-colors disabled:opacity-60"
+                    >
+                      {connecting ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <Github className="w-4 h-4" />
+                      )}
+                      {connecting ? "Waiting for authorization…" : "Connect GitHub"}
+                    </button>
+                    {connectError && (
+                      <p className="text-xs text-red-500 bg-red-500/10 border border-red-500/20 rounded-md px-3 py-2">
+                        {connectError}
+                      </p>
                     )}
-                    <p className="text-xs text-gray-400 dark:text-[#555]">
-                      Needs <code className="font-mono">repo</code> scope. Saved to localStorage.
-                    </p>
                   </div>
                 )}
 
@@ -306,7 +327,7 @@ export default function NewAppPage() {
                 )}
 
                 {/* Repo picker */}
-                {hasToken && hasRepos && (
+                {isConnected && repos.length > 0 && (
                   <div className="space-y-3">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 dark:text-[#ccc] mb-1.5">
@@ -321,7 +342,7 @@ export default function NewAppPage() {
                           }}
                           className="w-full appearance-none px-3 py-2 pr-8 rounded-md border border-gray-200 dark:border-[#2e2e2e] bg-white dark:bg-[#0f0f0f] text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 transition-colors"
                         >
-                          <option value="">Select a repository...</option>
+                          <option value="">Select a repository…</option>
                           {repos.map((r) => (
                             <option key={r.id} value={r.full_name}>
                               {r.private ? "🔒 " : ""}
@@ -370,10 +391,17 @@ export default function NewAppPage() {
                   </div>
                 )}
 
-                {hasToken && !hasRepos && !reposLoading && !reposError && (
+                {isConnected && repos.length === 0 && !reposLoading && !reposError && (
                   <p className="text-xs text-gray-400 dark:text-[#555]">
                     No repositories found. Check token permissions.
                   </p>
+                )}
+
+                {reposLoading && (
+                  <div className="flex items-center gap-2 text-xs text-gray-400 dark:text-[#555]">
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                    Loading repositories…
+                  </div>
                 )}
               </>
             )}

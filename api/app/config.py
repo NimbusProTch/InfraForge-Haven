@@ -26,6 +26,11 @@ class Settings(BaseSettings):
     # Hetzner LB IP for sslip.io hostnames ({app}.{tenant}.apps.{lb_ip}.sslip.io)
     lb_ip: str = "127.0.0.1"
 
+    # GitHub OAuth (for "Connect GitHub" popup flow)
+    github_client_id: str = ""
+    github_client_secret: str = ""
+    github_redirect_uri: str = "http://localhost:3001/github/callback"
+
     # Webhook
     # GitHub webhook secret — set via WEBHOOK_SECRET env var, never hard-coded
     webhook_secret: str = ""
