@@ -239,13 +239,7 @@ class ManagedServiceProvisioner:
             ready = k8s_status.get("readyReplicas", 0)
             if ready and ready > 0:
                 service.status = ServiceStatus.READY
-        elif svc_type == ServiceType.MYSQL:
-            state = k8s_status.get("state", "")
-            if state == "ready":
-                service.status = ServiceStatus.READY
-            elif state in ("error", "failed"):
-                service.status = ServiceStatus.FAILED
-        elif svc_type == ServiceType.MONGODB:
+        elif svc_type == ServiceType.MYSQL or svc_type == ServiceType.MONGODB:
             state = k8s_status.get("state", "")
             if state == "ready":
                 service.status = ServiceStatus.READY

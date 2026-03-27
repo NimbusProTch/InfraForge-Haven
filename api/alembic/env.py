@@ -2,10 +2,11 @@ import asyncio
 import os
 from logging.config import fileConfig
 
-from alembic import context
 from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
+
+from alembic import context
 
 # Alembic Config object
 config = context.config
@@ -18,8 +19,8 @@ if os.environ.get("DATABASE_URL"):
     config.set_main_option("sqlalchemy.url", os.environ["DATABASE_URL"])
 
 # Import all models so Alembic can detect them
-from app.models.base import Base  # noqa: E402
 from app.models.application import Application  # noqa: E402, F401
+from app.models.base import Base  # noqa: E402
 from app.models.deployment import BuildJob, Deployment  # noqa: E402, F401
 from app.models.managed_service import ManagedService  # noqa: E402, F401
 from app.models.tenant import Tenant  # noqa: E402, F401

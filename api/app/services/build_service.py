@@ -198,7 +198,7 @@ class BuildService:
             '    echo "nixpacks failed, attempting start-command detection..." && '
             "    START_CMD= && "
             # Python detection
-            "    if [ -f /workspace/requirements.txt ] || [ -f /workspace/pyproject.toml ] || [ -f /workspace/setup.py ]; then "
+            "    if [ -f /workspace/requirements.txt ] || [ -f /workspace/pyproject.toml ] || [ -f /workspace/setup.py ]; then "  # noqa: E501
             "      if [ -f /workspace/main.py ]; then "
             '        START_CMD="python main.py"; '
             "      elif [ -f /workspace/app.py ]; then "
@@ -269,9 +269,9 @@ class BuildService:
             "          fi && "
             '          printf "EXPOSE 8000\\nCMD %s\\n" "$START_CMD" >> $FALLBACK_DOCKERFILE; '
             "        elif [ -f /workspace/package.json ]; then "
-            '          printf "FROM node:20-slim\\nWORKDIR /app\\nCOPY package*.json ./\\nRUN npm ci --production\\nCOPY . .\\nEXPOSE 8000\\nCMD %s\\n" "$START_CMD" > $FALLBACK_DOCKERFILE; '
+            '          printf "FROM node:20-slim\\nWORKDIR /app\\nCOPY package*.json ./\\nRUN npm ci --production\\nCOPY . .\\nEXPOSE 8000\\nCMD %s\\n" "$START_CMD" > $FALLBACK_DOCKERFILE; '  # noqa: E501
             "        elif [ -f /workspace/go.mod ]; then "
-            '          printf "FROM golang:1.22-alpine\\nWORKDIR /app\\nCOPY go.* ./\\nRUN go mod download\\nCOPY . .\\nRUN go build -o /app/server .\\nEXPOSE 8000\\nCMD [\\\"/app/server\\\"]\\n" > $FALLBACK_DOCKERFILE; '
+            '          printf "FROM golang:1.22-alpine\\nWORKDIR /app\\nCOPY go.* ./\\nRUN go mod download\\nCOPY . .\\nRUN go build -o /app/server .\\nEXPOSE 8000\\nCMD [\\\"/app/server\\\"]\\n" > $FALLBACK_DOCKERFILE; '  # noqa: E501
             "        fi; "
             "      fi; "
             "    else "
@@ -285,11 +285,11 @@ class BuildService:
             "        elif [ -f /workspace/pyproject.toml ]; then "
             '          printf "RUN pip install --no-cache-dir .\\n" >> $FALLBACK_DOCKERFILE; '
             "        fi && "
-            '        printf "EXPOSE 8000\\nCMD [\\"python\\", \\"-c\\", \\"print(\'app running\')\\"]\\n" >> $FALLBACK_DOCKERFILE; '
+            '        printf "EXPOSE 8000\\nCMD [\\"python\\", \\"-c\\", \\"print(\'app running\')\\"]\\n" >> $FALLBACK_DOCKERFILE; '  # noqa: E501
             "      elif [ -f /workspace/package.json ]; then "
-            '        printf "FROM node:20-slim\\nWORKDIR /app\\nCOPY package*.json ./\\nRUN npm ci --production\\nCOPY . .\\nEXPOSE 8000\\nCMD [\\"node\\", \\"index.js\\"]\\n" > $FALLBACK_DOCKERFILE; '
+            '        printf "FROM node:20-slim\\nWORKDIR /app\\nCOPY package*.json ./\\nRUN npm ci --production\\nCOPY . .\\nEXPOSE 8000\\nCMD [\\"node\\", \\"index.js\\"]\\n" > $FALLBACK_DOCKERFILE; '  # noqa: E501
             "      elif [ -f /workspace/go.mod ]; then "
-            '        printf "FROM golang:1.22-alpine\\nWORKDIR /app\\nCOPY go.* ./\\nRUN go mod download\\nCOPY . .\\nRUN go build -o /app/server .\\nEXPOSE 8000\\nCMD [\\\"/app/server\\\"]\\n" > $FALLBACK_DOCKERFILE; '
+            '        printf "FROM golang:1.22-alpine\\nWORKDIR /app\\nCOPY go.* ./\\nRUN go mod download\\nCOPY . .\\nRUN go build -o /app/server .\\nEXPOSE 8000\\nCMD [\\\"/app/server\\\"]\\n" > $FALLBACK_DOCKERFILE; '  # noqa: E501
             "      else "
             '        echo "ERROR: Unable to detect language or start command" && exit 1; '
             "      fi; "
