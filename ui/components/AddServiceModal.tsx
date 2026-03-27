@@ -73,7 +73,7 @@ export function AddServiceModal({ tenantSlug, accessToken, onCreated }: AddServi
         <DialogHeader>
           <DialogTitle>Add Managed Service</DialogTitle>
           <DialogDescription>
-            Provision a managed PostgreSQL, Redis, or RabbitMQ instance for this tenant.
+            Provision a managed database, cache, or message queue for this tenant.
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4 mt-2">
@@ -98,9 +98,21 @@ export function AddServiceModal({ tenantSlug, accessToken, onCreated }: AddServi
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="postgres">PostgreSQL (CNPG)</SelectItem>
-                <SelectItem value="redis">Redis (OpsTree)</SelectItem>
-                <SelectItem value="rabbitmq">RabbitMQ Cluster</SelectItem>
+                <SelectItem value="postgres">
+                  <span className="flex items-center gap-2">PostgreSQL (Percona)</span>
+                </SelectItem>
+                <SelectItem value="mysql">
+                  <span className="flex items-center gap-2">MySQL (Percona XtraDB)</span>
+                </SelectItem>
+                <SelectItem value="mongodb">
+                  <span className="flex items-center gap-2">MongoDB (Percona)</span>
+                </SelectItem>
+                <SelectItem value="redis">
+                  <span className="flex items-center gap-2">Redis</span>
+                </SelectItem>
+                <SelectItem value="rabbitmq">
+                  <span className="flex items-center gap-2">RabbitMQ</span>
+                </SelectItem>
               </SelectContent>
             </Select>
           </div>

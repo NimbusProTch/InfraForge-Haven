@@ -9,7 +9,9 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { api, type Application, type Deployment, getLogsUrl } from "@/lib/api";
 import AppSettings from "@/components/AppSettings";
+import ObservabilityTab from "@/components/ObservabilityTab";
 import {
+  Activity,
   ArrowLeft,
   GitBranch,
   Hammer,
@@ -736,6 +738,10 @@ export default function AppDetailPage() {
                 {deployments.length}
               </span>
             </TabsTrigger>
+            <TabsTrigger value="observability">
+              <Activity className="w-3.5 h-3.5 mr-1" />
+              Observability
+            </TabsTrigger>
             <TabsTrigger value="logs">
               <Terminal className="w-3.5 h-3.5 mr-1" />
               Logs
@@ -766,6 +772,20 @@ export default function AppDetailPage() {
                 ))}
               </div>
             )}
+          </TabsContent>
+
+          {/* Observability tab */}
+          <TabsContent value="observability" className="pt-5">
+            <ObservabilityTab
+              tenantSlug={tenantSlug}
+              appSlug={appSlug}
+              appName={app.name}
+              deployments={deployments}
+              logs={logs}
+              streaming={streaming}
+              onStartLogs={startLogs}
+              onStopLogs={stopLogs}
+            />
           </TabsContent>
 
           {/* Logs tab */}
