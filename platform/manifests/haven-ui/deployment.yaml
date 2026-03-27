@@ -19,47 +19,47 @@ spec:
     spec:
       tolerations:
         - operator: "Exists"
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app: haven-ui
+                topologyKey: kubernetes.io/hostname
       containers:
         - name: haven-ui
-          image: harbor.46.225.42.2.sslip.io/haven/haven-ui:latest
+          image: harbor.46.225.42.2.sslip.io/library/haven-ui:dev
           imagePullPolicy: Always
           ports:
             - name: http
               containerPort: 3000
-          env:
-            - name: NEXTAUTH_URL
-              valueFrom:
-                configMapKeyRef:
-                  name: haven-ui-config
-                  key: NEXTAUTH_URL
-            - name: NEXT_PUBLIC_API_URL
-              valueFrom:
-                configMapKeyRef:
-                  name: haven-ui-config
-                  key: NEXT_PUBLIC_API_URL
-            - name: KEYCLOAK_URL
-              valueFrom:
-                configMapKeyRef:
-                  name: haven-ui-config
-                  key: KEYCLOAK_URL
-            - name: KEYCLOAK_REALM
-              valueFrom:
-                configMapKeyRef:
-                  name: haven-ui-config
-                  key: KEYCLOAK_REALM
           envFrom:
+            - configMapRef:
+                name: haven-ui-config
             - secretRef:
                 name: haven-ui-secrets
-                optional: false
           readinessProbe:
             httpGet:
               path: /api/auth/csrf
               port: 3000
             initialDelaySeconds: 15
             periodSeconds: 10
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /api/auth/csrf
+              port: 3000
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            failureThreshold: 3
           resources:
             requests:
               cpu: "100m"
               memory: "128Mi"
             limits:
+              cpu: "500m"
               memory: "256Mi"
+          securityContext:
+            allowPrivilegeEscalation: false

@@ -1,8 +1,11 @@
+import base64
+import json
 import logging
 
 from kubernetes import client as k8s_lib
 from kubernetes.client.exceptions import ApiException
 
+from app.config import settings
 from app.k8s.client import K8sClient
 
 logger = logging.getLogger(__name__)
@@ -55,6 +58,7 @@ class TenantService:
         await self._create_limit_range(namespace)
         await self._create_network_policy(namespace)
         await self._create_rbac(namespace, slug)
+        await self._create_harbor_registry_secret(namespace)
         logger.info("Tenant %s provisioned in namespace %s", slug, namespace)
 
     async def deprovision(self, namespace: str) -> None:
@@ -160,6 +164,32 @@ class TenantService:
                 # CRD not installed (e.g. local dev without Cilium) — skip gracefully
                 logger.warning("CiliumNetworkPolicy CRD not found, skipping network policy for %s", namespace)
             elif e.status != 409:
+                raise
+
+    async def _create_harbor_registry_secret(self, namespace: str) -> None:
+        """Create Harbor registry pull secret in the tenant namespace."""
+        assert self.k8s.core_v1 is not None
+        harbor_url = settings.harbor_url.rstrip("/")
+        # Extract hostname from URL for docker config key
+        from urllib.parse import urlparse
+
+        harbor_host = urlparse(harbor_url).netloc or harbor_url
+        docker_config = {
+            "auths": {
+                harbor_host: {
+                    "auth": base64.b64encode(f"admin:{settings.harbor_admin_password}".encode()).decode()
+                }
+            }
+        }
+        secret = k8s_lib.V1Secret(
+            metadata=k8s_lib.V1ObjectMeta(name="harbor-registry-secret"),
+            type="kubernetes.io/dockerconfigjson",
+            data={".dockerconfigjson": base64.b64encode(json.dumps(docker_config).encode()).decode()},
+        )
+        try:
+            self.k8s.core_v1.create_namespaced_secret(namespace, secret)
+        except ApiException as e:
+            if e.status != 409:
                 raise
 
     async def _create_rbac(self, namespace: str, slug: str) -> None:

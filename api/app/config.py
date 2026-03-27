@@ -18,6 +18,8 @@ class Settings(BaseSettings):
     # Harbor
     harbor_url: str = "https://harbor.example.com"
     harbor_project: str = "haven"
+    # Harbor admin password for creating tenant registry pull secrets
+    harbor_admin_password: str = "Harbor12345"
     # Harbor registry secret name (pre-created K8s Secret with .dockerconfigjson key)
     harbor_registry_secret: str = "harbor-registry-secret"
 
@@ -44,6 +46,9 @@ class Settings(BaseSettings):
     # ArgoCD API
     argocd_url: str = "http://argocd-server.argocd.svc.cluster.local:80"
     argocd_auth_token: str = ""
+
+    # CORS allowed origins (comma-separated list)
+    cors_origins: str = "http://localhost:3000,http://localhost:3001,http://localhost:3002,http://127.0.0.1:3000,http://127.0.0.1:3001"
 
     # App
     debug: bool = False

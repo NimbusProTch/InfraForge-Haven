@@ -20,9 +20,18 @@ spec:
       serviceAccountName: haven-api
       tolerations:
         - operator: "Exists"
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app: haven-api
+                topologyKey: kubernetes.io/hostname
       containers:
         - name: haven-api
-          image: harbor.46.225.42.2.sslip.io/haven/haven-api:latest
+          image: harbor.46.225.42.2.sslip.io/library/haven-api:dev
           imagePullPolicy: Always
           ports:
             - name: http
@@ -30,27 +39,31 @@ spec:
           env:
             - name: K8S_INCLUSTER
               value: "true"
-            - name: DEBUG
-              value: "false"
           envFrom:
+            - configMapRef:
+                name: haven-api-config
             - secretRef:
                 name: haven-api-secrets
-                optional: false
           readinessProbe:
             httpGet:
               path: /health
               port: 8000
             initialDelaySeconds: 10
             periodSeconds: 10
+            failureThreshold: 3
           livenessProbe:
             httpGet:
               path: /health
               port: 8000
             initialDelaySeconds: 30
             periodSeconds: 30
+            failureThreshold: 3
           resources:
             requests:
               cpu: "200m"
               memory: "256Mi"
             limits:
+              cpu: "1"
               memory: "512Mi"
+          securityContext:
+            allowPrivilegeEscalation: false
