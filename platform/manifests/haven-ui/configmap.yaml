@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: haven-ui-config
+  namespace: haven-system
+data:
+  NEXTAUTH_URL: "https://app.46.225.42.2.sslip.io"
+  NEXT_PUBLIC_API_URL: "https://api.46.225.42.2.sslip.io"
+  KEYCLOAK_URL: "https://keycloak.46.225.42.2.sslip.io"
+  KEYCLOAK_REALM: "haven"
+  KEYCLOAK_ISSUER: "https://keycloak.46.225.42.2.sslip.io/realms/haven"
