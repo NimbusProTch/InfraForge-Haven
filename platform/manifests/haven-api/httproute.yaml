@@ -7,7 +7,9 @@ metadata:
     haven.io/component: api
 spec:
   parentRefs:
-    - name: haven-gateway
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: haven-gateway
       namespace: haven-gateway
   hostnames:
     - "api.46.225.42.2.sslip.io"
