@@ -227,16 +227,10 @@ variable "enable_everest" {
   default     = true
 }
 
-variable "everest_operator_version" {
-  description = "Percona Everest operator Helm chart version"
-  type        = string
-  default     = "1.4.0"
-}
-
 variable "everest_version" {
-  description = "Percona Everest server Helm chart version"
+  description = "Percona Everest Helm chart version"
   type        = string
-  default     = "1.4.0"
+  default     = "1.13.0"
 }
 
 # ===== Redis Operator =====

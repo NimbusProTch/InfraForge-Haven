@@ -610,35 +610,19 @@ resource "helm_release" "argocd" {
   depends_on = [helm_release.cert_manager]
 }
 
-# --- 17. Percona Everest (Database Platform) ---
-# Installs Percona Everest operator + UI for PostgreSQL, MySQL, MongoDB
-resource "helm_release" "everest_operator" {
-  count            = var.enable_everest ? 1 : 0
-  name             = "everest-operator"
-  namespace        = "everest-system"
-  create_namespace = false  # Created by namespace_security_labels
-  repository       = "https://percona.github.io/percona-helm-charts"
-  chart            = "everest-operator"
-  version          = var.everest_operator_version
-  timeout          = 900
-  wait             = true
-
-  depends_on = [ssh_resource.namespace_security_labels, helm_release.longhorn]
-}
-
-# Percona Everest server (UI + API)
+# --- 17. Percona Everest (Database Platform: PostgreSQL, MySQL, MongoDB) ---
 resource "helm_release" "everest" {
   count            = var.enable_everest ? 1 : 0
   name             = "everest"
   namespace        = "everest-system"
-  create_namespace = false
+  create_namespace = false  # Created by namespace_security_labels
   repository       = "https://percona.github.io/percona-helm-charts"
   chart            = "everest"
   version          = var.everest_version
-  timeout          = 600
+  timeout          = 900
   wait             = true
 
-  depends_on = [helm_release.everest_operator]
+  depends_on = [ssh_resource.namespace_security_labels, helm_release.longhorn]
 }
 
 # --- 18. Redis Operator (OpsTree) ---
@@ -708,6 +692,32 @@ resource "helm_release" "keycloak_db" {
   }
 
   depends_on = [helm_release.longhorn, helm_release.everest]
+}
+
+# Wait for CNPG operator to be ready before creating Keycloak DB cluster
+resource "ssh_resource" "wait_cnpg_ready" {
+  count       = var.enable_keycloak && var.enable_everest ? 1 : 0
+  host        = hcloud_server.master[0].ipv4_address
+  user        = local.node_username
+  private_key = tls_private_key.global_key.private_key_pem
+  timeout     = "5m"
+
+  commands = [
+    <<-EOT
+      export KUBECONFIG=/etc/rancher/rke2/rke2.yaml
+      K=/var/lib/rancher/rke2/bin/kubectl
+      echo "Waiting for CNPG CRD..."
+      for i in $(seq 1 60); do
+        if $K get crd clusters.postgresql.cnpg.io >/dev/null 2>&1; then
+          echo "CNPG CRD ready"
+          break
+        fi
+        sleep 5
+      done
+    EOT
+  ]
+
+  depends_on = [helm_release.everest]
 }
 
 resource "helm_release" "keycloak" {
