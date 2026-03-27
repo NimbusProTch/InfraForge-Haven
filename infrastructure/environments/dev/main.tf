@@ -442,12 +442,44 @@ resource "ssh_resource" "node_topology_labels" {
 # Platform Operators (via Helm provider)
 # ============================================================
 
+# --- 9b. CIS PodSecurity: label system namespaces as privileged ---
+# RKE2 CIS profile enforces "restricted" PodSecurity by default.
+# Storage/operator namespaces need "privileged" to run DaemonSets with hostPath.
+resource "ssh_resource" "namespace_security_labels" {
+  host        = hcloud_server.master[0].ipv4_address
+  user        = local.node_username
+  private_key = tls_private_key.global_key.private_key_pem
+  timeout     = "5m"
+
+  commands = [
+    <<-EOT
+      export KUBECONFIG=/etc/rancher/rke2/rke2.yaml
+      K=/var/lib/rancher/rke2/bin/kubectl
+
+      # Create namespaces and label as privileged (CIS override for system components)
+      for NS in longhorn-system cert-manager monitoring logging harbor-system minio-system \
+                argocd everest-system redis-system rabbitmq-system keycloak \
+                haven-system haven-builds haven-gateway; do
+        $K create namespace $NS --dry-run=client -o yaml | $K apply -f -
+        $K label namespace $NS \
+          pod-security.kubernetes.io/enforce=privileged \
+          pod-security.kubernetes.io/audit=privileged \
+          pod-security.kubernetes.io/warn=privileged \
+          --overwrite
+      done
+      echo "All system namespaces labeled privileged"
+    EOT
+  ]
+
+  depends_on = [ssh_resource.wait_cluster_ready]
+}
+
 # --- 10. Longhorn Storage (Haven Check #10: RWX) ---
 resource "helm_release" "longhorn" {
   count            = var.enable_longhorn ? 1 : 0
   name             = "longhorn"
   namespace        = "longhorn-system"
-  create_namespace = true
+  create_namespace = false  # Created by namespace_security_labels with privileged PSA
   repository       = "https://charts.longhorn.io"
   chart            = "longhorn"
   version          = var.longhorn_version
@@ -458,7 +490,7 @@ resource "helm_release" "longhorn" {
     replica_count = var.worker_count >= 3 ? 3 : var.worker_count
   })]
 
-  depends_on = [ssh_resource.wait_cluster_ready]
+  depends_on = [ssh_resource.namespace_security_labels]
 }
 
 # --- 11. Cert-Manager (Haven Check #12: Auto HTTPS) ---
@@ -466,7 +498,7 @@ resource "helm_release" "cert_manager" {
   count            = var.enable_cert_manager ? 1 : 0
   name             = "cert-manager"
   namespace        = "cert-manager"
-  create_namespace = true
+  create_namespace = false  # Created by namespace_security_labels
   repository       = "https://charts.jetstack.io"
   chart            = "cert-manager"
   version          = var.cert_manager_version
@@ -486,7 +518,7 @@ resource "helm_release" "monitoring" {
   count            = var.enable_monitoring ? 1 : 0
   name             = "kube-prometheus-stack"
   namespace        = "monitoring"
-  create_namespace = true
+  create_namespace = false  # Created by namespace_security_labels
   repository       = "https://prometheus-community.github.io/helm-charts"
   chart            = "kube-prometheus-stack"
   version          = var.monitoring_version
@@ -505,7 +537,7 @@ resource "helm_release" "loki_stack" {
   count            = var.enable_logging ? 1 : 0
   name             = "loki-stack"
   namespace        = "logging"
-  create_namespace = true
+  create_namespace = false  # Created by namespace_security_labels
   repository       = "https://grafana.github.io/helm-charts"
   chart            = "loki-stack"
   version          = var.logging_version
@@ -522,7 +554,7 @@ resource "helm_release" "harbor" {
   count            = var.enable_harbor ? 1 : 0
   name             = "harbor"
   namespace        = "harbor-system"
-  create_namespace = true
+  create_namespace = false  # Created by namespace_security_labels
   repository       = "https://helm.goharbor.io"
   chart            = "harbor"
   version          = var.harbor_version
@@ -543,7 +575,7 @@ resource "helm_release" "minio" {
   count            = var.enable_minio ? 1 : 0
   name             = "minio"
   namespace        = "minio-system"
-  create_namespace = true
+  create_namespace = false  # Created by namespace_security_labels
   repository       = "https://charts.min.io"
   chart            = "minio"
   version          = var.minio_version
@@ -564,7 +596,7 @@ resource "helm_release" "argocd" {
   count            = var.enable_argocd ? 1 : 0
   name             = "argocd"
   namespace        = "argocd"
-  create_namespace = true
+  create_namespace = false  # Created by namespace_security_labels
   repository       = "https://argoproj.github.io/argo-helm"
   chart            = "argo-cd"
   version          = var.argocd_version
@@ -584,14 +616,14 @@ resource "helm_release" "everest_operator" {
   count            = var.enable_everest ? 1 : 0
   name             = "everest-operator"
   namespace        = "everest-system"
-  create_namespace = true
+  create_namespace = false  # Created by namespace_security_labels
   repository       = "https://percona.github.io/percona-helm-charts"
   chart            = "everest-operator"
   version          = var.everest_operator_version
   timeout          = 900
   wait             = true
 
-  depends_on = [helm_release.longhorn]
+  depends_on = [ssh_resource.namespace_security_labels, helm_release.longhorn]
 }
 
 # Percona Everest server (UI + API)
@@ -614,29 +646,33 @@ resource "helm_release" "redis_operator" {
   count            = var.enable_redis_operator ? 1 : 0
   name             = "redis-operator"
   namespace        = "redis-system"
-  create_namespace = true
+  create_namespace = false  # Created by namespace_security_labels
   repository       = "https://ot-container-kit.github.io/helm-charts"
   chart            = "redis-operator"
   version          = var.redis_operator_version
   timeout          = 600
   wait             = true
 
-  depends_on = [ssh_resource.wait_cluster_ready]
+  depends_on = [ssh_resource.namespace_security_labels]
 }
 
-# --- 19. RabbitMQ Cluster Operator ---
-resource "helm_release" "rabbitmq_operator" {
-  count            = var.enable_rabbitmq_operator ? 1 : 0
-  name             = "rabbitmq-cluster-operator"
-  namespace        = "rabbitmq-system"
-  create_namespace = true
-  repository       = "https://charts.bitnami.com/bitnami"
-  chart            = "rabbitmq-cluster-operator"
-  version          = var.rabbitmq_operator_version
-  timeout          = 600
-  wait             = true
+# --- 19. RabbitMQ Cluster Operator (official, NOT Bitnami) ---
+resource "ssh_resource" "rabbitmq_operator" {
+  count       = var.enable_rabbitmq_operator ? 1 : 0
+  host        = hcloud_server.master[0].ipv4_address
+  user        = local.node_username
+  private_key = tls_private_key.global_key.private_key_pem
+  timeout     = "5m"
 
-  depends_on = [ssh_resource.wait_cluster_ready]
+  commands = [
+    <<-EOT
+      export KUBECONFIG=/etc/rancher/rke2/rke2.yaml
+      /var/lib/rancher/rke2/bin/kubectl apply -f "https://github.com/rabbitmq/cluster-operator/releases/latest/download/cluster-operator.yml"
+      echo "RabbitMQ Cluster Operator installed"
+    EOT
+  ]
+
+  depends_on = [ssh_resource.namespace_security_labels]
 }
 
 # --- 20. Keycloak (Production mode + CNPG PostgreSQL) ---
@@ -645,7 +681,7 @@ resource "helm_release" "keycloak_db" {
   count            = var.enable_keycloak ? 1 : 0
   name             = "keycloak-db"
   namespace        = "keycloak"
-  create_namespace = true
+  create_namespace = false  # Created by namespace_security_labels
   chart            = "${path.module}/../../charts/cnpg-cluster"
   timeout          = 600
   wait             = true
@@ -671,7 +707,7 @@ resource "helm_release" "keycloak_db" {
     value = "10Gi"
   }
 
-  depends_on = [helm_release.longhorn, helm_release.everest_operator]
+  depends_on = [helm_release.longhorn, helm_release.everest]
 }
 
 resource "helm_release" "keycloak" {
@@ -694,26 +730,7 @@ resource "helm_release" "keycloak" {
   depends_on = [helm_release.keycloak_db]
 }
 
-# --- 21. Platform Namespaces ---
-resource "ssh_resource" "platform_namespaces" {
-  host        = hcloud_server.master[0].ipv4_address
-  user        = local.node_username
-  private_key = tls_private_key.global_key.private_key_pem
-  timeout     = "5m"
-
-  commands = [
-    <<-EOT
-      export KUBECONFIG=/etc/rancher/rke2/rke2.yaml
-      K=/var/lib/rancher/rke2/bin/kubectl
-      $K create namespace haven-system --dry-run=client -o yaml | $K apply -f -
-      $K create namespace haven-builds --dry-run=client -o yaml | $K apply -f -
-      $K label namespace haven-system project=haven environment=${var.environment} --overwrite
-      $K label namespace haven-builds project=haven environment=${var.environment} --overwrite
-    EOT
-  ]
-
-  depends_on = [ssh_resource.wait_cluster_ready]
-}
+# Platform namespaces are created by namespace_security_labels (step 9b)
 
 # --- 22. Gateway API Resources ---
 # Applied after Cilium is running and cert-manager is installed
@@ -745,7 +762,7 @@ resource "ssh_resource" "gateway_api" {
     EOT
   ]
 
-  depends_on = [ssh_resource.wait_cluster_ready, helm_release.cert_manager]
+  depends_on = [ssh_resource.namespace_security_labels]
 }
 
 # Gateway + ClusterIssuer applied via kubectl on first master
@@ -820,7 +837,7 @@ resource "helm_release" "external_dns" {
   count            = var.enable_external_dns ? 1 : 0
   name             = "external-dns"
   namespace        = "external-dns"
-  create_namespace = true
+  create_namespace = false  # Created by namespace_security_labels
   repository       = "https://kubernetes-sigs.github.io/external-dns"
   chart            = "external-dns"
   version          = var.external_dns_version
