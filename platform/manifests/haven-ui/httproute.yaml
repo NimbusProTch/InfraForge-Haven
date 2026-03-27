@@ -10,7 +10,7 @@ spec:
     - name: haven-gateway
       namespace: haven-gateway
   hostnames:
-    - "ui.46.225.42.2.sslip.io"
+    - "app.46.225.42.2.sslip.io"
   rules:
     - matches:
         - path:
