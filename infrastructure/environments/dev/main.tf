@@ -457,8 +457,10 @@ resource "ssh_resource" "namespace_security_labels" {
       K=/var/lib/rancher/rke2/bin/kubectl
 
       # Create namespaces and label as privileged (CIS override for system components)
+      # everest/everest-monitoring/everest-olm: Percona Everest OLM + operators need privileged
       for NS in longhorn-system cert-manager monitoring logging harbor-system minio-system \
-                argocd everest-system redis-system rabbitmq-system keycloak \
+                argocd everest-system everest everest-monitoring everest-olm \
+                cnpg-system redis-system rabbitmq-system keycloak \
                 haven-system haven-builds haven-gateway; do
         $K create namespace $NS --dry-run=client -o yaml | $K apply -f -
         $K label namespace $NS \
@@ -493,6 +495,40 @@ resource "helm_release" "longhorn" {
   depends_on = [ssh_resource.namespace_security_labels]
 }
 
+# --- 10b. Wait for Longhorn CSI Plugin to be Ready on ALL nodes ---
+# Critical: Harbor, MinIO, Monitoring require PVCs. If Longhorn CSI plugin
+# DaemonSet is not fully Running when PVCs are created, volumes fail to attach.
+# This gate ensures all nodes have the CSI driver registered before proceeding.
+resource "ssh_resource" "wait_longhorn_ready" {
+  count       = var.enable_longhorn ? 1 : 0
+  host        = hcloud_server.master[0].ipv4_address
+  user        = local.node_username
+  private_key = tls_private_key.global_key.private_key_pem
+  timeout     = "15m"
+
+  commands = [nonsensitive(<<-EOT
+    bash -c '
+      export KUBECONFIG=/etc/rancher/rke2/rke2.yaml
+      K=/var/lib/rancher/rke2/bin/kubectl
+      EXPECTED=${var.master_count + var.worker_count}
+      echo "Waiting for Longhorn CSI plugin on all $EXPECTED nodes..."
+      for i in $(seq 1 90); do
+        READY=$($K get pods -n longhorn-system -l app=longhorn-csi-plugin \
+          --no-headers 2>/dev/null | grep -c "3/3" || echo 0)
+        echo "  CSI plugin ready: $READY/$EXPECTED nodes (attempt $i)"
+        if [ "$READY" -ge "$EXPECTED" ]; then
+          echo "LONGHORN_CSI_READY"
+          break
+        fi
+        sleep 10
+      done
+    '
+  EOT
+  )]
+
+  depends_on = [helm_release.longhorn]
+}
+
 # --- 11. Cert-Manager (Haven Check #12: Auto HTTPS) ---
 resource "helm_release" "cert_manager" {
   count            = var.enable_cert_manager ? 1 : 0
@@ -514,6 +550,7 @@ resource "helm_release" "cert_manager" {
 }
 
 # --- 12. Kube-Prometheus-Stack (Haven Check #14: Monitoring) ---
+# Prometheus, Grafana, and AlertManager each create PVCs via Longhorn.
 resource "helm_release" "monitoring" {
   count            = var.enable_monitoring ? 1 : 0
   name             = "kube-prometheus-stack"
@@ -526,13 +563,15 @@ resource "helm_release" "monitoring" {
   wait             = true
 
   values = [templatefile("${path.module}/helm-values/monitoring.yaml", {
-    storage_class = "longhorn"
+    storage_class          = "longhorn"
+    grafana_admin_password = var.grafana_admin_password
   })]
 
-  depends_on = [helm_release.longhorn]
+  depends_on = [ssh_resource.wait_longhorn_ready]
 }
 
 # --- 13. Logging (Haven Check #13: Log Aggregation) ---
+# Loki uses a PVC for log persistence — must wait for Longhorn CSI to be ready.
 resource "helm_release" "loki_stack" {
   count            = var.enable_logging ? 1 : 0
   name             = "loki-stack"
@@ -546,10 +585,14 @@ resource "helm_release" "loki_stack" {
 
   values = [templatefile("${path.module}/helm-values/logging.yaml", {})]
 
-  depends_on = [helm_release.longhorn]
+  # wait_longhorn_ready ensures CSI plugin is running on all nodes before
+  # any PVC is created, preventing volume attachment failures.
+  depends_on = [ssh_resource.wait_longhorn_ready]
 }
 
 # --- 14. Harbor Image Registry ---
+# Harbor creates multiple PVCs (registry, database, redis, jobservice).
+# All must be schedulable — requires Longhorn CSI to be fully registered.
 resource "helm_release" "harbor" {
   count            = var.enable_harbor ? 1 : 0
   name             = "harbor"
@@ -567,10 +610,11 @@ resource "helm_release" "harbor" {
     registry_storage_size  = var.harbor_registry_storage_size
   })]
 
-  depends_on = [helm_release.longhorn, helm_release.cert_manager]
+  depends_on = [ssh_resource.wait_longhorn_ready, helm_release.cert_manager]
 }
 
 # --- 15. MinIO Object Storage ---
+# MinIO creates a PVC for object storage — requires Longhorn CSI.
 resource "helm_release" "minio" {
   count            = var.enable_minio ? 1 : 0
   name             = "minio"
@@ -588,7 +632,7 @@ resource "helm_release" "minio" {
     storage_size  = var.minio_storage_size
   })]
 
-  depends_on = [helm_release.longhorn]
+  depends_on = [ssh_resource.wait_longhorn_ready]
 }
 
 # --- 16. ArgoCD ---
@@ -611,18 +655,137 @@ resource "helm_release" "argocd" {
 }
 
 # --- 17. Percona Everest (Database Platform: PostgreSQL, MySQL, MongoDB) ---
+# Everest installs via OLM (Operator Lifecycle Manager), which provisions
+# operators asynchronously — Helm returns before operators are Running.
+# wait=false: OLM installs operators async; readiness gate is in wait_everest_ready below.
+# disable_webhooks=true: Everest post-install hooks create PodSchedulingPolicy CRs that
+# go through the Everest operator's admission webhook. At hook time the operator is still
+# starting, so the webhook is not ready → hook fails with "context deadline exceeded".
+# The PSP CRs are instead created in wait_everest_ready after the operator is confirmed Ready.
 resource "helm_release" "everest" {
-  count            = var.enable_everest ? 1 : 0
-  name             = "everest"
-  namespace        = "everest-system"
-  create_namespace = false  # Created by namespace_security_labels
-  repository       = "https://percona.github.io/percona-helm-charts"
-  chart            = "everest"
-  version          = var.everest_version
-  timeout          = 900
-  wait             = true
+  count             = var.enable_everest ? 1 : 0
+  name              = "everest"
+  namespace         = "everest-system"
+  create_namespace  = false  # Created by namespace_security_labels
+  repository        = "https://percona.github.io/percona-helm-charts"
+  chart             = "everest"
+  version           = var.everest_version
+  timeout           = 600   # 10 min — hooks disabled, just chart apply
+  wait              = false
+  disable_webhooks  = true  # Skip pre/post hooks; PSPs applied in wait_everest_ready
 
-  depends_on = [ssh_resource.namespace_security_labels, helm_release.longhorn]
+  depends_on = [ssh_resource.namespace_security_labels, ssh_resource.wait_longhorn_ready]
+}
+
+# --- 17b. Wait for Everest Operator pods to be Ready ---
+# Everest uses OLM for operator lifecycle management. We just need the core
+# everest-operator and everest-server pods to be Running.
+# CNPG is installed separately via helm_release.cnpg (not via Everest/OLM).
+resource "ssh_resource" "wait_everest_ready" {
+  count       = var.enable_everest ? 1 : 0
+  host        = hcloud_server.master[0].ipv4_address
+  user        = local.node_username
+  private_key = tls_private_key.global_key.private_key_pem
+  timeout     = "10m"
+
+  commands = [nonsensitive(<<-EOT
+    bash -c '
+      export KUBECONFIG=/etc/rancher/rke2/rke2.yaml
+      K=/var/lib/rancher/rke2/bin/kubectl
+
+      echo "Waiting for Everest operator + server pods..."
+      for i in $(seq 1 60); do
+        READY=$($K get pods -n everest-system --no-headers 2>/dev/null | grep -c "1/1" || echo 0)
+        if [ "$READY" -ge "2" ]; then
+          echo "EVEREST_READY: $READY pods running"
+          break
+        fi
+        echo "  Everest pods not ready yet (attempt $i, found $READY/2)"
+        sleep 10
+      done
+
+      # Create default PodSchedulingPolicy CRs (skipped during helm install via disable_webhooks).
+      # Applied here after the operator is confirmed Running — its admission webhook is now ready.
+      echo "Applying default PodSchedulingPolicy resources..."
+      for PSP in everest-default-mysql everest-default-postgresql everest-default-mongodb; do
+        if ! $K get podschedulingpolicy "$PSP" >/dev/null 2>&1; then
+          echo "  Creating $PSP"
+        else
+          echo "  $PSP already exists, skipping"
+        fi
+      done
+      cat <<YAML | $K apply --server-side --force-conflicts -f - 2>&1 || true
+apiVersion: everest.percona.com/v1alpha1
+kind: PodSchedulingPolicy
+metadata:
+  name: everest-default-mysql
+  finalizers: [everest.percona.com/readonly-protection]
+spec:
+  engineType: pxc
+  affinityConfig:
+    pxc:
+      engine:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - podAffinityTerm: {topologyKey: kubernetes.io/hostname}
+              weight: 1
+      proxy:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - podAffinityTerm: {topologyKey: kubernetes.io/hostname}
+              weight: 1
+---
+apiVersion: everest.percona.com/v1alpha1
+kind: PodSchedulingPolicy
+metadata:
+  name: everest-default-postgresql
+  finalizers: [everest.percona.com/readonly-protection]
+spec:
+  engineType: postgresql
+  affinityConfig:
+    postgresql:
+      engine:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - podAffinityTerm: {topologyKey: kubernetes.io/hostname}
+              weight: 1
+      proxy:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - podAffinityTerm: {topologyKey: kubernetes.io/hostname}
+              weight: 1
+---
+apiVersion: everest.percona.com/v1alpha1
+kind: PodSchedulingPolicy
+metadata:
+  name: everest-default-mongodb
+  finalizers: [everest.percona.com/readonly-protection]
+spec:
+  engineType: psmdb
+  affinityConfig:
+    psmdb:
+      engine:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - podAffinityTerm: {topologyKey: kubernetes.io/hostname}
+              weight: 1
+      proxy:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - podAffinityTerm: {topologyKey: kubernetes.io/hostname}
+              weight: 1
+      configServer:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - podAffinityTerm: {topologyKey: kubernetes.io/hostname}
+              weight: 1
+YAML
+      echo "Everest setup complete."
+    '
+  EOT
+  )]
+
+  depends_on = [helm_release.everest]
 }
 
 # --- 18. Redis Operator (OpsTree) ---
@@ -659,8 +822,66 @@ resource "ssh_resource" "rabbitmq_operator" {
   depends_on = [ssh_resource.namespace_security_labels]
 }
 
+# --- 19b. CloudNativePG Operator (for Keycloak PostgreSQL) ---
+# Installed directly via Helm chart, independent of Percona Everest/OLM.
+# Everest 1.13.0 does NOT auto-install CNPG — it requires explicit DB engine provisioning.
+resource "helm_release" "cnpg" {
+  count            = var.enable_keycloak ? 1 : 0
+  name             = "cloudnative-pg"
+  namespace        = "cnpg-system"
+  create_namespace = false  # Created by namespace_security_labels
+  repository       = "https://cloudnative-pg.github.io/charts"
+  chart            = "cloudnative-pg"
+  version          = var.cnpg_version
+  timeout          = 600
+  wait             = true
+
+  depends_on = [ssh_resource.namespace_security_labels]
+}
+
+# Wait for CNPG CRD + operator pod to be ready before creating CNPG Cluster
+resource "ssh_resource" "wait_cnpg_ready" {
+  count       = var.enable_keycloak ? 1 : 0
+  host        = hcloud_server.master[0].ipv4_address
+  user        = local.node_username
+  private_key = tls_private_key.global_key.private_key_pem
+  timeout     = "10m"
+
+  commands = [nonsensitive(<<-EOT
+    bash -c '
+      export KUBECONFIG=/etc/rancher/rke2/rke2.yaml
+      K=/var/lib/rancher/rke2/bin/kubectl
+
+      echo "Waiting for CNPG CRD..."
+      for i in $(seq 1 60); do
+        if $K get crd clusters.postgresql.cnpg.io >/dev/null 2>&1; then
+          echo "CNPG_CRD_READY"; break
+        fi
+        sleep 5
+      done
+
+      echo "Waiting for CNPG operator pod..."
+      for i in $(seq 1 60); do
+        READY=$($K get pods -n cnpg-system -l app.kubernetes.io/name=cloudnative-pg \
+          --no-headers 2>/dev/null | grep -c "1/1" || echo 0)
+        if [ "$READY" -ge "1" ]; then
+          echo "CNPG_OPERATOR_READY"; break
+        fi
+        sleep 5
+      done
+    '
+  EOT
+  )]
+
+  depends_on = [helm_release.cnpg]
+}
+
 # --- 20. Keycloak (Production mode + CNPG PostgreSQL) ---
-# First create the Keycloak database via CNPG
+# Deploy chain:
+#   cnpg → wait_cnpg_ready → keycloak_db (CNPG Cluster) → wait_keycloak_db_ready → keycloak
+
+# Step 1: Create the Keycloak PostgreSQL database via CNPG Cluster CRD.
+# Requires CNPG operator to be running (gated by wait_everest_ready).
 resource "helm_release" "keycloak_db" {
   count            = var.enable_keycloak ? 1 : 0
   name             = "keycloak-db"
@@ -691,40 +912,49 @@ resource "helm_release" "keycloak_db" {
     value = "10Gi"
   }
 
-  depends_on = [helm_release.longhorn, helm_release.everest]
+  # wait_cnpg_ready ensures CNPG CRD + operator pod are running.
+  # wait_longhorn_ready ensures Longhorn CSI can provision the 10Gi PVC.
+  depends_on = [ssh_resource.wait_cnpg_ready, ssh_resource.wait_longhorn_ready]
 }
 
-# Wait for CNPG operator to be ready before creating Keycloak DB cluster
-resource "ssh_resource" "wait_cnpg_ready" {
-  count       = var.enable_keycloak && var.enable_everest ? 1 : 0
+# Step 2: Wait for the CNPG primary pod to be Running before deploying Keycloak.
+# Keycloak needs the DB to accept connections on startup — if the primary is not
+# Ready, Keycloak will fail to connect and enter CrashLoopBackOff.
+resource "ssh_resource" "wait_keycloak_db_ready" {
+  count       = var.enable_keycloak ? 1 : 0
   host        = hcloud_server.master[0].ipv4_address
   user        = local.node_username
   private_key = tls_private_key.global_key.private_key_pem
-  timeout     = "5m"
+  timeout     = "10m"
 
-  commands = [
-    <<-EOT
+  commands = [nonsensitive(<<-EOT
+    bash -c '
       export KUBECONFIG=/etc/rancher/rke2/rke2.yaml
       K=/var/lib/rancher/rke2/bin/kubectl
-      echo "Waiting for CNPG CRD..."
+      echo "Waiting for keycloak-db CNPG primary pod..."
       for i in $(seq 1 60); do
-        if $K get crd clusters.postgresql.cnpg.io >/dev/null 2>&1; then
-          echo "CNPG CRD ready"
+        READY=$($K get pods -n keycloak -l cnpg.io/cluster=keycloak-db,role=primary \
+          --no-headers 2>/dev/null | grep -c "1/1" || echo 0)
+        if [ "$READY" -ge "1" ]; then
+          echo "KEYCLOAK_DB_PRIMARY_READY"
           break
         fi
-        sleep 5
+        echo "  DB primary not ready yet (attempt $i)"
+        sleep 10
       done
-    EOT
-  ]
+    '
+  EOT
+  )]
 
-  depends_on = [helm_release.everest]
+  depends_on = [helm_release.keycloak_db]
 }
 
+# Step 3: Deploy Keycloak only after the CNPG primary is Ready.
 resource "helm_release" "keycloak" {
   count            = var.enable_keycloak ? 1 : 0
   name             = "keycloak"
   namespace        = "keycloak"
-  create_namespace = false
+  create_namespace = false  # Created by namespace_security_labels
   repository       = "https://codecentric.github.io/helm-charts"
   chart            = "keycloakx"
   version          = var.keycloak_chart_version
@@ -732,43 +962,66 @@ resource "helm_release" "keycloak" {
   wait             = true
 
   values = [templatefile("${path.module}/helm-values/keycloak.yaml", {
-    keycloak_host     = local.keycloak_host
-    admin_password    = var.keycloak_admin_password
-    db_secret_name    = "keycloak-db-app"
+    keycloak_host  = local.keycloak_host
+    admin_password = var.keycloak_admin_password
+    db_secret_name = "keycloak-db-app"  # CNPG auto-creates this Secret
   })]
 
-  depends_on = [helm_release.keycloak_db]
+  depends_on = [ssh_resource.wait_keycloak_db_ready]
 }
 
 # Platform namespaces are created by namespace_security_labels (step 9b)
 
-# --- 22. Gateway API Resources ---
-# Applied after Cilium is running and cert-manager is installed
+# --- 22. Gateway API CRDs + GatewayClass Acceptance ---
+# Cilium's Gateway API support requires:
+#   1. Gateway API experimental CRDs to be installed BEFORE Cilium processes them
+#   2. Waiting for GatewayClass "cilium" to reach Accepted=True status
+#      (not just exist — Cilium operator must reconcile it)
+# Without this, haven-gateway stays in "Waiting for controller" (1970-01-01 timestamp).
 resource "ssh_resource" "gateway_api" {
   host        = hcloud_server.master[0].ipv4_address
   user        = local.node_username
   private_key = tls_private_key.global_key.private_key_pem
-  timeout     = "5m"
+  timeout     = "10m"
 
   commands = [
     <<-EOT
       export KUBECONFIG=/etc/rancher/rke2/rke2.yaml
       K=/var/lib/rancher/rke2/bin/kubectl
 
-      # Create gateway namespace
-      $K create namespace haven-gateway --dry-run=client -o yaml | $K apply -f -
+      # Apply Gateway API experimental CRDs (includes TLSRoute, GRPCRoute, etc.)
+      $K apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.2.1/experimental-install.yaml
 
-      # Apply Gateway API experimental CRDs
-      $K apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.2.1/experimental-install.yaml 2>/dev/null || true
-
-      # Wait for Cilium GatewayClass
-      for i in $(seq 1 30); do
+      # Wait for Cilium operator to register the GatewayClass
+      echo "Waiting for GatewayClass cilium to appear..."
+      for i in $(seq 1 60); do
         if $K get gatewayclass cilium >/dev/null 2>&1; then
           echo "GatewayClass cilium found"
           break
         fi
         sleep 10
       done
+
+      # Wait for GatewayClass to be ACCEPTED by Cilium controller.
+      # This is the key step — just existing is not enough.
+      # Cilium must reconcile it and set Accepted=True before creating Gateways.
+      echo "Waiting for GatewayClass cilium Accepted=True..."
+      for i in $(seq 1 60); do
+        STATUS=$($K get gatewayclass cilium \
+          -o jsonpath='{.status.conditions[?(@.type=="Accepted")].status}' 2>/dev/null || echo "")
+        if [ "$STATUS" = "True" ]; then
+          echo "GATEWAYCLASS_ACCEPTED"
+          break
+        fi
+        echo "  GatewayClass status: '$STATUS' (attempt $i)"
+        sleep 10
+      done
+
+      # Create gateway namespace with privileged PSA (already done by namespace_security_labels,
+      # but idempotent --dry-run ensures it exists even if re-applied)
+      $K create namespace haven-gateway --dry-run=client -o yaml | $K apply -f -
+      $K label namespace haven-gateway \
+        pod-security.kubernetes.io/enforce=privileged --overwrite
     EOT
   ]
 

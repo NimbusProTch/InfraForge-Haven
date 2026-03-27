@@ -63,10 +63,21 @@ resource "hcloud_firewall" "haven" {
     source_ips = ["0.0.0.0/0", "::/0"]
   }
 
-  # NOTE: RKE2 supervisor (9345), VXLAN (8472), etcd (2379-2380),
-  # kubelet (10250) are NOT exposed publicly.
-  # Inter-node traffic uses private network (Hetzner private network
-  # is not subject to firewall rules).
+  # RKE2 supervisor / remotedialer tunnel (workers → masters)
+  # Required: when node-external-ip is set, RKE2 advertises public IPs as
+  # server endpoints. Workers connect to masters via public IP on port 9345
+  # for the remotedialer WebSocket tunnel used by kubectl logs/exec.
+  # Without this, all kubectl logs/exec calls return 502 Bad Gateway.
+  rule {
+    direction  = "in"
+    protocol   = "tcp"
+    port       = "9345"
+    source_ips = ["0.0.0.0/0", "::/0"]
+  }
+
+  # NOTE: VXLAN (8472), etcd (2379-2380), kubelet API (10250) remain
+  # private-only. Kubelet access goes through the remotedialer tunnel,
+  # not directly from apiserver to kubelet via public IP.
 }
 
 # --- Load Balancer (K8s API + HTTP/S Ingress) ---
