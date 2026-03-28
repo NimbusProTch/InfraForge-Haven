@@ -1,7 +1,7 @@
 from app.models.application import Application, AppType
 from app.models.audit_log import AuditLog
 from app.models.base import Base
-from app.models.cluster import Cluster
+from app.models.cluster import Cluster, ClusterProvider, ClusterStatus
 from app.models.cronjob import CronJob
 from app.models.data_retention_policy import DataRetentionPolicy
 from app.models.deployment import BuildJob, Deployment
@@ -30,6 +30,9 @@ __all__ = [
     "UsageRecord",
     "UserConsent",
     "DataRetentionPolicy",
+    "Cluster",
+    "ClusterStatus",
+    "ClusterProvider",
     "Organization",
     "OrganizationMember",
     "SSOConfig",

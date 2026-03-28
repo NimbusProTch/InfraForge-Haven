@@ -83,7 +83,7 @@ async def grant_consent(
 
 
 @router.delete("/consent/{consent_type}", status_code=status.HTTP_200_OK, response_model=ConsentResponse)
-async def revoke_consent(  # noqa: E501
+async def revoke_consent(
     tenant_slug: str, consent_type: ConsentType, db: DBSession, current_user: CurrentUser, user_id: str = "anonymous"
 ) -> UserConsent:
     """Revoke a consent type — creates a new revocation record (GDPR Art. 7(3))."""

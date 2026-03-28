@@ -308,7 +308,9 @@ async def run_cronjob_now(
         },
         "spec": {
             "template": {
-                "metadata": job_spec.template.metadata.to_dict() if hasattr(job_spec.template.metadata, "to_dict") else {},  # noqa: E501
+                "metadata": (
+                    job_spec.template.metadata.to_dict() if hasattr(job_spec.template.metadata, "to_dict") else {}
+                ),
                 "spec": job_spec.template.spec.to_dict() if hasattr(job_spec.template.spec, "to_dict") else {},
             }
         },
