@@ -14,10 +14,12 @@ from app.routers import (
     deployments,
     domains,
     environments,
+    gdpr,
     github,
     health,
     members,
     observability,
+    organizations,
     services,
     tenants,
     webhooks,
@@ -64,3 +66,5 @@ app.include_router(environments.router, prefix=settings.api_prefix)
 app.include_router(domains.router, prefix=settings.api_prefix)
 app.include_router(audit.router, prefix=settings.api_prefix)
 app.include_router(billing.router, prefix=settings.api_prefix)
+app.include_router(gdpr.router, prefix=settings.api_prefix)
+app.include_router(organizations.router, prefix=settings.api_prefix)
