@@ -48,7 +48,7 @@ class GitWorker:
     as that would defeat the purpose of serial git commits.
     """
 
-    def __init__(self, redis: "aioredis.Redis", gitops: GitOpsService) -> None:
+    def __init__(self, redis: aioredis.Redis, gitops: GitOpsService) -> None:
         self._redis = redis
         self._gitops = gitops
         self._queue_svc = GitQueueService(redis)
@@ -93,7 +93,10 @@ class GitWorker:
         retries: int = job.get("retries", 0)
 
         await self._queue_svc.update_job_status(job_id, JobStatus.PROCESSING, retries=retries)
-        logger.info("Processing job %s op=%s path=%s (attempt %d)", job_id, operation.value, payload.get("path"), retries + 1)
+        logger.info(
+            "Processing job %s op=%s path=%s (attempt %d)",
+            job_id, operation.value, payload.get("path"), retries + 1,
+        )
 
         try:
             await self._execute_operation(operation, payload)

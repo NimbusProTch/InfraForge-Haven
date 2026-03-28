@@ -11,7 +11,7 @@ Routes:
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
@@ -42,16 +42,17 @@ def _get_queue_service() -> GitQueueService:
         client = aioredis.from_url(redis_url, decode_responses=False)
         return GitQueueService(client)
     except ImportError:
-        raise HTTPException(
+        raise HTTPException(  # noqa: B904
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Redis client library not installed. Add 'redis[asyncio]' to dependencies.",
         )
 
 
+QueueDep = Annotated[GitQueueService, Depends(_get_queue_service)]
+
+
 @router.get("/status", summary="Queue aggregate statistics")
-async def get_queue_status(
-    queue_svc: GitQueueService = Depends(_get_queue_service),
-) -> dict[str, Any]:
+async def get_queue_status(queue_svc: QueueDep) -> dict[str, Any]:
     """Return pending and dead-letter counts.
 
     Response:
@@ -68,10 +69,7 @@ async def get_queue_status(
 
 
 @router.get("/jobs/{job_id}", summary="Single job status")
-async def get_job_status(
-    job_id: str,
-    queue_svc: GitQueueService = Depends(_get_queue_service),
-) -> dict[str, Any]:
+async def get_job_status(job_id: str, queue_svc: QueueDep) -> dict[str, Any]:
     """Return status metadata for a specific job.
 
     Response fields: id, operation, repo, path, commit_message, status, retries, error.

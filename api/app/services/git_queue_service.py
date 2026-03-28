@@ -14,7 +14,7 @@ from __future__ import annotations
 import json
 import logging
 import uuid
-from enum import Enum
+from enum import StrEnum
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -29,7 +29,7 @@ JOB_KEY_PREFIX = "haven:git:job:"
 JOB_TTL_SECONDS = 86400  # 24 hours
 
 
-class GitOperation(str, Enum):
+class GitOperation(StrEnum):
     """Supported git file operations."""
 
     CREATE_FILE = "CREATE_FILE"
@@ -37,7 +37,7 @@ class GitOperation(str, Enum):
     DELETE_FILE = "DELETE_FILE"
 
 
-class JobStatus(str, Enum):
+class JobStatus(StrEnum):
     """Possible states of a queued git job."""
 
     PENDING = "pending"
@@ -63,7 +63,7 @@ class GitQueueService:
         )
     """
 
-    def __init__(self, redis: "aioredis.Redis") -> None:
+    def __init__(self, redis: aioredis.Redis) -> None:
         self._redis = redis
 
     async def enqueue(
