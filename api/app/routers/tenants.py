@@ -6,6 +6,7 @@ from sqlalchemy import select
 from app.deps import CurrentUser, DBSession, K8sDep
 from app.models.tenant import Tenant
 from app.schemas.tenant import TenantCreate, TenantResponse, TenantUpdate
+from app.services.gitops_scaffold import gitops_scaffold
 from app.services.keycloak_service import keycloak_service
 from app.services.tenant_service import TenantService
 
@@ -63,6 +64,9 @@ async def create_tenant(body: TenantCreate, db: DBSession, k8s: K8sDep, current_
     except Exception as exc:
         logger.warning("Keycloak realm creation failed for %s: %s", body.slug, exc)
 
+    # GitOps scaffold: create tenant directory in haven-gitops (non-blocking)
+    await gitops_scaffold.scaffold_tenant(body.slug)
+
     await db.commit()
     await db.refresh(tenant)
     return tenant
@@ -99,6 +103,9 @@ async def delete_tenant(tenant_slug: str, db: DBSession, k8s: K8sDep, current_us
         await keycloak_service.delete_realm(tenant.slug)
     except Exception as exc:
         logger.warning("Keycloak realm deletion failed for %s: %s", tenant.slug, exc)
+
+    # GitOps scaffold: remove tenant directory from haven-gitops (non-blocking)
+    await gitops_scaffold.delete_tenant(tenant.slug)
 
     await db.delete(tenant)
     await db.commit()

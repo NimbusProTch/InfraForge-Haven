@@ -1,3 +1,4 @@
+import logging
 
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel
@@ -8,6 +9,9 @@ from app.models.application import Application
 from app.models.managed_service import ManagedService, ServiceStatus
 from app.models.tenant import Tenant
 from app.schemas.application import ApplicationCreate, ApplicationResponse, ApplicationUpdate
+from app.services.gitops_scaffold import gitops_scaffold
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/tenants/{tenant_slug}/apps", tags=["applications"])
 
@@ -63,6 +67,16 @@ async def create_application(
     db.add(app)
     await db.commit()
     await db.refresh(app)
+
+    # GitOps scaffold: create app values.yaml in haven-gitops (non-blocking)
+    await gitops_scaffold.scaffold_app(
+        tenant_slug=tenant_slug,
+        app_slug=body.slug,
+        port=body.port or 8000,
+        replicas=body.replicas or 1,
+        env_vars=dict(body.env_vars) if body.env_vars else {},
+    )
+
     return app
 
 
@@ -115,6 +129,9 @@ async def delete_application(
     app = result.scalar_one_or_none()
     if app is None:
         raise HTTPException(status_code=404, detail="Application not found")
+
+    # GitOps scaffold: remove app directory from haven-gitops (non-blocking)
+    await gitops_scaffold.delete_app(tenant_slug=tenant_slug, app_slug=app_slug)
 
     # TODO (Sprint 3): undeploy from K8s before deleting from DB
     await db.delete(app)
