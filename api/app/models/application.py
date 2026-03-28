@@ -9,6 +9,7 @@ from app.models.base import Base, TimestampMixin
 
 if TYPE_CHECKING:
     from app.models.deployment import Deployment
+    from app.models.domain import DomainVerification
     from app.models.environment import Environment
     from app.models.tenant import Tenant
 
@@ -58,5 +59,8 @@ class Application(Base, TimestampMixin):
         back_populates="application", cascade="all, delete-orphan"
     )
     environments: Mapped[list["Environment"]] = relationship(
+        back_populates="application", cascade="all, delete-orphan"
+    )
+    domains: Mapped[list["DomainVerification"]] = relationship(
         back_populates="application", cascade="all, delete-orphan"
     )

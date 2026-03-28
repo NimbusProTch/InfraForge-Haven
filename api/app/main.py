@@ -10,6 +10,7 @@ from app.k8s.client import k8s_client
 from app.routers import (
     applications,
     deployments,
+    domains,
     environments,
     github,
     health,
@@ -58,3 +59,4 @@ app.include_router(github.router, prefix=settings.api_prefix)
 app.include_router(observability.router, prefix=settings.api_prefix)
 app.include_router(members.router, prefix=settings.api_prefix)
 app.include_router(environments.router, prefix=settings.api_prefix)
+app.include_router(domains.router, prefix=settings.api_prefix)

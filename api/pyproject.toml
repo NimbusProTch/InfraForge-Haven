@@ -28,6 +28,9 @@ dependencies = [
     "python-multipart>=0.0.18",
     "pyyaml>=6.0.2",
     "jinja2>=3.1.4",
+
+    # DNS verification for custom domains
+    "dnspython>=2.7.0",
 ]
 
 [project.optional-dependencies]
@@ -39,6 +42,8 @@ dev = [
     "httpx>=0.28.0",
     "ruff>=0.8.0",
     "pre-commit>=4.0.0",
+    "aiosqlite>=0.20.0",
+    "anyio>=4.0.0",
 ]
 
 [build-system]
