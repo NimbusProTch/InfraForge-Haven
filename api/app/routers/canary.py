@@ -203,7 +203,7 @@ async def configure_canary(
 
     if config.enabled and not config.canary_image and not app.canary_enabled:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="canary_image is required when enabling canary for the first time",
         )
 
