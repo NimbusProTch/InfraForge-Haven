@@ -192,7 +192,8 @@ class BuildService:
             "  chmod +x /tmp/nixpacks && "
             # --- First attempt: plain nixpacks build ---
             "  if /tmp/nixpacks build /workspace --out /workspace; then "
-            "    cp /workspace/.nixpacks/Dockerfile /workspace/Dockerfile; "
+            "    cp /workspace/.nixpacks/Dockerfile /workspace/Dockerfile && "
+            "    sed -i 's/uv==$NIXPACKS_UV_VERSION/uv/g' /workspace/Dockerfile; "
             "  else "
             # --- Detect start command for common languages ---
             '    echo "nixpacks failed, attempting start-command detection..." && '
@@ -255,7 +256,8 @@ class BuildService:
             '    if [ -n "$START_CMD" ]; then '
             '      echo "Detected start command: $START_CMD" && '
             '      if /tmp/nixpacks build /workspace --out /workspace --start-cmd "$START_CMD"; then '
-            "        cp /workspace/.nixpacks/Dockerfile /workspace/Dockerfile; "
+            "        cp /workspace/.nixpacks/Dockerfile /workspace/Dockerfile && "
+            "        sed -i 's/uv==$NIXPACKS_UV_VERSION/uv/g' /workspace/Dockerfile; "
             "      else "
             # --- Fallback: generate a simple Dockerfile ---
             '        echo "nixpacks retry failed, generating fallback Dockerfile..." && '
@@ -341,17 +343,25 @@ class BuildService:
                 "--local", "context=/workspace",
                 "--local", "dockerfile=/workspace",
                 "--output", f"type=image,name={image_name},push=true,registry.insecure=true",
-                "--export-cache", f"type=registry,ref={cache_repo},push=true,registry.insecure=true",
-                "--import-cache", f"type=registry,ref={cache_repo}",
             ],
             volume_mounts=[
                 k8s_client_lib.V1VolumeMount(name="workspace", mount_path="/workspace"),
+                k8s_client_lib.V1VolumeMount(
+                    name="docker-config", mount_path="/root/.docker", read_only=True
+                ),
             ],
         )
 
         volumes = [
             k8s_client_lib.V1Volume(
                 name="workspace", empty_dir=k8s_client_lib.V1EmptyDirVolumeSource()
+            ),
+            k8s_client_lib.V1Volume(
+                name="docker-config",
+                secret=k8s_client_lib.V1SecretVolumeSource(
+                    secret_name="harbor-registry-secret",
+                    items=[k8s_client_lib.V1KeyToPath(key=".dockerconfigjson", path="config.json")],
+                ),
             ),
         ]
 
