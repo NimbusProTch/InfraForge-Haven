@@ -311,6 +311,37 @@ variable "oidc_keycloak_realm" {
   default     = "haven"
 }
 
+# ===== Gitea =====
+variable "enable_gitea" {
+  description = "Enable Gitea self-hosted git server (required for GitOps pipeline)"
+  type        = bool
+  default     = true
+}
+
+variable "gitea_version" {
+  description = "Gitea Helm chart version"
+  type        = string
+  default     = "10.6.0"
+}
+
+variable "gitea_admin_user" {
+  description = "Gitea admin username"
+  type        = string
+  default     = "gitea_admin"
+}
+
+variable "gitea_admin_password" {
+  description = "Gitea admin password"
+  type        = string
+  sensitive   = true
+}
+
+variable "gitea_storage_size" {
+  description = "Gitea data PVC size"
+  type        = string
+  default     = "10Gi"
+}
+
 # ===== Real Domain Mode =====
 variable "use_real_domain" {
   description = "Switch hostnames from sslip.io pattern to real domain (IS5-02)"

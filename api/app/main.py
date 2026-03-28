@@ -23,6 +23,7 @@ from app.routers import (
     domains,
     environments,
     gdpr,
+    gitea,
     github,
     health,
     members,
@@ -129,3 +130,4 @@ app.include_router(canary.router, prefix=settings.api_prefix)
 app.include_router(cronjobs.router, prefix=settings.api_prefix)
 app.include_router(pvcs.router, prefix=settings.api_prefix)
 app.include_router(clusters.router, prefix=settings.api_prefix)
+app.include_router(gitea.router, prefix=settings.api_prefix)

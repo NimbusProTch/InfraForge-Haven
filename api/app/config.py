@@ -54,6 +54,15 @@ class Settings(BaseSettings):
     argocd_url: str = "http://argocd-server.argocd.svc.cluster.local:80"
     argocd_auth_token: str = ""
 
+    # Gitea self-hosted git server
+    # Set GITEA_URL to the in-cluster service URL (e.g. http://gitea-http.gitea-system.svc.cluster.local:3000)
+    gitea_url: str = ""
+    gitea_admin_token: str = ""
+    # Gitea org and repo for GitOps manifests
+    gitea_org: str = "haven"
+    gitea_gitops_repo: str = "haven-gitops"
+    gitea_gitops_branch: str = "main"
+
     # CORS allowed origins (comma-separated list)
     cors_origins: str = "http://localhost:3000,http://localhost:3001,http://localhost:3002,http://127.0.0.1:3000,http://127.0.0.1:3001"
 

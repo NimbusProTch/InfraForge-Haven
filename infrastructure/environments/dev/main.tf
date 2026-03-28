@@ -38,6 +38,7 @@ locals {
   grafana_host   = var.use_real_domain ? "grafana.${local._domain_suffix}"   : "grafana.${local._sslip_suffix}"
   longhorn_host  = var.use_real_domain ? "longhorn.${local._domain_suffix}"  : "longhorn.${local._sslip_suffix}"
   hubble_host    = var.use_real_domain ? "hubble.${local._domain_suffix}"    : "hubble.${local._sslip_suffix}"
+  gitea_host     = var.use_real_domain ? "gitea.${local._domain_suffix}"     : "gitea.${local._sslip_suffix}"
 }
 
 # --- 1. SSH Key ---
@@ -500,7 +501,7 @@ resource "ssh_resource" "namespace_security_labels" {
       for NS in longhorn-system cert-manager monitoring logging harbor-system minio-system \
                 argocd everest-system everest everest-monitoring everest-olm \
                 cnpg-system redis-system rabbitmq-system keycloak \
-                haven-system haven-builds haven-gateway; do
+                haven-system haven-builds haven-gateway gitea-system; do
         $K create namespace $NS --dry-run=client -o yaml | $K apply -f -
         $K label namespace $NS \
           pod-security.kubernetes.io/enforce=privileged \
@@ -1152,4 +1153,154 @@ resource "helm_release" "external_dns" {
   })]
 
   depends_on = [ssh_resource.wait_cluster_ready]
+}
+
+# --- 24. Gitea Self-Hosted Git Server (Sprint I-1) ---
+# Gitea provides the haven-gitops repo that ArgoCD watches.
+# Deploy chain: longhorn + cert_manager → helm_release.gitea → gitea_admin_setup → gitea_httproute
+resource "helm_release" "gitea" {
+  count            = var.enable_gitea ? 1 : 0
+  name             = "gitea"
+  namespace        = "gitea-system"
+  create_namespace = false  # Created by namespace_security_labels
+  repository       = "https://dl.gitea.com/charts/"
+  chart            = "gitea"
+  version          = var.gitea_version
+  timeout          = 900
+  wait             = true
+
+  values = [templatefile("${path.module}/helm-values/gitea.yaml", {
+    gitea_host     = local.gitea_host
+    admin_user     = var.gitea_admin_user
+    admin_password = var.gitea_admin_password
+    storage_size   = var.gitea_storage_size
+  })]
+
+  depends_on = [ssh_resource.wait_longhorn_ready, helm_release.cert_manager]
+}
+
+# Create haven org, haven-gitops repo, and store admin token as K8s Secret
+resource "ssh_resource" "gitea_admin_setup" {
+  count       = var.enable_gitea ? 1 : 0
+  host        = hcloud_server.master[0].ipv4_address
+  user        = local.node_username
+  private_key = tls_private_key.global_key.private_key_pem
+  timeout     = "10m"
+
+  commands = [nonsensitive(<<-EOT
+    bash -c '
+      export KUBECONFIG=/etc/rancher/rke2/rke2.yaml
+      K=/var/lib/rancher/rke2/bin/kubectl
+
+      echo "Waiting for Gitea pod to be ready..."
+      for i in $(seq 1 60); do
+        READY=$($K get pods -n gitea-system -l app.kubernetes.io/name=gitea \
+          --no-headers 2>/dev/null | grep -c "1/1" || echo 0)
+        if [ "$$READY" -ge "1" ]; then
+          echo "GITEA_POD_READY"
+          break
+        fi
+        echo "  Gitea not ready yet (attempt $$i)"
+        sleep 10
+      done
+
+      GITEA_IP=$($K get svc gitea-http -n gitea-system -o jsonpath="{.spec.clusterIP}" 2>/dev/null || echo "")
+      if [ -z "$$GITEA_IP" ]; then
+        echo "ERROR: Could not get Gitea ClusterIP"
+        exit 1
+      fi
+      GITEA_URL="http://$$GITEA_IP:3000"
+      ADMIN="${var.gitea_admin_user}"
+      PASS="${var.gitea_admin_password}"
+
+      echo "Waiting for Gitea API at $$GITEA_URL..."
+      for i in $(seq 1 30); do
+        if curl -sf "$$GITEA_URL/api/v1/version" > /dev/null 2>&1; then
+          echo "Gitea API is ready"
+          break
+        fi
+        sleep 5
+      done
+
+      # Create haven organization (idempotent)
+      curl -sf -X POST "$$GITEA_URL/api/v1/orgs" \
+        -H "Content-Type: application/json" \
+        -u "$$ADMIN:$$PASS" \
+        -d "{\"username\":\"haven\",\"visibility\":\"private\",\"repo_admin_change_team_access\":true}" \
+        || echo "Org 'haven' may already exist"
+
+      # Create haven-gitops repository (idempotent — auto_init adds README on main branch)
+      curl -sf -X POST "$$GITEA_URL/api/v1/orgs/haven/repos" \
+        -H "Content-Type: application/json" \
+        -u "$$ADMIN:$$PASS" \
+        -d "{\"name\":\"haven-gitops\",\"private\":true,\"auto_init\":true,\"default_branch\":\"main\",\"description\":\"Haven Platform GitOps manifests\"}" \
+        || echo "Repo 'haven-gitops' may already exist"
+
+      # Delete existing token if present, then create a fresh one
+      curl -sf -X DELETE "$$GITEA_URL/api/v1/users/$$ADMIN/tokens/haven-platform-token" \
+        -u "$$ADMIN:$$PASS" || true
+
+      TOKEN=$(curl -sf -X POST "$$GITEA_URL/api/v1/users/$$ADMIN/tokens" \
+        -H "Content-Type: application/json" \
+        -u "$$ADMIN:$$PASS" \
+        -d "{\"name\":\"haven-platform-token\"}" | jq -r ".sha1")
+
+      if [ -z "$$TOKEN" ] || [ "$$TOKEN" = "null" ]; then
+        echo "ERROR: Failed to generate Gitea admin token"
+        exit 1
+      fi
+
+      # Store token as K8s Secret in haven-system
+      $K create secret generic gitea-admin-token \
+        -n haven-system \
+        --from-literal=token="$$TOKEN" \
+        --from-literal=username="$$ADMIN" \
+        --from-literal=gitea_url="http://gitea-http.gitea-system.svc.cluster.local:3000" \
+        --dry-run=client -o yaml | $K apply -f -
+
+      echo "GITEA_SETUP_COMPLETE: haven org + haven-gitops repo created, token stored"
+    '
+  EOT
+  )]
+
+  depends_on = [helm_release.gitea]
+}
+
+# HTTPRoute: gitea.<LB_IP>.sslip.io → gitea-http:3000
+resource "ssh_resource" "gitea_httproute" {
+  count       = var.enable_gitea ? 1 : 0
+  host        = hcloud_server.master[0].ipv4_address
+  user        = local.node_username
+  private_key = tls_private_key.global_key.private_key_pem
+  timeout     = "5m"
+
+  commands = [
+    <<-EOT
+      export KUBECONFIG=/etc/rancher/rke2/rke2.yaml
+      K=/var/lib/rancher/rke2/bin/kubectl
+      cat <<'YAML' | $K apply -f -
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: gitea
+  namespace: gitea-system
+spec:
+  parentRefs:
+    - name: haven-gateway
+      namespace: haven-gateway
+  hostnames:
+    - "${local.gitea_host}"
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: gitea-http
+          port: 3000
+YAML
+    EOT
+  ]
+
+  depends_on = [ssh_resource.gitea_admin_setup, ssh_resource.gateway_resources]
 }

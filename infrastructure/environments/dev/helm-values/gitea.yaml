@@ -1,0 +1,81 @@
+# Gitea Helm Values — Haven Platform (dev)
+# Chart: gitea/gitea  https://dl.gitea.com/charts/
+# Rendered by: templatefile() in main.tf
+
+replicaCount: 1
+
+image:
+  registry: docker.io
+  repository: gitea/gitea
+  tag: "1.23"
+  pullPolicy: IfNotPresent
+
+gitea:
+  admin:
+    username: "${admin_user}"
+    password: "${admin_password}"
+    email: "gitea@haven.dev"
+
+  config:
+    APP_NAME: "Haven GitOps"
+    server:
+      DOMAIN: "${gitea_host}"
+      ROOT_URL: "http://${gitea_host}/"
+      HTTP_PORT: 3000
+      SSH_DOMAIN: "${gitea_host}"
+      SSH_PORT: 30022
+      SSH_LISTEN_PORT: 22
+    repository:
+      DEFAULT_PRIVATE: "true"
+    service:
+      DISABLE_REGISTRATION: "true"
+    database:
+      DB_TYPE: postgres
+      NAME: gitea
+      USER: gitea
+
+persistence:
+  enabled: true
+  storageClass: "longhorn"
+  size: "${storage_size}"
+  accessModes:
+    - ReadWriteOnce
+
+service:
+  http:
+    type: ClusterIP
+    port: 3000
+  ssh:
+    type: NodePort
+    port: 22
+    nodePort: 30022
+
+postgresql-ha:
+  enabled: false
+
+postgresql:
+  enabled: true
+  auth:
+    database: gitea
+    username: gitea
+    password: "${admin_password}"
+  primary:
+    persistence:
+      storageClass: "longhorn"
+      size: "5Gi"
+
+resources:
+  requests:
+    cpu: "100m"
+    memory: "256Mi"
+  limits:
+    cpu: "1000m"
+    memory: "512Mi"
+
+tolerations:
+  - operator: "Exists"
+
+securityContext:
+  runAsUser: 1000
+  runAsGroup: 1000
+  fsGroup: 1000
