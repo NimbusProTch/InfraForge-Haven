@@ -10,6 +10,7 @@ Adds the webhook_token column to the applications table.
 from collections.abc import Sequence
 
 import sqlalchemy as sa
+
 from alembic import op
 
 revision: str = "0003"

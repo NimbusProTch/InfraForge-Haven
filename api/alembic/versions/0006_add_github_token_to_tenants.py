@@ -10,6 +10,7 @@ Adds github_token column to tenants table for private repo access.
 from collections.abc import Sequence
 
 import sqlalchemy as sa
+
 from alembic import op
 
 revision: str = "0006"

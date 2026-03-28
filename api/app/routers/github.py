@@ -159,7 +159,12 @@ async def get_user(
     if not response.is_success:
         raise HTTPException(status_code=502, detail=f"GitHub API error: {response.status_code}")
     data = response.json()
-    return {"login": data.get("login"), "id": data.get("id"), "name": data.get("name"), "public_repos": data.get("public_repos")}
+    return {
+        "login": data.get("login"),
+        "id": data.get("id"),
+        "name": data.get("name"),
+        "public_repos": data.get("public_repos"),
+    }
 
 
 @router.get("/repos")
@@ -185,7 +190,7 @@ async def list_repos(
             response = await client.get(
                 f"{GITHUB_API}/user/repos",
                 headers=headers,
-                params={"per_page": 100, "sort": "updated", "affiliation": "owner,collaborator,organization_member", "page": page},
+                params={"per_page": 100, "sort": "updated", "affiliation": "owner,collaborator,organization_member", "page": page},  # noqa: E501
                 timeout=15.0,
             )
             if response.status_code == 401:
@@ -223,7 +228,7 @@ async def list_repos(
                         timeout=15.0,
                     )
                     if not org_repos_response.is_success:
-                        logger.warning("Failed to fetch repos for org %s: %d", org_login, org_repos_response.status_code)
+                        logger.warning("Failed to fetch repos for org %s: %d", org_login, org_repos_response.status_code)  # noqa: E501
                         break
                     org_repos = org_repos_response.json()
                     if not org_repos:

@@ -7,7 +7,9 @@ metadata:
     haven.io/component: ui
 spec:
   parentRefs:
-    - name: haven-gateway
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: haven-gateway
       namespace: haven-gateway
   hostnames:
     - "app.46.225.42.2.sslip.io"
@@ -17,5 +19,8 @@ spec:
             type: PathPrefix
             value: /
       backendRefs:
-        - name: haven-ui
+        - group: ""
+          kind: Service
+          name: haven-ui
           port: 80
+          weight: 1
