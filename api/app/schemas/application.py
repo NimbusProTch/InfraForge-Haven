@@ -120,5 +120,8 @@ class ApplicationResponse(BaseModel):
     canary_weight: int = 10
     volumes: list[dict] | None = None
 
+    # Managed service connections
+    env_from_secrets: list[dict] | None = None
+
     created_at: datetime
     updated_at: datetime

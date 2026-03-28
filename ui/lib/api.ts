@@ -296,6 +296,8 @@ export interface Application {
   max_replicas: number;
   cpu_threshold: number;
   auto_deploy: boolean;
+  // Managed service connections
+  env_from_secrets: Array<{ service_name: string; secret_name: string; namespace: string }> | null;
   created_at: string;
   updated_at: string;
 }
@@ -321,6 +323,13 @@ export interface ManagedService {
   connection_hint: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface ServiceCredentials {
+  service_name: string;
+  secret_name: string;
+  connection_hint: string | null;
+  credentials: Record<string, string>;
 }
 
 export interface RepoTreeItem {
@@ -481,6 +490,8 @@ export const api = {
   services: {
     list: (tenantSlug: string, token?: string) =>
       apiFetch<ManagedService[]>(`/tenants/${tenantSlug}/services`, {}, token),
+    get: (tenantSlug: string, serviceName: string, token?: string) =>
+      apiFetch<ManagedService>(`/tenants/${tenantSlug}/services/${serviceName}`, {}, token),
     create: (
       tenantSlug: string,
       body: { name: string; service_type: string; tier: string },
@@ -494,6 +505,34 @@ export const api = {
     delete: (tenantSlug: string, serviceName: string, token?: string) =>
       apiFetch<void>(
         `/tenants/${tenantSlug}/services/${serviceName}`,
+        { method: "DELETE" },
+        token
+      ),
+    credentials: (tenantSlug: string, serviceName: string, token?: string) =>
+      apiFetch<ServiceCredentials>(
+        `/tenants/${tenantSlug}/services/${serviceName}/credentials`,
+        {},
+        token
+      ),
+    connectToApp: (
+      tenantSlug: string,
+      appSlug: string,
+      serviceName: string,
+      token?: string
+    ) =>
+      apiFetch<Application>(
+        `/tenants/${tenantSlug}/apps/${appSlug}/connect-service`,
+        { method: "POST", body: JSON.stringify({ service_name: serviceName }) },
+        token
+      ),
+    disconnectFromApp: (
+      tenantSlug: string,
+      appSlug: string,
+      serviceName: string,
+      token?: string
+    ) =>
+      apiFetch<void>(
+        `/tenants/${tenantSlug}/apps/${appSlug}/connect-service/${serviceName}`,
         { method: "DELETE" },
         token
       ),

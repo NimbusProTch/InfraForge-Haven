@@ -33,3 +33,10 @@ class ManagedServiceResponse(BaseModel):
     connection_hint: str | None
     created_at: datetime
     updated_at: datetime
+
+
+class ServiceCredentials(BaseModel):
+    service_name: str
+    secret_name: str
+    connection_hint: str | None
+    credentials: dict[str, str]
