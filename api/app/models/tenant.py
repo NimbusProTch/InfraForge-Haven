@@ -8,8 +8,10 @@ from app.models.base import Base, TimestampMixin
 
 if TYPE_CHECKING:
     from app.models.application import Application
+    from app.models.audit_log import AuditLog
     from app.models.managed_service import ManagedService
     from app.models.tenant_member import TenantMember
+    from app.models.usage_record import UsageRecord
 
 
 class Tenant(Base, TimestampMixin):
@@ -28,6 +30,9 @@ class Tenant(Base, TimestampMixin):
 
     active: Mapped[bool] = mapped_column(Boolean, default=True)
 
+    # Billing tier: free | starter | pro | enterprise
+    tier: Mapped[str] = mapped_column(String(20), default="free")
+
     # GitHub OAuth token for private repo access during builds
     github_token: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
@@ -38,5 +43,11 @@ class Tenant(Base, TimestampMixin):
         back_populates="tenant", cascade="all, delete-orphan"
     )
     members: Mapped[list["TenantMember"]] = relationship(
+        back_populates="tenant", cascade="all, delete-orphan"
+    )
+    audit_logs: Mapped[list["AuditLog"]] = relationship(
+        back_populates="tenant", cascade="all, delete-orphan"
+    )
+    usage_records: Mapped[list["UsageRecord"]] = relationship(
         back_populates="tenant", cascade="all, delete-orphan"
     )

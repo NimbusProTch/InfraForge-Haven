@@ -9,6 +9,8 @@ from app.config import settings
 from app.k8s.client import k8s_client
 from app.routers import (
     applications,
+    audit,
+    billing,
     deployments,
     domains,
     environments,
@@ -60,3 +62,5 @@ app.include_router(observability.router, prefix=settings.api_prefix)
 app.include_router(members.router, prefix=settings.api_prefix)
 app.include_router(environments.router, prefix=settings.api_prefix)
 app.include_router(domains.router, prefix=settings.api_prefix)
+app.include_router(audit.router, prefix=settings.api_prefix)
+app.include_router(billing.router, prefix=settings.api_prefix)
