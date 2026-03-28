@@ -119,6 +119,13 @@ variable "monitoring_version" {
   default     = "67.4.0"
 }
 
+variable "grafana_admin_password" {
+  description = "Grafana admin password (set via TF_VAR_grafana_admin_password or terraform.tfvars)"
+  type        = string
+  sensitive   = true
+  default     = "HavenAdmin2026!"
+}
+
 # ===== Logging =====
 variable "enable_logging" {
   description = "Enable Loki Stack (Haven Check 13)"

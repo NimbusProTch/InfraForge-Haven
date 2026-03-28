@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field, field_validator
 class TenantCreate(BaseModel):
     slug: str = Field(..., min_length=3, max_length=63, pattern=r"^[a-z0-9][a-z0-9-]*[a-z0-9]$")
     name: str = Field(..., min_length=1, max_length=255)
+    tier: str = Field(default="free")
     cpu_limit: str = Field(default="16")
     memory_limit: str = Field(default="32Gi")
     storage_limit: str = Field(default="100Gi")
@@ -22,6 +23,7 @@ class TenantCreate(BaseModel):
 
 class TenantUpdate(BaseModel):
     name: str | None = Field(default=None, max_length=255)
+    tier: str | None = None
     cpu_limit: str | None = None
     memory_limit: str | None = None
     storage_limit: str | None = None
@@ -36,6 +38,7 @@ class TenantResponse(BaseModel):
     name: str
     namespace: str
     keycloak_realm: str
+    tier: str
     cpu_limit: str
     memory_limit: str
     storage_limit: str

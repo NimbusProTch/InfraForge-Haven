@@ -7,12 +7,42 @@ loki:
   config:
     limits_config:
       retention_period: 168h  # 7 days
+    # IS2-02: Multi-tenancy — each tenant's logs are isolated by orgID
+    # Tenant namespaces (tenant-*) map to orgID=<slug>
+    # System namespaces map to orgID=system
+    auth_enabled: true
   tolerations:
     - operator: "Exists"
 
 promtail:
   tolerations:
     - operator: "Exists"
+  config:
+    snippets:
+      # IS2-02: Extract orgID from pod namespace label
+      # Pipeline: namespace "tenant-{slug}" → X-Scope-OrgID: {slug}
+      #           any other namespace           → X-Scope-OrgID: system
+      pipelineStages:
+        - cri: {}
+        - labeldrop:
+            - filename
+        - match:
+            selector: '{namespace=~"tenant-.+"}'
+            stages:
+              - replace:
+                  expression: "^tenant-(.+)$"
+                  source: namespace
+                  replace: "$1"
+              - labels:
+                  tenant_id:
+                    source: namespace
+              - tenant:
+                  source: tenant_id
+        - match:
+            selector: '{namespace!~"tenant-.+"}'
+            stages:
+              - tenant:
+                  value: system
 
 grafana:
   enabled: false  # Using kube-prometheus-stack Grafana

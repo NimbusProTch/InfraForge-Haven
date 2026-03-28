@@ -42,6 +42,7 @@ async def create_tenant(body: TenantCreate, db: DBSession, k8s: K8sDep, current_
         name=body.name,
         namespace=namespace,
         keycloak_realm=f"tenant-{body.slug}",
+        tier=body.tier,
         cpu_limit=body.cpu_limit,
         memory_limit=body.memory_limit,
         storage_limit=body.storage_limit,
@@ -56,6 +57,7 @@ async def create_tenant(body: TenantCreate, db: DBSession, k8s: K8sDep, current_
         cpu_limit=body.cpu_limit,
         memory_limit=body.memory_limit,
         storage_limit=body.storage_limit,
+        tier=body.tier,
     )
 
     # Create per-tenant Keycloak realm (non-blocking — log on failure, don't abort)
@@ -96,7 +98,7 @@ async def delete_tenant(tenant_slug: str, db: DBSession, k8s: K8sDep, current_us
     tenant = await _get_tenant_or_404(tenant_slug, db)
 
     svc = TenantService(k8s)
-    await svc.deprovision(tenant.namespace)
+    await svc.deprovision(tenant.namespace, slug=tenant.slug)
 
     # Delete per-tenant Keycloak realm
     try:
