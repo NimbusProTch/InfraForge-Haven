@@ -2,12 +2,17 @@
 
 Instead of directly calling K8s API, writes Helm values files to a git repo.
 ArgoCD ApplicationSet detects changes and syncs resources to the cluster.
+
+Monorepo layout (InfraForge-Haven):
+  gitops/tenants/{tenant}/{app}/values.yaml          → haven-app chart
+  gitops/tenants/{tenant}/services/{svc}/values.yaml → haven-managed-service chart
 """
 
 import asyncio
 import logging
 import os
 from pathlib import Path
+from urllib.parse import urlparse, urlunparse
 
 import yaml
 
@@ -15,23 +20,41 @@ from app.config import settings
 
 logger = logging.getLogger(__name__)
 
+# Monorepo path prefix — all gitops manifests live under this directory
+GITOPS_PREFIX = "gitops"
+
 
 class GitOpsService:
-    """Manages tenant deployment manifests in the haven-gitops repository."""
+    """Manages tenant deployment manifests in the InfraForge-Haven monorepo."""
 
     def __init__(
         self,
         repo_url: str = "",
-        branch: str = "main",
-        clone_dir: str = "/tmp/haven-gitops",
+        branch: str = "",
+        clone_dir: str = "",
         deploy_key_path: str = "",
+        github_token: str = "",
     ) -> None:
         self._repo_url = repo_url or settings.gitops_repo_url
-        self._branch = branch
-        self._clone_dir = Path(clone_dir)
+        self._branch = branch or settings.gitops_branch
+        self._clone_dir = Path(clone_dir or settings.gitops_clone_dir)
         self._deploy_key_path = deploy_key_path or settings.gitops_deploy_key_path
+        self._github_token = github_token or settings.gitops_github_token
         self._lock = asyncio.Lock()
         self._initialized = False
+
+    def _authenticated_url(self) -> str:
+        """Return repo URL with embedded GitHub token for HTTPS push."""
+        if not self._github_token or not self._repo_url:
+            return self._repo_url
+        parsed = urlparse(self._repo_url)
+        if parsed.scheme in ("http", "https") and not parsed.username:
+            netloc = f"oauth2:{self._github_token}@{parsed.hostname}"
+            if parsed.port:
+                netloc += f":{parsed.port}"
+            authed = parsed._replace(netloc=netloc)
+            return urlunparse(authed)
+        return self._repo_url
 
     def _git_env(self) -> dict[str, str]:
         """Build environment for git commands with optional deploy key."""
@@ -71,6 +94,8 @@ class GitOpsService:
             if not (self._clone_dir / ".git").exists():
                 await self._run_git("init", cwd=self._clone_dir)
                 await self._run_git("checkout", "-b", self._branch, cwd=self._clone_dir)
+                await self._run_git("config", "user.email", "haven@haven.dev", cwd=self._clone_dir)
+                await self._run_git("config", "user.name", "Haven Platform", cwd=self._clone_dir)
             self._initialized = True
             return
 
@@ -82,7 +107,6 @@ class GitOpsService:
                 logger.warning("git pull failed, re-cloning")
 
         if (self._clone_dir / ".git").exists():
-            # Already cloned, just pull
             try:
                 await self._run_git("pull", "--rebase", "origin", self._branch)
                 self._initialized = True
@@ -90,13 +114,19 @@ class GitOpsService:
             except RuntimeError:
                 pass
 
-        # Fresh clone
+        # Fresh clone using authenticated URL
         self._clone_dir.mkdir(parents=True, exist_ok=True)
+        clone_url = self._authenticated_url()
         await self._run_git(
             "clone", "--depth=1", "--branch", self._branch,
-            self._repo_url, str(self._clone_dir),
+            clone_url, str(self._clone_dir),
             cwd=Path("/tmp"),
         )
+        # Configure git identity for commits
+        await self._run_git("config", "user.email", "haven@haven.dev")
+        await self._run_git("config", "user.name", "Haven Platform")
+        # Set authenticated remote for push
+        await self._run_git("remote", "set-url", "origin", clone_url)
         self._initialized = True
 
     async def _commit_and_push(self, message: str) -> str:
@@ -131,6 +161,12 @@ class GitOpsService:
 
         return sha
 
+    def _app_dir(self, tenant_slug: str, app_slug: str) -> Path:
+        return self._clone_dir / GITOPS_PREFIX / "tenants" / tenant_slug / app_slug
+
+    def _service_dir(self, tenant_slug: str, service_name: str) -> Path:
+        return self._clone_dir / GITOPS_PREFIX / "tenants" / tenant_slug / "services" / service_name
+
     async def write_app_values(
         self, tenant_slug: str, app_slug: str, values: dict
     ) -> str:
@@ -138,7 +174,7 @@ class GitOpsService:
         async with self._lock:
             await self._ensure_repo()
 
-            app_dir = self._clone_dir / "tenants" / tenant_slug / app_slug
+            app_dir = self._app_dir(tenant_slug, app_slug)
             app_dir.mkdir(parents=True, exist_ok=True)
 
             values_path = app_dir / "values.yaml"
@@ -155,7 +191,7 @@ class GitOpsService:
         async with self._lock:
             await self._ensure_repo()
 
-            svc_dir = self._clone_dir / "tenants" / tenant_slug / "services" / service_name
+            svc_dir = self._service_dir(tenant_slug, service_name)
             svc_dir.mkdir(parents=True, exist_ok=True)
 
             values_path = svc_dir / "values.yaml"
@@ -170,7 +206,7 @@ class GitOpsService:
         async with self._lock:
             await self._ensure_repo()
 
-            app_dir = self._clone_dir / "tenants" / tenant_slug / app_slug
+            app_dir = self._app_dir(tenant_slug, app_slug)
             if app_dir.exists():
                 import shutil
                 shutil.rmtree(app_dir)
@@ -184,7 +220,7 @@ class GitOpsService:
         async with self._lock:
             await self._ensure_repo()
 
-            svc_dir = self._clone_dir / "tenants" / tenant_slug / "services" / service_name
+            svc_dir = self._service_dir(tenant_slug, service_name)
             if svc_dir.exists():
                 import shutil
                 shutil.rmtree(svc_dir)
@@ -198,7 +234,7 @@ class GitOpsService:
         async with self._lock:
             await self._ensure_repo()
 
-            tenant_dir = self._clone_dir / "tenants" / tenant_slug
+            tenant_dir = self._clone_dir / GITOPS_PREFIX / "tenants" / tenant_slug
             if tenant_dir.exists():
                 import shutil
                 shutil.rmtree(tenant_dir)

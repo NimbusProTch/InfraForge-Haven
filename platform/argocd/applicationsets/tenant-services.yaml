@@ -8,32 +8,33 @@ spec:
   goTemplateOptions: ["missingkey=error"]
   generators:
     - git:
-        repoURL: https://github.com/NimbusProTch/haven-gitops.git
-        revision: main
+        repoURL: https://github.com/NimbusProTch/InfraForge-Haven.git
+        revision: feature/platform-v2
         directories:
-          - path: "tenants/*/services/*"
+          - path: "gitops/tenants/*/services/*"
   template:
     metadata:
-      name: "svc-{{ index .path.segments 1 }}-{{ index .path.segments 3 }}"
+      # segments: [0]=gitops [1]=tenants [2]=tenant [3]=services [4]=service-name
+      name: "svc-{{ index .path.segments 2 }}-{{ index .path.segments 4 }}"
       namespace: argocd
       labels:
         haven.io/managed: "true"
-        haven.io/tenant: "{{ index .path.segments 1 }}"
-        haven.io/service: "{{ index .path.segments 3 }}"
+        haven.io/tenant: "{{ index .path.segments 2 }}"
+        haven.io/service: "{{ index .path.segments 4 }}"
       finalizers:
         - resources-finalizer.argocd.argoproj.io
     spec:
       project: default
       source:
-        repoURL: https://github.com/NimbusProTch/haven-gitops.git
-        targetRevision: main
+        repoURL: https://github.com/NimbusProTch/InfraForge-Haven.git
+        targetRevision: feature/platform-v2
         path: "charts/haven-managed-service"
         helm:
           valueFiles:
             - "/{{ .path.path }}/values.yaml"
       destination:
         server: https://kubernetes.default.svc
-        namespace: "tenant-{{ index .path.segments 1 }}"
+        namespace: "tenant-{{ index .path.segments 2 }}"
       syncPolicy:
         automated:
           prune: true
