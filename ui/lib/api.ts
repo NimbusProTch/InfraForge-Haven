@@ -117,6 +117,38 @@ export interface Deployment {
   updated_at: string;
 }
 
+export interface PodInfo {
+  name: string;
+  status: string;
+  restarts: number;
+  age: string;
+  cpu_value: string | null;
+  memory_value: string | null;
+  cpu_usage: number | null;
+  memory_usage: number | null;
+  node: string | null;
+}
+
+export interface PodsResponse {
+  pods: PodInfo[];
+  k8s_available: boolean;
+}
+
+export interface AppEvent {
+  reason: string;
+  message: string;
+  type: string;
+  count: number;
+  first_time: string | null;
+  last_time: string | null;
+  object_name: string;
+}
+
+export interface EventsResponse {
+  events: AppEvent[];
+  k8s_available: boolean;
+}
+
 export interface ClusterHealth {
   status: "ok" | "degraded";
   kubernetes: {
@@ -241,6 +273,12 @@ export const api = {
         { method: "DELETE" },
         token
       ),
+  },
+  observability: {
+    pods: (tenantSlug: string, appSlug: string, token?: string) =>
+      apiFetch<PodsResponse>(`/tenants/${tenantSlug}/apps/${appSlug}/pods`, {}, token),
+    events: (tenantSlug: string, appSlug: string, token?: string) =>
+      apiFetch<EventsResponse>(`/tenants/${tenantSlug}/apps/${appSlug}/events`, {}, token),
   },
   github: {
     authUrl: () => apiFetch<{ url: string; state: string }>("/github/auth/url"),

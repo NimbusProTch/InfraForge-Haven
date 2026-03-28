@@ -2,9 +2,11 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Badge } from "@/components/ui/badge";
+import { api, type PodInfo, type AppEvent } from "@/lib/api";
 import type { Deployment } from "@/lib/api";
 import {
   Activity,
+  AlertTriangle,
   Clock,
   Cpu,
   HardDrive,
@@ -15,17 +17,6 @@ import {
   Terminal,
 } from "lucide-react";
 
-interface PodInfo {
-  name: string;
-  status: "Running" | "Pending" | "CrashLoopBackOff" | "Error" | "Terminated";
-  restarts: number;
-  age: string;
-  cpu_usage: number;
-  memory_usage: number;
-  cpu_value: string;
-  memory_value: string;
-}
-
 interface ObservabilityTabProps {
   tenantSlug: string;
   appSlug: string;
@@ -35,6 +26,7 @@ interface ObservabilityTabProps {
   streaming: boolean;
   onStartLogs: () => void;
   onStopLogs: () => void;
+  accessToken?: string;
 }
 
 const POD_STATUS_COLORS: Record<string, string> = {
@@ -43,6 +35,8 @@ const POD_STATUS_COLORS: Record<string, string> = {
   CrashLoopBackOff: "bg-red-500 animate-pulse",
   Error: "bg-red-500",
   Terminated: "bg-gray-500",
+  OOMKilled: "bg-red-500",
+  ContainerCreating: "bg-yellow-500 animate-pulse",
 };
 
 const POD_STATUS_BADGE: Record<string, "success" | "warning" | "destructive" | "secondary"> = {
@@ -51,6 +45,8 @@ const POD_STATUS_BADGE: Record<string, "success" | "warning" | "destructive" | "
   CrashLoopBackOff: "destructive",
   Error: "destructive",
   Terminated: "secondary",
+  OOMKilled: "destructive",
+  ContainerCreating: "warning",
 };
 
 function UsageBar({ percent, color }: { percent: number; color: string }) {
@@ -64,36 +60,6 @@ function UsageBar({ percent, color }: { percent: number; color: string }) {
   );
 }
 
-// Generate mock pod data based on deployment info
-function generateMockPods(appSlug: string, replicas: number, latestStatus?: string): PodInfo[] {
-  const pods: PodInfo[] = [];
-  for (let i = 0; i < replicas; i++) {
-    const isFirst = i === 0;
-    const baseStatus =
-      latestStatus === "running"
-        ? "Running"
-        : latestStatus === "failed" && isFirst
-        ? "CrashLoopBackOff"
-        : latestStatus === "building" || latestStatus === "deploying"
-        ? "Pending"
-        : "Running";
-
-    pods.push({
-      name: `${appSlug}-${String(Math.random().toString(36).slice(2, 12))}-${String(
-        Math.random().toString(36).slice(2, 7)
-      )}`,
-      status: baseStatus as PodInfo["status"],
-      restarts: baseStatus === "CrashLoopBackOff" ? Math.floor(Math.random() * 10) + 1 : 0,
-      age: isFirst ? "2h" : `${Math.floor(Math.random() * 48) + 1}h`,
-      cpu_usage: Math.floor(Math.random() * 60) + 5,
-      memory_usage: Math.floor(Math.random() * 70) + 10,
-      cpu_value: `${Math.floor(Math.random() * 200) + 10}m`,
-      memory_value: `${Math.floor(Math.random() * 200) + 32}Mi`,
-    });
-  }
-  return pods;
-}
-
 export default function ObservabilityTab({
   tenantSlug,
   appSlug,
@@ -103,29 +69,41 @@ export default function ObservabilityTab({
   streaming,
   onStartLogs,
   onStopLogs,
+  accessToken,
 }: ObservabilityTabProps) {
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [pods, setPods] = useState<PodInfo[]>([]);
+  const [events, setEvents] = useState<AppEvent[]>([]);
+  const [k8sAvailable, setK8sAvailable] = useState<boolean | null>(null);
   const [lastRefreshed, setLastRefreshed] = useState<Date>(new Date());
   const refreshRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const logsEndRef = useRef<HTMLDivElement>(null);
 
   const latestDeployment = deployments[0];
 
-  const refreshPods = useCallback(() => {
-    // Mock data -- in production this calls the K8s API
-    const replicas = Math.max(1, Math.min(3, deployments.length > 0 ? 2 : 1));
-    setPods(generateMockPods(appSlug, replicas, latestDeployment?.status));
-    setLastRefreshed(new Date());
-  }, [appSlug, deployments.length, latestDeployment?.status]);
+  const refreshData = useCallback(async () => {
+    try {
+      const [podsRes, eventsRes] = await Promise.all([
+        api.observability.pods(tenantSlug, appSlug, accessToken),
+        api.observability.events(tenantSlug, appSlug, accessToken),
+      ]);
+      setPods(podsRes.pods);
+      setEvents(eventsRes.events);
+      setK8sAvailable(podsRes.k8s_available);
+      setLastRefreshed(new Date());
+    } catch (err) {
+      // API not reachable — don't crash the tab
+      console.error("Observability fetch error:", err);
+    }
+  }, [tenantSlug, appSlug, accessToken]);
 
   useEffect(() => {
-    refreshPods();
-  }, [refreshPods]);
+    void refreshData();
+  }, [refreshData]);
 
   useEffect(() => {
     if (autoRefresh) {
-      refreshRef.current = setInterval(refreshPods, 5000);
+      refreshRef.current = setInterval(() => void refreshData(), 5000);
     }
     return () => {
       if (refreshRef.current) {
@@ -133,18 +111,23 @@ export default function ObservabilityTab({
         refreshRef.current = null;
       }
     };
-  }, [autoRefresh, refreshPods]);
+  }, [autoRefresh, refreshData]);
 
   useEffect(() => {
     logsEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [logs]);
 
   const avgCpu =
-    pods.length > 0 ? Math.round(pods.reduce((s, p) => s + p.cpu_usage, 0) / pods.length) : 0;
+    pods.length > 0
+      ? Math.round(pods.reduce((s, p) => s + (p.cpu_usage ?? 0), 0) / pods.length)
+      : 0;
   const avgMemory =
-    pods.length > 0 ? Math.round(pods.reduce((s, p) => s + p.memory_usage, 0) / pods.length) : 0;
+    pods.length > 0
+      ? Math.round(pods.reduce((s, p) => s + (p.memory_usage ?? 0), 0) / pods.length)
+      : 0;
 
   const recentDeployments = deployments.slice(0, 8);
+  const warningEvents = events.filter((e) => e.type === "Warning");
 
   return (
     <div className="space-y-6">
@@ -155,11 +138,14 @@ export default function ObservabilityTab({
           <span className="text-xs text-gray-500 dark:text-[#666]">
             Last refreshed: {lastRefreshed.toLocaleTimeString()}
           </span>
+          {k8sAvailable === false && (
+            <span className="text-xs text-amber-500">· cluster unavailable</span>
+          )}
         </div>
         <div className="flex items-center gap-3">
           <button
             type="button"
-            onClick={refreshPods}
+            onClick={() => void refreshData()}
             className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs text-gray-500 dark:text-[#666] hover:text-gray-700 dark:hover:text-[#999] border border-gray-200 dark:border-[#2e2e2e] hover:border-gray-400 dark:hover:border-[#444] transition-colors"
           >
             <RefreshCw className="w-3 h-3" />
@@ -188,16 +174,20 @@ export default function ObservabilityTab({
             <Cpu className="w-3 h-3 text-blue-500" />
             <span className="text-xs text-gray-500 dark:text-[#666]">Avg CPU</span>
           </div>
-          <p className="text-lg font-semibold text-gray-900 dark:text-white font-mono">{avgCpu}%</p>
-          <UsageBar percent={avgCpu} color="bg-blue-500" />
+          <p className="text-lg font-semibold text-gray-900 dark:text-white font-mono">
+            {avgCpu > 0 ? `${avgCpu}%` : "—"}
+          </p>
+          {avgCpu > 0 && <UsageBar percent={avgCpu} color="bg-blue-500" />}
         </div>
         <div className="bg-white dark:bg-[#141414] border border-gray-200 dark:border-[#222] rounded-lg px-4 py-3">
           <div className="flex items-center gap-1.5 mb-2">
             <MemoryStick className="w-3 h-3 text-purple-500" />
             <span className="text-xs text-gray-500 dark:text-[#666]">Avg Memory</span>
           </div>
-          <p className="text-lg font-semibold text-gray-900 dark:text-white font-mono">{avgMemory}%</p>
-          <UsageBar percent={avgMemory} color="bg-purple-500" />
+          <p className="text-lg font-semibold text-gray-900 dark:text-white font-mono">
+            {avgMemory > 0 ? `${avgMemory}%` : "—"}
+          </p>
+          {avgMemory > 0 && <UsageBar percent={avgMemory} color="bg-purple-500" />}
         </div>
         <div className="bg-white dark:bg-[#141414] border border-gray-200 dark:border-[#222] rounded-lg px-4 py-3">
           <div className="flex items-center gap-1.5 mb-2">
@@ -228,12 +218,16 @@ export default function ObservabilityTab({
         </div>
         {pods.length === 0 ? (
           <div className="px-4 py-8 text-center text-gray-400 dark:text-[#555] text-sm">
-            No pods running
+            {k8sAvailable === false
+              ? "Kubernetes cluster unavailable"
+              : latestDeployment?.status === "running"
+              ? "Loading pods..."
+              : "No pods running"}
           </div>
         ) : (
           <div className="divide-y divide-gray-100 dark:divide-[#1e1e1e]">
             {/* Table header */}
-            <div className="grid grid-cols-[1fr_80px_80px_60px_120px_120px] gap-3 px-4 py-2 text-xs font-medium text-gray-500 dark:text-[#666] uppercase tracking-wider">
+            <div className="grid grid-cols-[1fr_120px_80px_60px_140px_140px] gap-3 px-4 py-2 text-xs font-medium text-gray-500 dark:text-[#666] uppercase tracking-wider">
               <span>Pod</span>
               <span>Status</span>
               <span>Restarts</span>
@@ -244,7 +238,7 @@ export default function ObservabilityTab({
             {pods.map((pod) => (
               <div
                 key={pod.name}
-                className="grid grid-cols-[1fr_80px_80px_60px_120px_120px] gap-3 px-4 py-2.5 items-center"
+                className="grid grid-cols-[1fr_120px_80px_60px_140px_140px] gap-3 px-4 py-2.5 items-center"
               >
                 <div className="flex items-center gap-2 min-w-0">
                   <div
@@ -264,41 +258,61 @@ export default function ObservabilityTab({
                 </Badge>
                 <span
                   className={`text-xs font-mono ${
-                    pod.restarts > 0
-                      ? "text-red-500"
-                      : "text-gray-500 dark:text-[#666]"
+                    pod.restarts > 0 ? "text-red-500" : "text-gray-500 dark:text-[#666]"
                   }`}
                 >
                   {pod.restarts}
                 </span>
                 <span className="text-xs text-gray-500 dark:text-[#666]">{pod.age}</span>
+                {/* CPU */}
                 <div className="space-y-1">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-mono text-gray-500 dark:text-[#666]">
-                      {pod.cpu_value}
-                    </span>
-                    <span className="text-[10px] font-mono text-gray-400 dark:text-[#555]">
-                      {pod.cpu_usage}%
-                    </span>
-                  </div>
-                  <UsageBar
-                    percent={pod.cpu_usage}
-                    color={pod.cpu_usage > 80 ? "bg-red-500" : "bg-blue-500"}
-                  />
+                  {pod.cpu_value ? (
+                    <>
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-mono text-gray-500 dark:text-[#666]">
+                          {pod.cpu_value}
+                        </span>
+                        {pod.cpu_usage !== null && (
+                          <span className="text-[10px] font-mono text-gray-400 dark:text-[#555]">
+                            {pod.cpu_usage}%
+                          </span>
+                        )}
+                      </div>
+                      {pod.cpu_usage !== null && (
+                        <UsageBar
+                          percent={pod.cpu_usage}
+                          color={pod.cpu_usage > 80 ? "bg-red-500" : "bg-blue-500"}
+                        />
+                      )}
+                    </>
+                  ) : (
+                    <span className="text-[10px] text-gray-400 dark:text-[#555]">—</span>
+                  )}
                 </div>
+                {/* Memory */}
                 <div className="space-y-1">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-mono text-gray-500 dark:text-[#666]">
-                      {pod.memory_value}
-                    </span>
-                    <span className="text-[10px] font-mono text-gray-400 dark:text-[#555]">
-                      {pod.memory_usage}%
-                    </span>
-                  </div>
-                  <UsageBar
-                    percent={pod.memory_usage}
-                    color={pod.memory_usage > 80 ? "bg-red-500" : "bg-purple-500"}
-                  />
+                  {pod.memory_value ? (
+                    <>
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-mono text-gray-500 dark:text-[#666]">
+                          {pod.memory_value}
+                        </span>
+                        {pod.memory_usage !== null && (
+                          <span className="text-[10px] font-mono text-gray-400 dark:text-[#555]">
+                            {pod.memory_usage}%
+                          </span>
+                        )}
+                      </div>
+                      {pod.memory_usage !== null && (
+                        <UsageBar
+                          percent={pod.memory_usage}
+                          color={pod.memory_usage > 80 ? "bg-red-500" : "bg-purple-500"}
+                        />
+                      )}
+                    </>
+                  ) : (
+                    <span className="text-[10px] text-gray-400 dark:text-[#555]">—</span>
+                  )}
                 </div>
               </div>
             ))}
@@ -346,6 +360,48 @@ export default function ObservabilityTab({
           </pre>
         </div>
       </div>
+
+      {/* K8s Events (Warning events only) */}
+      {warningEvents.length > 0 && (
+        <div className="bg-white dark:bg-[#141414] border border-amber-200 dark:border-amber-900/40 rounded-lg overflow-hidden">
+          <div className="px-4 py-3 border-b border-amber-200 dark:border-amber-900/40 flex items-center gap-2">
+            <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />
+            <h4 className="text-sm font-semibold text-gray-900 dark:text-white">
+              Warning Events
+            </h4>
+            <span className="text-xs text-amber-500 font-mono">{warningEvents.length}</span>
+          </div>
+          <div className="divide-y divide-gray-100 dark:divide-[#1e1e1e]">
+            {warningEvents.slice(0, 5).map((ev, i) => (
+              <div key={i} className="px-4 py-2.5">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <span className="text-xs font-medium text-amber-500">{ev.reason}</span>
+                    <span className="text-xs text-gray-400 dark:text-[#555] ml-2 font-mono">
+                      {ev.object_name}
+                    </span>
+                    <p className="text-xs text-gray-600 dark:text-[#888] mt-0.5 break-words">
+                      {ev.message}
+                    </p>
+                  </div>
+                  <div className="text-right shrink-0">
+                    {ev.count > 1 && (
+                      <span className="text-[10px] text-gray-400 dark:text-[#555]">
+                        ×{ev.count}
+                      </span>
+                    )}
+                    {ev.last_time && (
+                      <p className="text-[10px] text-gray-400 dark:text-[#555]">
+                        {new Date(ev.last_time).toLocaleTimeString()}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Deployment History Timeline */}
       <div className="bg-white dark:bg-[#141414] border border-gray-200 dark:border-[#222] rounded-lg overflow-hidden">
