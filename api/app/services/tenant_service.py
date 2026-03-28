@@ -193,39 +193,161 @@ class TenantService:
                 raise
 
     async def _create_rbac(self, namespace: str, slug: str) -> None:
+        """Create Role/RoleBinding for three OIDC groups: admin, developer, viewer.
+
+        Group naming convention (IS4-02):
+          Keycloak group:  tenant_{slug}_{role}
+          K8s subject:     oidc:tenant_{slug}_{role}   (oidc: prefix from kube-apiserver --oidc-groups-prefix)
+        """
         assert self.k8s.rbac_v1 is not None
-        # Role: full access within tenant namespace
-        role = k8s_lib.V1Role(
-            metadata=k8s_lib.V1ObjectMeta(name="tenant-admin"),
-            rules=[
-                k8s_lib.V1PolicyRule(
-                    api_groups=["*"],
-                    resources=["*"],
-                    verbs=["*"],
-                )
-            ],
-        )
-        rb = k8s_lib.V1RoleBinding(
-            metadata=k8s_lib.V1ObjectMeta(name="tenant-admin-binding"),
-            subjects=[
-                k8s_lib.RbacV1Subject(
-                    kind="Group",
-                    name=f"haven:tenant:{slug}:admin",
-                    api_group="rbac.authorization.k8s.io",
-                )
-            ],
-            role_ref=k8s_lib.V1RoleRef(
-                kind="Role",
-                name="tenant-admin",
-                api_group="rbac.authorization.k8s.io",
+
+        manage_verbs = ["get", "list", "watch", "create", "update", "patch", "delete"]
+        read_verbs = ["get", "list", "watch"]
+
+        roles_and_bindings: list[tuple] = [
+            # --- admin: full workload + service management ---
+            (
+                k8s_lib.V1Role(
+                    metadata=k8s_lib.V1ObjectMeta(name="haven-tenant-admin", namespace=namespace),
+                    rules=[
+                        k8s_lib.V1PolicyRule(
+                            api_groups=["", "apps", "batch", "autoscaling"],
+                            resources=[
+                                "pods", "pods/log", "pods/exec", "pods/portforward",
+                                "deployments", "statefulsets", "replicasets",
+                                "jobs", "cronjobs", "horizontalpodautoscalers",
+                                "services", "endpoints", "configmaps",
+                                "persistentvolumeclaims", "events",
+                            ],
+                            verbs=manage_verbs,
+                        ),
+                        # Secrets: read-only (prevent exfiltration of cluster secrets)
+                        k8s_lib.V1PolicyRule(
+                            api_groups=[""],
+                            resources=["secrets"],
+                            verbs=read_verbs,
+                        ),
+                        k8s_lib.V1PolicyRule(
+                            api_groups=["gateway.networking.k8s.io"],
+                            resources=["httproutes", "grpcroutes", "tcproutes"],
+                            verbs=manage_verbs,
+                        ),
+                    ],
+                ),
+                k8s_lib.V1RoleBinding(
+                    metadata=k8s_lib.V1ObjectMeta(name="haven-tenant-admin-binding", namespace=namespace),
+                    subjects=[
+                        k8s_lib.RbacV1Subject(
+                            kind="Group",
+                            # oidc: prefix matches --oidc-groups-prefix on kube-apiserver (IS4-01)
+                            name=f"oidc:tenant_{slug}_admin",
+                            api_group="rbac.authorization.k8s.io",
+                        )
+                    ],
+                    role_ref=k8s_lib.V1RoleRef(
+                        kind="Role",
+                        name="haven-tenant-admin",
+                        api_group="rbac.authorization.k8s.io",
+                    ),
+                ),
             ),
-        )
-        for create_fn, obj in [
-            (self.k8s.rbac_v1.create_namespaced_role, role),
-            (self.k8s.rbac_v1.create_namespaced_role_binding, rb),
-        ]:
-            try:
-                create_fn(namespace, obj)
-            except ApiException as e:
-                if e.status != 409:
-                    raise
+            # --- developer: deploy + read (no infra management) ---
+            (
+                k8s_lib.V1Role(
+                    metadata=k8s_lib.V1ObjectMeta(name="haven-tenant-developer", namespace=namespace),
+                    rules=[
+                        k8s_lib.V1PolicyRule(
+                            api_groups=["", "apps", "batch", "autoscaling"],
+                            resources=[
+                                "pods", "pods/log", "deployments", "statefulsets",
+                                "replicasets", "jobs", "cronjobs",
+                                "horizontalpodautoscalers", "services",
+                                "endpoints", "configmaps", "events",
+                                "persistentvolumeclaims",
+                            ],
+                            verbs=read_verbs,
+                        ),
+                        k8s_lib.V1PolicyRule(
+                            api_groups=[""],
+                            resources=["pods/exec", "pods/portforward"],
+                            verbs=["create"],
+                        ),
+                        k8s_lib.V1PolicyRule(
+                            api_groups=["apps"],
+                            resources=["deployments"],
+                            verbs=["get", "list", "watch", "update", "patch"],
+                        ),
+                        k8s_lib.V1PolicyRule(
+                            api_groups=[""],
+                            resources=["configmaps"],
+                            verbs=manage_verbs,
+                        ),
+                    ],
+                ),
+                k8s_lib.V1RoleBinding(
+                    metadata=k8s_lib.V1ObjectMeta(name="haven-tenant-developer-binding", namespace=namespace),
+                    subjects=[
+                        k8s_lib.RbacV1Subject(
+                            kind="Group",
+                            name=f"oidc:tenant_{slug}_developer",
+                            api_group="rbac.authorization.k8s.io",
+                        )
+                    ],
+                    role_ref=k8s_lib.V1RoleRef(
+                        kind="Role",
+                        name="haven-tenant-developer",
+                        api_group="rbac.authorization.k8s.io",
+                    ),
+                ),
+            ),
+            # --- viewer: read-only ---
+            (
+                k8s_lib.V1Role(
+                    metadata=k8s_lib.V1ObjectMeta(name="haven-tenant-viewer", namespace=namespace),
+                    rules=[
+                        k8s_lib.V1PolicyRule(
+                            api_groups=["", "apps", "batch", "autoscaling"],
+                            resources=[
+                                "pods", "pods/log", "deployments", "statefulsets",
+                                "replicasets", "jobs", "cronjobs",
+                                "horizontalpodautoscalers", "services",
+                                "endpoints", "configmaps", "events",
+                                "persistentvolumeclaims",
+                            ],
+                            verbs=read_verbs,
+                        ),
+                        k8s_lib.V1PolicyRule(
+                            api_groups=["gateway.networking.k8s.io"],
+                            resources=["httproutes"],
+                            verbs=read_verbs,
+                        ),
+                    ],
+                ),
+                k8s_lib.V1RoleBinding(
+                    metadata=k8s_lib.V1ObjectMeta(name="haven-tenant-viewer-binding", namespace=namespace),
+                    subjects=[
+                        k8s_lib.RbacV1Subject(
+                            kind="Group",
+                            name=f"oidc:tenant_{slug}_viewer",
+                            api_group="rbac.authorization.k8s.io",
+                        )
+                    ],
+                    role_ref=k8s_lib.V1RoleRef(
+                        kind="Role",
+                        name="haven-tenant-viewer",
+                        api_group="rbac.authorization.k8s.io",
+                    ),
+                ),
+            ),
+        ]
+
+        for role, rb in roles_and_bindings:
+            for create_fn, obj in [
+                (self.k8s.rbac_v1.create_namespaced_role, role),
+                (self.k8s.rbac_v1.create_namespaced_role_binding, rb),
+            ]:
+                try:
+                    create_fn(namespace, obj)
+                except ApiException as e:
+                    if e.status != 409:
+                        raise

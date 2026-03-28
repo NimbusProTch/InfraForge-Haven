@@ -1,0 +1,59 @@
+# =============================================================================
+# Haven Platform - Tenant Viewer Role (IS4-02)
+# =============================================================================
+# Bound to Keycloak OIDC group: oidc:tenant_{SLUG}_viewer
+# Permissions: read-only access to namespace resources
+#
+# OIDC group naming convention:
+#   Keycloak group:  tenant_{slug}_viewer
+#   K8s subject:     oidc:tenant_{slug}_viewer   (prefix: "oidc:")
+# =============================================================================
+
+# --- Role: read-only access ---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: haven-tenant-viewer
+  namespace: tenant-SLUG  # replaced by API at provision time
+  labels:
+    haven.io/managed: "true"
+    haven.io/role-type: "tenant-viewer"
+rules:
+  - apiGroups: ["", "apps", "batch", "autoscaling"]
+    resources:
+      - pods
+      - pods/log
+      - deployments
+      - statefulsets
+      - replicasets
+      - jobs
+      - cronjobs
+      - horizontalpodautoscalers
+      - services
+      - endpoints
+      - configmaps
+      - events
+      - persistentvolumeclaims
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["gateway.networking.k8s.io"]
+    resources: ["httproutes"]
+    verbs: ["get", "list", "watch"]
+
+---
+# --- RoleBinding: bind to OIDC group tenant_{slug}_viewer ---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: haven-tenant-viewer-binding
+  namespace: tenant-SLUG  # replaced by API at provision time
+  labels:
+    haven.io/managed: "true"
+    haven.io/role-type: "tenant-viewer"
+subjects:
+  - kind: Group
+    name: "oidc:tenant_SLUG_viewer"  # Keycloak group → K8s group via OIDC prefix
+    apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: Role
+  name: haven-tenant-viewer
+  apiGroup: rbac.authorization.k8s.io

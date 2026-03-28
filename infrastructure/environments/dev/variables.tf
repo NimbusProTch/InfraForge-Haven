@@ -290,3 +290,30 @@ variable "domain" {
   type        = string
   default     = "haven.dev"
 }
+
+# ===== Encryption =====
+variable "enable_wireguard_encryption" {
+  description = "Enable Cilium WireGuard pod-to-pod encryption (IS3-03, kernel 5.6+ required)"
+  type        = bool
+  default     = false
+}
+
+# ===== OIDC / Keycloak Integration =====
+variable "enable_oidc" {
+  description = "Enable Keycloak OIDC on kube-apiserver (IS4-01, requires Keycloak deployed)"
+  type        = bool
+  default     = false
+}
+
+variable "oidc_keycloak_realm" {
+  description = "Keycloak realm name for OIDC"
+  type        = string
+  default     = "haven"
+}
+
+# ===== Real Domain Mode =====
+variable "use_real_domain" {
+  description = "Switch hostnames from sslip.io pattern to real domain (IS5-02)"
+  type        = bool
+  default     = false
+}
