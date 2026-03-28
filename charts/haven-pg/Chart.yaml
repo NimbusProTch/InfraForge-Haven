@@ -1,0 +1,13 @@
+apiVersion: v2
+name: haven-pg
+description: Haven Platform managed PostgreSQL chart (CNPG Cluster)
+type: application
+version: 0.1.0
+appVersion: "16"
+keywords:
+  - haven
+  - postgresql
+  - cnpg
+  - database
+maintainers:
+  - name: Haven Platform Team

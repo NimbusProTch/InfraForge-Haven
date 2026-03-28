@@ -1,0 +1,14 @@
+apiVersion: v2
+name: haven-mongodb
+description: Haven Platform managed MongoDB chart (Percona Server for MongoDB)
+type: application
+version: 0.1.0
+appVersion: "7.0"
+keywords:
+  - haven
+  - mongodb
+  - percona
+  - psmdb
+  - database
+maintainers:
+  - name: Haven Platform Team

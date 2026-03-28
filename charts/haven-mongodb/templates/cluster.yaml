@@ -1,0 +1,33 @@
+apiVersion: psmdb.percona.com/v1
+kind: PerconaServerMongoDB
+metadata:
+  name: {{ .Values.name }}
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "haven-mongodb.labels" . | nindent 4 }}
+spec:
+  crVersion: "1.17.0"
+  image: percona/percona-server-mongodb:{{ .Values.mongodb.version }}
+  allowUnsafeConfigurations: {{ .Values.mongodb.allowUnsafeConfigurations }}
+  replsets:
+    - name: rs0
+      size: {{ .Values.mongodb.instances }}
+      resources:
+        requests:
+          cpu: {{ .Values.mongodb.resources.requests.cpu }}
+          memory: {{ .Values.mongodb.resources.requests.memory }}
+        limits:
+          cpu: {{ .Values.mongodb.resources.limits.cpu }}
+          memory: {{ .Values.mongodb.resources.limits.memory }}
+      volumeSpec:
+        persistentVolumeClaim:
+          storageClassName: {{ .Values.mongodb.storageClass }}
+          resources:
+            requests:
+              storage: {{ .Values.mongodb.storage }}
+      affinity:
+        advanced:
+          tolerations:
+            - operator: "Exists"
+  sharding:
+    enabled: {{ .Values.sharding.enabled }}

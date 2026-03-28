@@ -1,0 +1,22 @@
+# haven-rabbitmq default values (RabbitMQ Cluster Operator)
+
+name: ""
+namespace: ""
+plan: small  # small | medium | large
+
+rabbitmq:
+  replicas: 1
+  storage: 5Gi
+  storageClass: longhorn
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+# -- plan presets (reference only) --
+# small:  1 replica,  5Gi,  100m/500m CPU,   128Mi/512Mi memory
+# medium: 3 replicas, 10Gi, 250m/1000m CPU,  256Mi/1Gi memory
+# large:  3 replicas, 50Gi, 500m/2000m CPU,  512Mi/2Gi memory

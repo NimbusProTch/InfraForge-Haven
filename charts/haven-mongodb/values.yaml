@@ -1,0 +1,27 @@
+# haven-mongodb default values (Percona Server for MongoDB)
+
+name: ""
+namespace: ""
+plan: small  # small | medium | large
+
+mongodb:
+  version: "7.0"
+  instances: 1
+  storage: 5Gi
+  storageClass: longhorn
+  allowUnsafeConfigurations: true  # required for single-node (small plan)
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+sharding:
+  enabled: false  # enable for large plan
+
+# -- plan presets (reference only) --
+# small:  1 instance, 5Gi,   allowUnsafe: true,  sharding: false
+# medium: 3 instances, 20Gi,  allowUnsafe: false, sharding: false
+# large:  3 instances, 100Gi, allowUnsafe: false, sharding: true

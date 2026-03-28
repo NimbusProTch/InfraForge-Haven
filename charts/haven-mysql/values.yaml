@@ -1,0 +1,31 @@
+# haven-mysql default values (Percona XtraDB Cluster)
+
+name: ""
+namespace: ""
+plan: small  # small | medium | large
+
+mysql:
+  version: "8.0"
+  instances: 1
+  storage: 5Gi
+  storageClass: longhorn
+  allowUnsafeConfigurations: true  # required for single-node (small plan)
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 1Gi
+
+# HAProxy is always enabled for connection routing
+haproxy:
+  enabled: true
+  # size = 1 for small, 2 for medium/large
+  size: 1
+  image: percona/haproxy:2.8.5
+
+# -- plan presets (reference only) --
+# small:  1 instance, 5Gi,  allowUnsafe: true
+# medium: 3 instances, 20Gi, allowUnsafe: false
+# large:  3 instances, 100Gi, allowUnsafe: false

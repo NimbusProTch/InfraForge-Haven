@@ -1,0 +1,14 @@
+apiVersion: v2
+name: haven-mysql
+description: Haven Platform managed MySQL chart (Percona XtraDB Cluster)
+type: application
+version: 0.1.0
+appVersion: "8.0"
+keywords:
+  - haven
+  - mysql
+  - percona
+  - xtradb
+  - database
+maintainers:
+  - name: Haven Platform Team

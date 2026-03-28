@@ -1,0 +1,32 @@
+# haven-pg default values
+# Override per-tenant via gitops/tenants/{slug}/services/{name}.yaml
+
+name: ""
+namespace: ""
+plan: small  # small | medium | large
+
+postgres:
+  version: "16"
+  # Number of instances (1 = small, 2 = medium, 3 = large)
+  instances: 1
+  storage: 5Gi
+  storageClass: longhorn
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+# Barman/MinIO backup (set enabled: true for prod)
+backup:
+  enabled: false
+  bucket: ""
+  schedule: "0 2 * * *"
+  retentionDays: 30
+
+# -- plan presets (reference only, actual values set by chart_values_service) --
+# small:  1 instance, 5Gi
+# medium: 2 instances, 20Gi
+# large:  3 instances, 100Gi
