@@ -13,7 +13,7 @@ from datetime import UTC, datetime
 from fastapi import APIRouter, HTTPException, status
 from sqlalchemy import delete, select
 
-from app.deps import DBSession
+from app.deps import CurrentUser, DBSession
 from app.models.application import Application
 from app.models.data_retention_policy import DataRetentionPolicy
 from app.models.deployment import Deployment
@@ -23,7 +23,6 @@ from app.models.user_consent import ConsentType, UserConsent
 from app.schemas.gdpr import (
     ConsentGrant,
     ConsentResponse,
-    ConsentRevoke,
     DataExportResponse,
     ErasureRequest,
     ErasureResponse,
@@ -50,7 +49,9 @@ async def _get_tenant_or_404(tenant_slug: str, db: DBSession) -> Tenant:
 
 
 @router.get("/consent", response_model=list[ConsentResponse])
-async def list_consents(tenant_slug: str, db: DBSession, user_id: str | None = None) -> list[UserConsent]:
+async def list_consents(
+    tenant_slug: str, db: DBSession, current_user: CurrentUser, user_id: str | None = None
+) -> list[UserConsent]:
     """List all consent records for this tenant (optionally filtered by user_id)."""
     tenant = await _get_tenant_or_404(tenant_slug, db)
     stmt = select(UserConsent).where(UserConsent.tenant_id == tenant.id)
@@ -61,7 +62,9 @@ async def list_consents(tenant_slug: str, db: DBSession, user_id: str | None = N
 
 
 @router.post("/consent", response_model=ConsentResponse, status_code=status.HTTP_201_CREATED)
-async def grant_consent(tenant_slug: str, body: ConsentGrant, db: DBSession, user_id: str = "anonymous") -> UserConsent:
+async def grant_consent(
+    tenant_slug: str, body: ConsentGrant, db: DBSession, current_user: CurrentUser, user_id: str = "anonymous"
+) -> UserConsent:
     """Record a consent grant (GDPR Art. 7)."""
     tenant = await _get_tenant_or_404(tenant_slug, db)
     consent = UserConsent(
@@ -80,7 +83,9 @@ async def grant_consent(tenant_slug: str, body: ConsentGrant, db: DBSession, use
 
 
 @router.delete("/consent/{consent_type}", status_code=status.HTTP_200_OK, response_model=ConsentResponse)
-async def revoke_consent(tenant_slug: str, consent_type: ConsentType, db: DBSession, user_id: str = "anonymous") -> UserConsent:
+async def revoke_consent(  # noqa: E501
+    tenant_slug: str, consent_type: ConsentType, db: DBSession, current_user: CurrentUser, user_id: str = "anonymous"
+) -> UserConsent:
     """Revoke a consent type — creates a new revocation record (GDPR Art. 7(3))."""
     tenant = await _get_tenant_or_404(tenant_slug, db)
     revocation = UserConsent(
@@ -103,7 +108,7 @@ async def revoke_consent(tenant_slug: str, consent_type: ConsentType, db: DBSess
 
 
 @router.get("/retention", response_model=RetentionPolicyResponse)
-async def get_retention_policy(tenant_slug: str, db: DBSession) -> DataRetentionPolicy:
+async def get_retention_policy(tenant_slug: str, db: DBSession, current_user: CurrentUser) -> DataRetentionPolicy:
     """Get the data retention policy for this tenant."""
     tenant = await _get_tenant_or_404(tenant_slug, db)
     result = await db.execute(
@@ -120,7 +125,9 @@ async def get_retention_policy(tenant_slug: str, db: DBSession) -> DataRetention
 
 
 @router.patch("/retention", response_model=RetentionPolicyResponse)
-async def update_retention_policy(tenant_slug: str, body: RetentionPolicyUpdate, db: DBSession) -> DataRetentionPolicy:
+async def update_retention_policy(
+    tenant_slug: str, body: RetentionPolicyUpdate, db: DBSession, current_user: CurrentUser
+) -> DataRetentionPolicy:
     """Update the data retention policy for this tenant."""
     tenant = await _get_tenant_or_404(tenant_slug, db)
     result = await db.execute(
@@ -145,7 +152,9 @@ async def update_retention_policy(tenant_slug: str, body: RetentionPolicyUpdate,
 
 
 @router.get("/export", response_model=DataExportResponse)
-async def export_data(tenant_slug: str, db: DBSession, user_id: str = "anonymous") -> DataExportResponse:
+async def export_data(
+    tenant_slug: str, db: DBSession, current_user: CurrentUser, user_id: str = "anonymous"
+) -> DataExportResponse:
     """Export all data for this tenant as structured JSON (GDPR Art. 20)."""
     tenant = await _get_tenant_or_404(tenant_slug, db)
 
@@ -225,7 +234,9 @@ async def export_data(tenant_slug: str, db: DBSession, user_id: str = "anonymous
 
 
 @router.post("/erase", response_model=ErasureResponse)
-async def erase_data(tenant_slug: str, body: ErasureRequest, db: DBSession, user_id: str = "anonymous") -> ErasureResponse:
+async def erase_data(
+    tenant_slug: str, body: ErasureRequest, db: DBSession, current_user: CurrentUser, user_id: str = "anonymous"
+) -> ErasureResponse:
     """Erase all data for this tenant (GDPR Art. 17 — right to erasure).
 
     This permanently deletes all applications, deployments, consents, and members.

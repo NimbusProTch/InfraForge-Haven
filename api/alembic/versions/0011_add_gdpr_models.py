@@ -12,6 +12,7 @@ Sprint 8: GDPR/AVG Compliance
 from collections.abc import Sequence
 
 import sqlalchemy as sa
+
 from alembic import op
 
 revision: str = "0011"

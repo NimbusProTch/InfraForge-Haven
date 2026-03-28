@@ -8,7 +8,6 @@ from app.models.audit_log import AuditLog
 from app.models.tenant import Tenant
 from app.services import audit_service
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------

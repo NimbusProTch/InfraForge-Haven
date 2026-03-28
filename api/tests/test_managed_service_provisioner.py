@@ -7,14 +7,13 @@ from app.models.managed_service import ManagedService, ServiceStatus, ServiceTie
 from app.services.managed_service import (
     _CONNECTION_HINT_MAP,
     _SECRET_NAME_MAP,
+    ManagedServiceProvisioner,
     _cnpg_cluster_body,
     _mongodb_body,
     _mysql_body,
     _rabbitmq_body,
     _redis_body,
-    ManagedServiceProvisioner,
 )
-
 
 # ---------------------------------------------------------------------------
 # CRD body builders

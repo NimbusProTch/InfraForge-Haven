@@ -1,31 +1,27 @@
-import enum
 import uuid
-from typing import TYPE_CHECKING
+from enum import StrEnum
 
 from sqlalchemy import Boolean, Enum, ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TimestampMixin
 
-if TYPE_CHECKING:
-    pass
 
-
-class OrgPlan(str, enum.Enum):
+class OrgPlan(StrEnum):
     free = "free"
     starter = "starter"
     pro = "pro"
     enterprise = "enterprise"
 
 
-class OrgMemberRole(str, enum.Enum):
+class OrgMemberRole(StrEnum):
     owner = "owner"
     admin = "admin"
     member = "member"
     billing = "billing"  # can only view/manage billing
 
 
-class SSOType(str, enum.Enum):
+class SSOType(StrEnum):
     oidc = "oidc"
     saml = "saml"
 

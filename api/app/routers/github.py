@@ -8,7 +8,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 
 from app.config import settings
-from app.deps import DBSession
+from app.deps import CurrentUser, DBSession
 from app.models.tenant import Tenant
 
 logger = logging.getLogger(__name__)
@@ -108,6 +108,7 @@ async def connect_github(
     tenant_slug: str,
     body: ConnectGitHubRequest,
     db: DBSession,
+    current_user: CurrentUser,
 ) -> dict:
     """Store a GitHub OAuth token for a tenant (used server-side for builds)."""
     result = await db.execute(select(Tenant).where(Tenant.slug == tenant_slug))
@@ -125,6 +126,7 @@ async def connect_github(
 async def disconnect_github(
     tenant_slug: str,
     db: DBSession,
+    current_user: CurrentUser,
 ) -> dict:
     """Remove a stored GitHub OAuth token for a tenant."""
     result = await db.execute(select(Tenant).where(Tenant.slug == tenant_slug))
@@ -143,6 +145,7 @@ async def disconnect_github(
 
 @router.get("/user")
 async def get_user(
+    current_user: CurrentUser,
     authorization: str | None = Header(None),
     token: str | None = Query(None, description="Deprecated: use Authorization: Bearer header"),
 ) -> dict:
@@ -169,6 +172,7 @@ async def get_user(
 
 @router.get("/repos")
 async def list_repos(
+    current_user: CurrentUser,
     authorization: str | None = Header(None),
     token: str | None = Query(None, description="Deprecated: use Authorization: Bearer header"),
 ) -> list:
@@ -250,6 +254,7 @@ async def list_repos(
 async def list_repo_tree(
     owner: str,
     repo: str,
+    current_user: CurrentUser,
     ref: str = "main",
     authorization: str | None = Header(None),
     token: str | None = Query(None, description="Deprecated: use Authorization: Bearer header"),
@@ -276,6 +281,7 @@ async def list_repo_tree(
 async def detect_repo_deps(
     owner: str,
     repo: str,
+    current_user: CurrentUser,
     ref: str = "main",
     authorization: str | None = Header(None),
     token: str | None = Query(None, description="Deprecated: use Authorization: Bearer header"),
@@ -291,6 +297,7 @@ async def detect_repo_deps(
 async def list_branches(
     owner: str,
     repo: str,
+    current_user: CurrentUser,
     authorization: str | None = Header(None),
     token: str | None = Query(None, description="Deprecated: use Authorization: Bearer header"),
 ) -> list:

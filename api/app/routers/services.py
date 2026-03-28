@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, status
 from sqlalchemy import select
 
-from app.deps import DBSession, K8sDep
+from app.deps import CurrentUser, DBSession, K8sDep
 from app.models.managed_service import ManagedService, ServiceStatus
 from app.models.tenant import Tenant
 from app.schemas.managed_service import ManagedServiceCreate, ManagedServiceResponse
@@ -22,7 +22,7 @@ async def _get_tenant_or_404(tenant_slug: str, db: DBSession) -> Tenant:
 
 
 @router.get("", response_model=list[ManagedServiceResponse])
-async def list_services(tenant_slug: str, db: DBSession) -> list[ManagedService]:
+async def list_services(tenant_slug: str, db: DBSession, current_user: CurrentUser) -> list[ManagedService]:
     tenant = await _get_tenant_or_404(tenant_slug, db)
     result = await db.execute(
         select(ManagedService)
@@ -38,6 +38,7 @@ async def create_service(
     body: ManagedServiceCreate,
     db: DBSession,
     k8s: K8sDep,
+    current_user: CurrentUser,
 ) -> ManagedService:
     tenant = await _get_tenant_or_404(tenant_slug, db)
 
@@ -74,7 +75,7 @@ async def create_service(
 
 @router.get("/{service_name}", response_model=ManagedServiceResponse)
 async def get_service(
-    tenant_slug: str, service_name: str, db: DBSession, k8s: K8sDep
+    tenant_slug: str, service_name: str, db: DBSession, k8s: K8sDep, current_user: CurrentUser
 ) -> ManagedService:
     tenant = await _get_tenant_or_404(tenant_slug, db)
     result = await db.execute(
@@ -99,7 +100,7 @@ async def get_service(
 
 @router.delete("/{service_name}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_service(
-    tenant_slug: str, service_name: str, db: DBSession, k8s: K8sDep
+    tenant_slug: str, service_name: str, db: DBSession, k8s: K8sDep, current_user: CurrentUser
 ) -> None:
     tenant = await _get_tenant_or_404(tenant_slug, db)
     result = await db.execute(

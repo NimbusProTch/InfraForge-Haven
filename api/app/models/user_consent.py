@@ -1,17 +1,18 @@
-import enum
 import uuid
 from datetime import datetime
+from enum import StrEnum
+from typing import TYPE_CHECKING
 
 from sqlalchemy import DateTime, Enum, ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TimestampMixin
 
-if False:  # TYPE_CHECKING
+if TYPE_CHECKING:
     from app.models.tenant import Tenant
 
 
-class ConsentType(str, enum.Enum):
+class ConsentType(StrEnum):
     data_processing = "data_processing"       # GDPR Art. 6(1)(a) — lawful basis
     marketing = "marketing"                   # opt-in marketing emails
     analytics = "analytics"                   # usage analytics / telemetry

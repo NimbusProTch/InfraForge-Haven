@@ -6,7 +6,7 @@ from datetime import datetime
 from fastapi import APIRouter, HTTPException, Query, status
 from sqlalchemy import func, select
 
-from app.deps import DBSession
+from app.deps import CurrentUser, DBSession
 from app.models.audit_log import AuditLog
 from app.models.tenant import Tenant
 from app.schemas.audit_log import AuditLogListResponse, AuditLogResponse
@@ -28,12 +28,13 @@ async def _get_tenant_or_404(slug: str, db: DBSession) -> Tenant:
 async def list_audit_logs(
     tenant_slug: str,
     db: DBSession,
+    current_user: CurrentUser,
     action: str | None = Query(None, description="Filter by action (e.g. app.create)"),
     user_id: str | None = Query(None, description="Filter by user_id (Keycloak sub)"),
     resource_type: str | None = Query(None, description="Filter by resource_type"),
     resource_id: str | None = Query(None, description="Filter by resource_id"),
-    start_date: datetime | None = Query(None, description="Filter entries on or after this timestamp"),
-    end_date: datetime | None = Query(None, description="Filter entries on or before this timestamp"),
+    start_date: datetime | None = Query(None, description="Filter entries on or after this timestamp"),  # noqa: B008
+    end_date: datetime | None = Query(None, description="Filter entries on or before this timestamp"),  # noqa: B008
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=200),
 ) -> AuditLogListResponse:
