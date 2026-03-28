@@ -6,11 +6,13 @@ import { useRouter, useParams } from "next/navigation";
 import Link from "next/link";
 import { AppShell } from "@/components/AppShell";
 import { Badge } from "@/components/ui/badge";
+import { Breadcrumb } from "@/components/Breadcrumb";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { AddServiceModal } from "@/components/AddServiceModal";
-import { api, type Tenant, type Application, type ManagedService } from "@/lib/api";
+import { useToast } from "@/components/Toast";
+import { api, type Tenant, type Application, type ManagedService, type Deployment } from "@/lib/api";
 import {
-  ArrowLeft,
+  ArrowRight,
   Plus,
   Box,
   Database,
@@ -20,12 +22,24 @@ import {
   Copy,
   Check,
   Trash2,
+  ExternalLink,
+  Clock,
+  Activity,
 } from "lucide-react";
+
+const LB_IP = process.env.NEXT_PUBLIC_LB_IP ?? "";
+
+function appUrl(tenantSlug: string, appSlug: string) {
+  if (!LB_IP) return null;
+  return `https://${appSlug}.${tenantSlug}.apps.${LB_IP}.sslip.io`;
+}
 
 const SERVICE_ICONS: Record<string, string> = {
   postgres: "🐘",
   redis: "🔴",
   rabbitmq: "🐰",
+  mysql: "🐬",
+  mongodb: "🍃",
 };
 
 const SERVICE_STATUS_VARIANT: Record<string, "success" | "warning" | "destructive" | "secondary"> =
@@ -35,6 +49,22 @@ const SERVICE_STATUS_VARIANT: Record<string, "success" | "warning" | "destructiv
     failed: "destructive",
     deleting: "secondary",
   };
+
+const DEPLOY_STATUS_VARIANT: Record<string, "success" | "warning" | "destructive" | "secondary" | "default"> = {
+  running: "success",
+  building: "warning",
+  deploying: "warning",
+  pending: "secondary",
+  failed: "destructive",
+};
+
+const STATUS_DOT: Record<string, string> = {
+  running: "bg-emerald-500",
+  building: "bg-yellow-500 animate-pulse",
+  deploying: "bg-blue-500 animate-pulse",
+  pending: "bg-gray-400",
+  failed: "bg-red-500",
+};
 
 function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
@@ -47,8 +77,83 @@ function CopyButton({ text }: { text: string }) {
       }}
       className="text-gray-400 dark:text-[#555] hover:text-gray-700 dark:hover:text-white transition-colors"
     >
-      {copied ? <Check className="w-3 h-3 text-green-500" /> : <Copy className="w-3 h-3" />}
+      {copied ? <Check className="w-3 h-3 text-emerald-500" /> : <Copy className="w-3 h-3" />}
     </button>
+  );
+}
+
+function AppCard({
+  app,
+  tenantSlug,
+  latestDeployment,
+}: {
+  app: Application;
+  tenantSlug: string;
+  latestDeployment?: Deployment;
+}) {
+  const url = appUrl(tenantSlug, app.slug);
+  const deployStatus = latestDeployment?.status;
+
+  return (
+    <div className="bg-white dark:bg-[#141414] border border-gray-200 dark:border-[#222] rounded-lg p-4 hover:border-gray-300 dark:hover:border-[#333] transition-colors group">
+      <div className="flex items-start justify-between mb-3">
+        <Link href={`/tenants/${tenantSlug}/apps/${app.slug}`} className="flex items-center gap-2.5 flex-1 min-w-0">
+          <div className="relative shrink-0">
+            <div className="w-8 h-8 rounded-md bg-gray-100 dark:bg-[#1f1f1f] flex items-center justify-center">
+              <Server className="w-4 h-4 text-gray-500 dark:text-[#666]" />
+            </div>
+            {deployStatus && (
+              <span
+                className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-white dark:border-[#141414] ${STATUS_DOT[deployStatus] ?? "bg-gray-400"}`}
+              />
+            )}
+          </div>
+          <div className="min-w-0">
+            <p className="text-sm font-medium text-gray-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors truncate">
+              {app.name}
+            </p>
+            <p className="text-xs text-gray-400 dark:text-[#555] font-mono mt-0.5 truncate">
+              {app.slug}
+            </p>
+          </div>
+        </Link>
+        {deployStatus && (
+          <Badge variant={DEPLOY_STATUS_VARIANT[deployStatus] ?? "secondary"}>
+            {deployStatus}
+          </Badge>
+        )}
+      </div>
+
+      <div className="flex items-center gap-3 text-xs text-gray-400 dark:text-[#555]">
+        <span className="flex items-center gap-1">
+          <GitBranch className="w-3 h-3" />
+          {app.branch}
+        </span>
+        <span className="flex items-center gap-1">
+          <Activity className="w-3 h-3" />
+          {app.replicas} replica{app.replicas !== 1 ? "s" : ""}
+        </span>
+        {latestDeployment && (
+          <span className="flex items-center gap-1 ml-auto">
+            <Clock className="w-3 h-3" />
+            {new Date(latestDeployment.created_at).toLocaleDateString()}
+          </span>
+        )}
+      </div>
+
+      {url && deployStatus === "running" && (
+        <a
+          href={url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="mt-3 flex items-center gap-1 text-xs text-blue-500 hover:text-blue-400 transition-colors font-mono truncate"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <ExternalLink className="w-3 h-3 shrink-0" />
+          {url.replace("https://", "")}
+        </a>
+      )}
+    </div>
   );
 }
 
@@ -57,9 +162,11 @@ export default function TenantDetailPage() {
   const router = useRouter();
   const params = useParams();
   const slug = params.slug as string;
+  const { error: toastError, success: toastSuccess } = useToast();
 
   const [tenant, setTenant] = useState<Tenant | null>(null);
   const [apps, setApps] = useState<Application[]>([]);
+  const [latestDeployments, setLatestDeployments] = useState<Record<string, Deployment>>({});
   const [services, setServices] = useState<ManagedService[]>([]);
   const [loading, setLoading] = useState(true);
   const [deletingService, setDeletingService] = useState<string | null>(null);
@@ -84,6 +191,18 @@ export default function TenantDetailPage() {
       setTenant(t);
       setApps(a);
       setServices(s);
+
+      // Fetch latest deployment per app
+      const depResults = await Promise.allSettled(
+        a.map((app) => api.deployments.list(slug, app.slug, accessToken))
+      );
+      const depMap: Record<string, Deployment> = {};
+      depResults.forEach((result, i) => {
+        if (result.status === "fulfilled" && result.value.length > 0) {
+          depMap[a[i].slug] = result.value[0];
+        }
+      });
+      setLatestDeployments(depMap);
     } catch {
       router.push("/tenants");
     } finally {
@@ -101,8 +220,9 @@ export default function TenantDetailPage() {
     try {
       await api.services.delete(slug, serviceName, accessToken);
       setServices((s) => s.filter((svc) => svc.name !== serviceName));
+      toastSuccess(`Service "${serviceName}" deleted`);
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to delete service");
+      toastError(err instanceof Error ? err.message : "Failed to delete service");
     } finally {
       setDeletingService(null);
     }
@@ -114,7 +234,7 @@ export default function TenantDetailPage() {
       await api.tenants.delete(slug, accessToken);
       router.push("/tenants");
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to delete tenant");
+      toastError(err instanceof Error ? err.message : "Failed to delete tenant");
       setDeletingTenant(false);
     }
   }
@@ -131,31 +251,33 @@ export default function TenantDetailPage() {
 
   if (!tenant) return null;
 
+  const runningApps = apps.filter((a) => latestDeployments[a.slug]?.status === "running").length;
+  const failedApps = apps.filter((a) => latestDeployments[a.slug]?.status === "failed").length;
+
   return (
     <AppShell userEmail={session?.user?.email}>
       <div className="p-6 max-w-5xl">
+        <Breadcrumb
+          items={[
+            { label: "Tenants", href: "/tenants" },
+            { label: tenant.name },
+          ]}
+        />
+
         {/* Header */}
         <div className="flex items-start justify-between mb-6">
-          <div className="flex items-center gap-3">
-            <Link
-              href="/tenants"
-              className="text-gray-400 dark:text-[#555] hover:text-gray-900 dark:hover:text-white transition-colors"
-            >
-              <ArrowLeft className="w-4 h-4" />
-            </Link>
-            <div>
-              <div className="flex items-center gap-2">
-                <h1 className="text-xl font-semibold text-gray-900 dark:text-white">
-                  {tenant.name}
-                </h1>
-                <Badge variant={tenant.active ? "success" : "secondary"}>
-                  {tenant.active ? "active" : "inactive"}
-                </Badge>
-              </div>
-              <p className="text-sm text-gray-400 dark:text-[#555] font-mono mt-0.5">
-                {tenant.namespace}
-              </p>
+          <div>
+            <div className="flex items-center gap-2">
+              <h1 className="text-xl font-semibold text-gray-900 dark:text-white">
+                {tenant.name}
+              </h1>
+              <Badge variant={tenant.active ? "success" : "secondary"}>
+                {tenant.active ? "active" : "inactive"}
+              </Badge>
             </div>
+            <p className="text-sm text-gray-400 dark:text-[#555] font-mono mt-0.5">
+              {tenant.namespace}
+            </p>
           </div>
           <button
             onClick={() => setShowDeleteDialog(true)}
@@ -174,11 +296,16 @@ export default function TenantDetailPage() {
                 Delete Tenant
               </h2>
               <p className="text-sm text-gray-500 dark:text-[#888] mb-1">
-                This will permanently delete <strong className="text-gray-900 dark:text-white">{tenant.name}</strong> and
-                all its applications and services. This action cannot be undone.
+                This will permanently delete{" "}
+                <strong className="text-gray-900 dark:text-white">{tenant.name}</strong> and all its
+                applications and services. This action cannot be undone.
               </p>
               <p className="text-sm text-gray-500 dark:text-[#888] mb-4">
-                Type <span className="font-mono font-medium text-gray-900 dark:text-white">{tenant.slug}</span> to confirm.
+                Type{" "}
+                <span className="font-mono font-medium text-gray-900 dark:text-white">
+                  {tenant.slug}
+                </span>{" "}
+                to confirm.
               </p>
               <input
                 type="text"
@@ -215,24 +342,44 @@ export default function TenantDetailPage() {
           </div>
         )}
 
-        {/* Info bar */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+        {/* Stats bar */}
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-6">
           {[
-            { label: "Slug", value: tenant.slug },
-            { label: "CPU", value: tenant.cpu_limit },
-            { label: "Memory", value: tenant.memory_limit },
-            { label: "Storage", value: tenant.storage_limit },
-          ].map(({ label, value }) => (
+            { label: "Namespace", value: tenant.slug, mono: true },
+            { label: "CPU Limit", value: tenant.cpu_limit, mono: true },
+            { label: "Memory", value: tenant.memory_limit, mono: true },
+            { label: "Storage", value: tenant.storage_limit, mono: true },
+          ].map(({ label, value, mono }) => (
             <div
               key={label}
               className="bg-white dark:bg-[#141414] border border-gray-200 dark:border-[#222] rounded-lg px-3 py-2.5"
             >
               <p className="text-xs text-gray-400 dark:text-[#555]">{label}</p>
-              <p className="text-sm font-medium text-gray-900 dark:text-white font-mono mt-0.5">
+              <p className={`text-sm font-medium text-gray-900 dark:text-white mt-0.5 ${mono ? "font-mono" : ""}`}>
                 {value}
               </p>
             </div>
           ))}
+          <div className="bg-white dark:bg-[#141414] border border-gray-200 dark:border-[#222] rounded-lg px-3 py-2.5">
+            <p className="text-xs text-gray-400 dark:text-[#555]">App Health</p>
+            <div className="flex items-center gap-2 mt-0.5">
+              {runningApps > 0 && (
+                <span className="flex items-center gap-1 text-xs text-emerald-500 font-medium">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                  {runningApps} up
+                </span>
+              )}
+              {failedApps > 0 && (
+                <span className="flex items-center gap-1 text-xs text-red-500 font-medium">
+                  <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
+                  {failedApps} down
+                </span>
+              )}
+              {apps.length === 0 && (
+                <span className="text-xs text-gray-400 dark:text-[#555]">—</span>
+              )}
+            </div>
+          </div>
         </div>
 
         {/* Tabs */}
@@ -240,24 +387,18 @@ export default function TenantDetailPage() {
           <TabsList>
             <TabsTrigger value="apps">
               Applications
-              <span className="ml-1.5 text-xs text-gray-400 dark:text-[#555]">
-                {apps.length}
-              </span>
+              <span className="ml-1.5 text-xs text-gray-400 dark:text-[#555]">{apps.length}</span>
             </TabsTrigger>
             <TabsTrigger value="services">
               Services
-              <span className="ml-1.5 text-xs text-gray-400 dark:text-[#555]">
-                {services.length}
-              </span>
+              <span className="ml-1.5 text-xs text-gray-400 dark:text-[#555]">{services.length}</span>
             </TabsTrigger>
           </TabsList>
 
           {/* Applications tab */}
           <TabsContent value="apps" className="pt-5">
             <div className="flex items-center justify-between mb-4">
-              <p className="text-sm text-gray-500 dark:text-[#888]">
-                Deployed applications
-              </p>
+              <p className="text-sm text-gray-500 dark:text-[#888]">Deployed applications</p>
               <Link
                 href={`/tenants/${slug}/apps/new`}
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium transition-colors"
@@ -281,37 +422,12 @@ export default function TenantDetailPage() {
             ) : (
               <div className="grid gap-3 sm:grid-cols-2">
                 {apps.map((app) => (
-                  <Link
+                  <AppCard
                     key={app.id}
-                    href={`/tenants/${slug}/apps/${app.slug}`}
-                    className="block bg-white dark:bg-[#141414] border border-gray-200 dark:border-[#222] rounded-lg p-4 hover:bg-gray-50 dark:hover:bg-[#1a1a1a] transition-colors group"
-                  >
-                    <div className="flex items-start justify-between">
-                      <div className="flex items-center gap-2.5">
-                        <div className="w-8 h-8 rounded-md bg-gray-100 dark:bg-[#1f1f1f] flex items-center justify-center shrink-0">
-                          <Server className="w-4 h-4 text-gray-500 dark:text-[#666]" />
-                        </div>
-                        <div>
-                          <p className="text-sm font-medium text-gray-900 dark:text-white">
-                            {app.name}
-                          </p>
-                          <p className="text-xs text-gray-400 dark:text-[#555] font-mono mt-0.5 truncate max-w-[200px]">
-                            {app.slug}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="mt-3 flex items-center gap-3 text-xs text-gray-400 dark:text-[#555]">
-                      <span className="flex items-center gap-1">
-                        <GitBranch className="w-3 h-3" />
-                        {app.branch}
-                      </span>
-                      <span>{app.replicas} replica{app.replicas !== 1 ? "s" : ""}</span>
-                    </div>
-                    <p className="mt-2 text-xs text-gray-400 dark:text-[#555] font-mono truncate">
-                      {app.repo_url}
-                    </p>
-                  </Link>
+                    app={app}
+                    tenantSlug={slug}
+                    latestDeployment={latestDeployments[app.slug]}
+                  />
                 ))}
               </div>
             )}
@@ -344,7 +460,7 @@ export default function TenantDetailPage() {
                   >
                     <div className="flex items-start justify-between">
                       <div className="flex items-center gap-2">
-                        <span className="text-lg">{SERVICE_ICONS[svc.service_type]}</span>
+                        <span className="text-lg">{SERVICE_ICONS[svc.service_type] ?? "🔧"}</span>
                         <div>
                           <p className="text-sm font-medium text-gray-900 dark:text-white">
                             {svc.name}

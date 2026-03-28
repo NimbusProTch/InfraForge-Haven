@@ -16,6 +16,9 @@ spec:
       labels:
         app: haven-api
         haven.io/component: api
+      annotations:
+        # Force pod restart when ConfigMap changes (ArgoCD will update this annotation)
+        kubectl.kubernetes.io/restartedAt: "2026-03-28T00:00:00Z"
     spec:
       serviceAccountName: haven-api
       tolerations:

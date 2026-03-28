@@ -37,11 +37,14 @@ class Settings(BaseSettings):
     # GitHub webhook secret — set via WEBHOOK_SECRET env var, never hard-coded
     webhook_secret: str = ""
 
-    # GitOps
+    # GitOps — monorepo (InfraForge-Haven), gitops/ prefix
+    # Set GITOPS_REPO_URL env var to enable GitOps mode; empty = direct K8s API
     gitops_repo_url: str = ""
-    gitops_branch: str = "main"
+    gitops_branch: str = "feature/platform-v2"
     gitops_clone_dir: str = "/tmp/haven-gitops"
     gitops_deploy_key_path: str = ""
+    # GitHub PAT for pushing to the monorepo (set via GITOPS_GITHUB_TOKEN in secrets)
+    gitops_github_token: str = ""
 
     # ArgoCD API
     argocd_url: str = "http://argocd-server.argocd.svc.cluster.local:80"

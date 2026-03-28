@@ -6,14 +6,39 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { AppShell } from "@/components/AppShell";
 import { Badge } from "@/components/ui/badge";
-import { api, type Tenant, type ClusterHealth } from "@/lib/api";
-import { Building2, Box, CheckCircle2, AlertCircle, Loader2, ArrowRight } from "lucide-react";
+import { api, type Tenant, type ClusterHealth, type Deployment, type Application } from "@/lib/api";
+import { Building2, Box, CheckCircle2, AlertCircle, Loader2, ArrowRight, Clock } from "lucide-react";
+
+interface RecentDeployment {
+  tenantSlug: string;
+  appSlug: string;
+  appName: string;
+  deployment: Deployment;
+}
 
 interface Stats {
   tenantCount: number;
   appCount: number;
+  runningCount: number;
   tenants: Tenant[];
+  recentDeployments: RecentDeployment[];
 }
+
+const DEPLOY_STATUS_VARIANT: Record<string, "success" | "warning" | "destructive" | "secondary" | "default"> = {
+  running: "success",
+  building: "warning",
+  deploying: "warning",
+  pending: "secondary",
+  failed: "destructive",
+};
+
+const STATUS_DOT: Record<string, string> = {
+  running: "bg-emerald-500",
+  building: "bg-yellow-500 animate-pulse",
+  deploying: "bg-blue-500 animate-pulse",
+  pending: "bg-gray-400",
+  failed: "bg-red-500",
+};
 
 function StatCard({
   label,
@@ -78,11 +103,51 @@ export default function DashboardPage() {
         const appResults = await Promise.allSettled(
           tenantList.map((t) => api.apps.list(t.slug, accessToken))
         );
-        const totalApps = appResults.reduce((acc, r) => {
-          return acc + (r.status === "fulfilled" ? r.value.length : 0);
-        }, 0);
+        const allApps: Array<{ tenant: Tenant; app: Application }> = [];
+        appResults.forEach((r, i) => {
+          if (r.status === "fulfilled") {
+            r.value.forEach((app) => allApps.push({ tenant: tenantList[i], app }));
+          }
+        });
+        const totalApps = allApps.length;
 
-        setStats({ tenantCount: tenantList.length, appCount: totalApps, tenants: tenantList });
+        // Fetch latest deployment for each app (up to 10 apps to avoid overload)
+        const appsToCheck = allApps.slice(0, 10);
+        const depResults = await Promise.allSettled(
+          appsToCheck.map(({ tenant, app }) =>
+            api.deployments.list(tenant.slug, app.slug, accessToken)
+          )
+        );
+
+        const recentDeployments: RecentDeployment[] = [];
+        let runningCount = 0;
+        depResults.forEach((r, i) => {
+          if (r.status === "fulfilled" && r.value.length > 0) {
+            const dep = r.value[0];
+            if (dep.status === "running") runningCount++;
+            recentDeployments.push({
+              tenantSlug: appsToCheck[i].tenant.slug,
+              appSlug: appsToCheck[i].app.slug,
+              appName: appsToCheck[i].app.name,
+              deployment: dep,
+            });
+          }
+        });
+
+        // Sort by most recent
+        recentDeployments.sort(
+          (a, b) =>
+            new Date(b.deployment.created_at).getTime() -
+            new Date(a.deployment.created_at).getTime()
+        );
+
+        setStats({
+          tenantCount: tenantList.length,
+          appCount: totalApps,
+          runningCount,
+          tenants: tenantList,
+          recentDeployments: recentDeployments.slice(0, 8),
+        });
       } finally {
         setLoading(false);
       }
@@ -126,7 +191,7 @@ export default function DashboardPage() {
             label="Applications"
             value={stats?.appCount ?? 0}
             icon={Box}
-            sub="across all tenants"
+            sub={`${stats?.runningCount ?? 0} running`}
           />
           <div className="bg-white dark:bg-[#141414] border border-gray-200 dark:border-[#222] rounded-lg p-5">
             <div className="flex items-center justify-between mb-3">
@@ -211,6 +276,61 @@ export default function DashboardPage() {
             >
               Create your first tenant →
             </Link>
+          </div>
+        )}
+
+        {/* Recent Deployments */}
+        {stats && stats.recentDeployments.length > 0 && (
+          <div className="mt-8">
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-sm font-medium text-gray-900 dark:text-white">
+                Recent Deployments
+              </h2>
+            </div>
+            <div className="bg-white dark:bg-[#141414] border border-gray-200 dark:border-[#222] rounded-lg overflow-hidden">
+              {stats.recentDeployments.map((item, i) => (
+                <Link
+                  key={item.deployment.id}
+                  href={`/tenants/${item.tenantSlug}/apps/${item.appSlug}`}
+                  className={`flex items-center justify-between px-4 py-3 hover:bg-gray-50 dark:hover:bg-[#1a1a1a] transition-colors ${
+                    i > 0 ? "border-t border-gray-100 dark:border-[#1e1e1e]" : ""
+                  }`}
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div
+                      className={`w-2 h-2 rounded-full shrink-0 ${STATUS_DOT[item.deployment.status] ?? "bg-gray-400"}`}
+                    />
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
+                          {item.appName}
+                        </p>
+                        <span className="text-xs text-gray-400 dark:text-[#555] shrink-0">
+                          {item.tenantSlug}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        {item.deployment.commit_sha && (
+                          <span className="text-xs font-mono text-gray-400 dark:text-[#555]">
+                            {item.deployment.commit_sha.slice(0, 7)}
+                          </span>
+                        )}
+                        <span className="flex items-center gap-1 text-xs text-gray-400 dark:text-[#555]">
+                          <Clock className="w-3 h-3" />
+                          {new Date(item.deployment.created_at).toLocaleString()}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0 ml-3">
+                    <Badge variant={DEPLOY_STATUS_VARIANT[item.deployment.status] ?? "secondary"}>
+                      {item.deployment.status}
+                    </Badge>
+                    <ArrowRight className="w-3.5 h-3.5 text-gray-400 dark:text-[#444]" />
+                  </div>
+                </Link>
+              ))}
+            </div>
           </div>
         )}
       </div>

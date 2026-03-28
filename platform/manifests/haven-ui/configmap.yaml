@@ -9,3 +9,4 @@ data:
   KEYCLOAK_URL: "https://keycloak.46.225.42.2.sslip.io"
   KEYCLOAK_REALM: "haven"
   KEYCLOAK_ISSUER: "https://keycloak.46.225.42.2.sslip.io/realms/haven"
+  NEXT_PUBLIC_LB_IP: "46.225.42.2"

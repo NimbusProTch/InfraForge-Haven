@@ -6,13 +6,14 @@ import { useRouter, useParams } from "next/navigation";
 import Link from "next/link";
 import { AppShell } from "@/components/AppShell";
 import { Badge } from "@/components/ui/badge";
+import { Breadcrumb } from "@/components/Breadcrumb";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { useToast } from "@/components/Toast";
 import { api, type Application, type Deployment, getLogsUrl } from "@/lib/api";
 import AppSettings from "@/components/AppSettings";
 import ObservabilityTab from "@/components/ObservabilityTab";
 import {
   Activity,
-  ArrowLeft,
   GitBranch,
   Hammer,
   Rocket,
@@ -28,7 +29,10 @@ import {
   Check,
   X,
   Circle,
+  ExternalLink,
 } from "lucide-react";
+
+const LB_IP = process.env.NEXT_PUBLIC_LB_IP ?? "";
 
 // ---- Pipeline types and helpers ----
 
@@ -378,6 +382,7 @@ export default function AppDetailPage() {
   const params = useParams();
   const tenantSlug = params.slug as string;
   const appSlug = params.appSlug as string;
+  const { error: toastError, success: toastSuccess } = useToast();
 
   const [app, setApp] = useState<Application | null>(null);
   const [deployments, setDeployments] = useState<Deployment[]>([]);
@@ -563,11 +568,11 @@ export default function AppDetailPage() {
   async function handleBuild() {
     setActionLoading("build");
     try {
-      // GitHub token is now stored server-side per tenant — no need to pass it
       await api.deployments.build(tenantSlug, appSlug, accessToken);
       await loadDeployments();
+      toastSuccess("Build started");
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Build failed");
+      toastError(err instanceof Error ? err.message : "Build failed");
     } finally {
       setActionLoading(null);
     }
@@ -578,8 +583,9 @@ export default function AppDetailPage() {
     try {
       await api.deployments.deploy(tenantSlug, appSlug, accessToken);
       await loadDeployments();
+      toastSuccess("Deploy started");
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Deploy failed");
+      toastError(err instanceof Error ? err.message : "Deploy failed");
     } finally {
       setActionLoading(null);
     }
@@ -590,8 +596,9 @@ export default function AppDetailPage() {
     try {
       await api.deployments.rollback(tenantSlug, appSlug, deploymentId, accessToken);
       await loadDeployments();
+      toastSuccess("Rollback initiated");
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Rollback failed");
+      toastError(err instanceof Error ? err.message : "Rollback failed");
     } finally {
       setRolling(null);
     }
@@ -612,40 +619,39 @@ export default function AppDetailPage() {
   if (!app) return null;
 
   const currentStatus = latestDeployment?.status;
+  const appPublicUrl = LB_IP
+    ? `https://${appSlug}.${tenantSlug}.apps.${LB_IP}.sslip.io`
+    : null;
 
   return (
     <AppShell userEmail={session?.user?.email}>
       <div className="p-6 max-w-5xl">
+        <Breadcrumb
+          items={[
+            { label: "Tenants", href: "/tenants" },
+            { label: tenantSlug, href: `/tenants/${tenantSlug}` },
+            { label: app.name },
+          ]}
+        />
+
         {/* Header */}
         <div className="flex items-start justify-between mb-6">
-          <div className="flex items-center gap-3">
-            <Link
-              href={`/tenants/${tenantSlug}`}
-              className="text-gray-400 dark:text-[#555] hover:text-gray-900 dark:hover:text-white transition-colors"
-            >
-              <ArrowLeft className="w-4 h-4" />
-            </Link>
-            <div>
-              <div className="flex items-center gap-2">
-                <h1 className="text-xl font-semibold text-gray-900 dark:text-white">{app.name}</h1>
-                {currentStatus && (
-                  <Badge variant={DEPLOY_STATUS_VARIANT[currentStatus] ?? "secondary"}>
-                    {currentStatus}
-                  </Badge>
-                )}
-              </div>
-              <p className="text-xs text-gray-400 dark:text-[#555] font-mono mt-0.5">
+          <div>
+            <div className="flex items-center gap-2">
+              <h1 className="text-xl font-semibold text-gray-900 dark:text-white">{app.name}</h1>
+              {currentStatus && (
+                <Badge variant={DEPLOY_STATUS_VARIANT[currentStatus] ?? "secondary"}>
+                  {currentStatus}
+                </Badge>
+              )}
+            </div>
+            <div className="flex items-center gap-3 mt-1">
+              <p className="text-xs text-gray-400 dark:text-[#555] font-mono">
                 <span
                   className="hover:text-blue-500 cursor-pointer"
-                  onClick={() => {
-                    const parts = app.repo_url
-                      .replace(/\.git$/, "")
-                      .split("/");
-                    const [owner, repo] = parts.slice(-2);
-                    if (owner && repo) window.open(app.repo_url, "_blank");
-                  }}
+                  onClick={() => window.open(app.repo_url, "_blank")}
                 >
-                  {app.repo_url}
+                  {app.repo_url.replace("https://github.com/", "")}
                 </span>
                 <ChevronRight className="inline w-3 h-3 mx-0.5" />
                 <span className="inline-flex items-center gap-0.5">
@@ -653,6 +659,17 @@ export default function AppDetailPage() {
                   {app.branch}
                 </span>
               </p>
+              {appPublicUrl && currentStatus === "running" && (
+                <a
+                  href={appPublicUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 text-xs text-blue-500 hover:text-blue-400 transition-colors font-mono"
+                >
+                  <ExternalLink className="w-3 h-3" />
+                  {appPublicUrl.replace("https://", "")}
+                </a>
+              )}
             </div>
           </div>
 
