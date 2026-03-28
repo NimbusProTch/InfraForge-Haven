@@ -52,10 +52,6 @@ async def db_session() -> AsyncGenerator[AsyncSession, None]:
     async with session_factory() as session:
         yield session
 
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.drop_all)
-    await engine.dispose()
-
 
 # ---------------------------------------------------------------------------
 # Mock K8s client
@@ -72,6 +68,30 @@ def mock_k8s() -> K8sClient:
     k8s.batch_v1 = MagicMock()
     k8s.autoscaling_v2 = MagicMock()
     k8s.custom_objects = MagicMock()
+    return k8s
+
+
+@pytest.fixture
+def mock_k8s_available() -> MagicMock:
+    """K8s client that reports as available with a mock CustomObjectsApi."""
+    k8s = MagicMock()
+    k8s.is_available.return_value = True
+    k8s.custom_objects = MagicMock()
+    k8s.custom_objects.create_namespaced_custom_object.return_value = {}
+    k8s.custom_objects.delete_namespaced_custom_object.return_value = {}
+    k8s.custom_objects.get_namespaced_custom_object.return_value = {
+        "status": {"readyInstances": 1, "phase": "Cluster in healthy state"},
+        "spec": {"instances": 1},
+    }
+    return k8s
+
+
+@pytest.fixture
+def mock_k8s_unavailable() -> MagicMock:
+    """K8s client that reports as unavailable."""
+    k8s = MagicMock()
+    k8s.is_available.return_value = False
+    k8s.custom_objects = None
     return k8s
 
 
