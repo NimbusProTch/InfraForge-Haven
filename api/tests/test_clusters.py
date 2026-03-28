@@ -14,11 +14,9 @@ import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-import pytest_asyncio
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.cluster import Cluster, ClusterStatus
-
 
 # ---------------------------------------------------------------------------
 # Helper: create a cluster directly in DB

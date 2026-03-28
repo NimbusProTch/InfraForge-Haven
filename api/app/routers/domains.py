@@ -14,7 +14,7 @@ import logging
 from fastapi import APIRouter, HTTPException, status
 from sqlalchemy import select
 
-from app.deps import DBSession, K8sDep
+from app.deps import CurrentUser, DBSession, K8sDep
 from app.models.application import Application
 from app.models.domain import CertificateStatus, DomainVerification
 from app.models.tenant import Tenant
@@ -90,6 +90,7 @@ async def add_domain(
     body: DomainCreate,
     db: DBSession,
     k8s: K8sDep,
+    current_user: CurrentUser,
 ) -> DomainResponse:
     """Add a custom domain to an application.
 
@@ -124,6 +125,7 @@ async def list_domains(
     app_slug: str,
     db: DBSession,
     k8s: K8sDep,
+    current_user: CurrentUser,
 ) -> list[DomainResponse]:
     """List all custom domains for an application."""
     tenant = await _get_tenant_or_404(tenant_slug, db)
@@ -145,6 +147,7 @@ async def get_domain(
     domain: str,
     db: DBSession,
     k8s: K8sDep,
+    current_user: CurrentUser,
 ) -> DomainResponse:
     """Get details for a specific custom domain."""
     tenant = await _get_tenant_or_404(tenant_slug, db)
@@ -160,6 +163,7 @@ async def verify_domain(
     domain: str,
     db: DBSession,
     k8s: K8sDep,
+    current_user: CurrentUser,
 ) -> DomainVerifyResponse:
     """Trigger DNS ownership verification for a domain.
 
@@ -216,6 +220,7 @@ async def sync_cert_status(
     domain: str,
     db: DBSession,
     k8s: K8sDep,
+    current_user: CurrentUser,
 ) -> DomainResponse:
     """Sync the cert-manager Certificate status from the cluster into the DB."""
     tenant = await _get_tenant_or_404(tenant_slug, db)
@@ -241,6 +246,7 @@ async def delete_domain(
     domain: str,
     db: DBSession,
     k8s: K8sDep,
+    current_user: CurrentUser,
 ) -> None:
     """Remove a custom domain from an application.
 
@@ -280,6 +286,7 @@ platform_router = APIRouter(prefix="/platform/domains")
 async def issue_wildcard_cert(
     body: WildcardCertRequest,
     k8s: K8sDep,
+    current_user: CurrentUser,
 ) -> dict:
     """Issue a wildcard TLS certificate for *.apps.{platform_domain}.
 

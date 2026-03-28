@@ -12,7 +12,7 @@ import uuid
 from fastapi import APIRouter, HTTPException, status
 from sqlalchemy import select
 
-from app.deps import DBSession, K8sDep
+from app.deps import CurrentUser, DBSession, K8sDep
 from app.models.application import Application
 from app.models.cronjob import CronJob
 from app.models.tenant import Tenant
@@ -120,7 +120,7 @@ def _build_k8s_cronjob(cj: CronJob, app: Application, namespace: str) -> dict:
 
 
 @router.get("", response_model=list[CronJobResponse])
-async def list_cronjobs(tenant_slug: str, app_slug: str, db: DBSession) -> list[CronJob]:
+async def list_cronjobs(tenant_slug: str, app_slug: str, db: DBSession, current_user: CurrentUser) -> list[CronJob]:
     """List all CronJobs for an application."""
     tenant = await _get_tenant_or_404(tenant_slug, db)
     app = await _get_app_or_404(tenant.id, app_slug, db)
@@ -138,6 +138,7 @@ async def create_cronjob(
     body: CronJobCreate,
     db: DBSession,
     k8s: K8sDep,
+    current_user: CurrentUser,
 ) -> CronJob:
     """Create a K8s CronJob for an application."""
     tenant = await _get_tenant_or_404(tenant_slug, db)
@@ -188,6 +189,7 @@ async def get_cronjob(
     app_slug: str,
     cronjob_id: uuid.UUID,
     db: DBSession,
+    current_user: CurrentUser,
 ) -> CronJob:
     tenant = await _get_tenant_or_404(tenant_slug, db)
     app = await _get_app_or_404(tenant.id, app_slug, db)
@@ -202,6 +204,7 @@ async def update_cronjob(
     body: CronJobUpdate,
     db: DBSession,
     k8s: K8sDep,
+    current_user: CurrentUser,
 ) -> CronJob:
     """Update a CronJob (schedule, resources, suspend state, etc.)."""
     tenant = await _get_tenant_or_404(tenant_slug, db)
@@ -237,6 +240,7 @@ async def delete_cronjob(
     cronjob_id: uuid.UUID,
     db: DBSession,
     k8s: K8sDep,
+    current_user: CurrentUser,
 ) -> None:
     """Delete a CronJob from DB and K8s."""
     tenant = await _get_tenant_or_404(tenant_slug, db)
@@ -265,6 +269,7 @@ async def run_cronjob_now(
     cronjob_id: uuid.UUID,
     db: DBSession,
     k8s: K8sDep,
+    current_user: CurrentUser,
 ) -> dict:
     """Trigger an immediate one-off run of a CronJob (creates a K8s Job from the CronJob template)."""
     tenant = await _get_tenant_or_404(tenant_slug, db)
@@ -303,7 +308,7 @@ async def run_cronjob_now(
         },
         "spec": {
             "template": {
-                "metadata": job_spec.template.metadata.to_dict() if hasattr(job_spec.template.metadata, "to_dict") else {},
+                "metadata": job_spec.template.metadata.to_dict() if hasattr(job_spec.template.metadata, "to_dict") else {},  # noqa: E501
                 "spec": job_spec.template.spec.to_dict() if hasattr(job_spec.template.spec, "to_dict") else {},
             }
         },

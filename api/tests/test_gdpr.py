@@ -9,15 +9,12 @@ Tests cover:
 
 import uuid
 
-import pytest
 import pytest_asyncio
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.data_retention_policy import DataRetentionPolicy
 from app.models.tenant import Tenant
 from app.models.user_consent import ConsentType, UserConsent
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -141,7 +138,9 @@ async def test_export_data_empty_tenant(async_client: AsyncClient, gdpr_tenant: 
     assert data["consents"] == []
 
 
-async def test_export_includes_consents(async_client: AsyncClient, gdpr_tenant: Tenant, db_session: AsyncSession) -> None:
+async def test_export_includes_consents(
+    async_client: AsyncClient, gdpr_tenant: Tenant, db_session: AsyncSession
+) -> None:
     """Export includes consent records."""
     consent = UserConsent(
         tenant_id=gdpr_tenant.id,
@@ -174,7 +173,9 @@ async def test_erase_requires_confirmation(async_client: AsyncClient, gdpr_tenan
     assert resp.status_code == 400
 
 
-async def test_erase_deletes_tenant_and_data(async_client: AsyncClient, gdpr_tenant: Tenant, db_session: AsyncSession) -> None:
+async def test_erase_deletes_tenant_and_data(
+    async_client: AsyncClient, gdpr_tenant: Tenant, db_session: AsyncSession
+) -> None:
     """Successful erasure removes tenant and all associated data."""
     # Add a consent record to verify it gets deleted
     consent = UserConsent(

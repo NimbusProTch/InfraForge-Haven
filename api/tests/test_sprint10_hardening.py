@@ -9,10 +9,8 @@ Covers:
 - Application new fields (app_type, canary_enabled, canary_weight, volumes)
 """
 
-from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 
 # ---------------------------------------------------------------------------
 # Health & Readiness

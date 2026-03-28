@@ -3,7 +3,7 @@ import logging
 from fastapi import APIRouter, HTTPException, status
 from sqlalchemy import select
 
-from app.deps import DBSession, K8sDep
+from app.deps import CurrentUser, DBSession, K8sDep
 from app.models.tenant import Tenant
 from app.schemas.tenant import TenantCreate, TenantResponse, TenantUpdate
 from app.services.keycloak_service import keycloak_service
@@ -23,13 +23,13 @@ async def _get_tenant_or_404(tenant_slug: str, db: DBSession) -> Tenant:
 
 
 @router.get("", response_model=list[TenantResponse])
-async def list_tenants(db: DBSession) -> list[Tenant]:
+async def list_tenants(db: DBSession, current_user: CurrentUser) -> list[Tenant]:
     result = await db.execute(select(Tenant).order_by(Tenant.created_at.desc()))
     return list(result.scalars().all())
 
 
 @router.post("", response_model=TenantResponse, status_code=status.HTTP_201_CREATED)
-async def create_tenant(body: TenantCreate, db: DBSession, k8s: K8sDep) -> Tenant:
+async def create_tenant(body: TenantCreate, db: DBSession, k8s: K8sDep, current_user: CurrentUser) -> Tenant:
     # Check slug uniqueness
     existing = await db.execute(select(Tenant).where(Tenant.slug == body.slug))
     if existing.scalar_one_or_none() is not None:
@@ -69,13 +69,13 @@ async def create_tenant(body: TenantCreate, db: DBSession, k8s: K8sDep) -> Tenan
 
 
 @router.get("/{tenant_slug}", response_model=TenantResponse)
-async def get_tenant(tenant_slug: str, db: DBSession) -> Tenant:
+async def get_tenant(tenant_slug: str, db: DBSession, current_user: CurrentUser) -> Tenant:
     return await _get_tenant_or_404(tenant_slug, db)
 
 
 @router.patch("/{tenant_slug}", response_model=TenantResponse)
 @router.put("/{tenant_slug}", response_model=TenantResponse)
-async def update_tenant(tenant_slug: str, body: TenantUpdate, db: DBSession) -> Tenant:
+async def update_tenant(tenant_slug: str, body: TenantUpdate, db: DBSession, current_user: CurrentUser) -> Tenant:
     tenant = await _get_tenant_or_404(tenant_slug, db)
 
     update_data = body.model_dump(exclude_none=True)
@@ -88,7 +88,7 @@ async def update_tenant(tenant_slug: str, body: TenantUpdate, db: DBSession) -> 
 
 
 @router.delete("/{tenant_slug}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_tenant(tenant_slug: str, db: DBSession, k8s: K8sDep) -> None:
+async def delete_tenant(tenant_slug: str, db: DBSession, k8s: K8sDep, current_user: CurrentUser) -> None:
     tenant = await _get_tenant_or_404(tenant_slug, db)
 
     svc = TenantService(k8s)

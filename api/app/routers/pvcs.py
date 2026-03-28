@@ -12,7 +12,7 @@ from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 
-from app.deps import DBSession, K8sDep
+from app.deps import CurrentUser, DBSession, K8sDep
 from app.models.application import Application
 from app.models.tenant import Tenant
 
@@ -84,7 +84,9 @@ def _pvc_name(app_slug: str, volume_name: str) -> str:
 
 
 @router.get("", response_model=VolumeListResponse)
-async def list_volumes(tenant_slug: str, app_slug: str, db: DBSession, k8s: K8sDep) -> VolumeListResponse:
+async def list_volumes(
+    tenant_slug: str, app_slug: str, db: DBSession, k8s: K8sDep, current_user: CurrentUser
+) -> VolumeListResponse:
     """List PVCs attached to an application."""
     tenant = await _get_tenant_or_404(tenant_slug, db)
     app = await _get_app_or_404(tenant.id, app_slug, db)
@@ -136,6 +138,7 @@ async def create_volume(
     body: VolumeCreate,
     db: DBSession,
     k8s: K8sDep,
+    current_user: CurrentUser,
 ) -> VolumeItem:
     """Create a PVC and attach it to an application.
 
@@ -211,6 +214,7 @@ async def delete_volume(
     volume_name: str,
     db: DBSession,
     k8s: K8sDep,
+    current_user: CurrentUser,
 ) -> None:
     """Delete a PVC and remove it from the application's volume list."""
     tenant = await _get_tenant_or_404(tenant_slug, db)

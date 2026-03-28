@@ -12,6 +12,7 @@ Sprint 12: Multi-cluster, Multi-region support.
 from collections.abc import Sequence
 
 import sqlalchemy as sa
+
 from alembic import op
 
 revision: str = "0014"

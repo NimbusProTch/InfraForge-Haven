@@ -7,7 +7,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 
 from app.config import settings
-from app.deps import ArgoCDDep, DBSession, GitOpsDep, K8sDep, get_session_factory
+from app.deps import ArgoCDDep, CurrentUser, DBSession, GitOpsDep, K8sDep, get_session_factory
 from app.models.application import Application
 from app.models.deployment import Deployment, DeploymentStatus
 from app.models.tenant import Tenant
@@ -45,6 +45,7 @@ async def list_deployments(
     tenant_slug: str,
     app_slug: str,
     db: DBSession,
+    current_user: CurrentUser,
     limit: int = 20,
 ) -> list[Deployment]:
     """List recent deployments for an application (newest first)."""
@@ -66,6 +67,7 @@ async def get_deployment(
     app_slug: str,
     deployment_id: uuid.UUID,
     db: DBSession,
+    current_user: CurrentUser,
 ) -> Deployment:
     """Get a single deployment by ID."""
     tenant = await _get_tenant_or_404(tenant_slug, db)
@@ -92,6 +94,7 @@ async def trigger_build(
     gitops: GitOpsDep,
     argocd: ArgoCDDep,
     background_tasks: BackgroundTasks,
+    current_user: CurrentUser,
 ) -> Deployment:
     """Manually trigger a full build + deploy pipeline.
 
@@ -148,6 +151,7 @@ async def trigger_deploy(
     app_slug: str,
     db: DBSession,
     k8s: K8sDep,
+    current_user: CurrentUser,
 ) -> Deployment:
     """Manually trigger a deployment for the current image_tag."""
     tenant = await _get_tenant_or_404(tenant_slug, db)
@@ -202,6 +206,7 @@ async def rollback_deployment(
     deployment_id: uuid.UUID,
     db: DBSession,
     k8s: K8sDep,
+    current_user: CurrentUser,
 ) -> Deployment:
     """Roll back to a specific past deployment's image."""
     tenant = await _get_tenant_or_404(tenant_slug, db)
@@ -259,6 +264,7 @@ async def stream_logs(
     app_slug: str,
     db: DBSession,
     k8s: K8sDep,
+    current_user: CurrentUser,
     tail_lines: int = 100,
     token: str | None = None,  # noqa: ARG001 — accepted for EventSource auth (validated upstream)
 ) -> StreamingResponse:

@@ -1,6 +1,6 @@
-import enum
 import uuid
 from datetime import datetime
+from enum import StrEnum
 from typing import TYPE_CHECKING
 
 from sqlalchemy import Boolean, DateTime, Enum, String
@@ -12,14 +12,14 @@ if TYPE_CHECKING:
     from app.models.application import Application
 
 
-class ClusterStatus(str, enum.Enum):
+class ClusterStatus(StrEnum):
     active = "active"
     inactive = "inactive"
     degraded = "degraded"
     unknown = "unknown"
 
 
-class ClusterProvider(str, enum.Enum):
+class ClusterProvider(StrEnum):
     hetzner = "hetzner"
     cyso = "cyso"
     leafcloud = "leafcloud"

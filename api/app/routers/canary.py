@@ -11,6 +11,7 @@ Canary deployment uses a separate K8s Deployment ({app_slug}-canary).
 """
 
 import asyncio
+import contextlib
 import logging
 import uuid
 
@@ -18,7 +19,7 @@ from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 
-from app.deps import DBSession, K8sDep
+from app.deps import CurrentUser, DBSession, K8sDep
 from app.models.application import Application
 from app.models.tenant import Tenant
 
@@ -135,6 +136,7 @@ async def get_canary_status(
     app_slug: str,
     db: DBSession,
     k8s: K8sDep,
+    current_user: CurrentUser,
 ) -> CanaryStatus:
     """Get current canary deployment status."""
     tenant = await _get_tenant_or_404(tenant_slug, db)
@@ -183,6 +185,7 @@ async def configure_canary(
     config: CanaryConfig,
     db: DBSession,
     k8s: K8sDep,
+    current_user: CurrentUser,
 ) -> CanaryStatus:
     """Enable/disable canary and set traffic weight.
 
@@ -200,7 +203,7 @@ async def configure_canary(
 
     if config.enabled and not config.canary_image and not app.canary_enabled:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="canary_image is required when enabling canary for the first time",
         )
 
@@ -258,10 +261,8 @@ async def configure_canary(
                 (k8s.apps_v1.delete_namespaced_deployment, f"{app.slug}-canary", tenant.namespace),
                 (k8s.core_v1.delete_namespaced_service, f"{app.slug}-canary", tenant.namespace),
             ]:
-                try:
+                with contextlib.suppress(Exception):  # already gone
                     await asyncio.to_thread(cleanup[0], name=cleanup[1], namespace=cleanup[2])
-                except Exception:  # noqa: BLE001
-                    pass  # already gone
 
     return CanaryStatus(
         enabled=app.canary_enabled,
@@ -277,6 +278,7 @@ async def promote_canary(
     app_slug: str,
     db: DBSession,
     k8s: K8sDep,
+    current_user: CurrentUser,
 ) -> dict:
     """Promote canary to stable: update stable image to canary image, disable canary.
 
@@ -313,10 +315,8 @@ async def promote_canary(
             (k8s.apps_v1.delete_namespaced_deployment, f"{app.slug}-canary"),
             (k8s.core_v1.delete_namespaced_service, f"{app.slug}-canary"),
         ]:
-            try:
+            with contextlib.suppress(Exception):
                 await asyncio.to_thread(cleanup[0], name=cleanup[1], namespace=tenant.namespace)
-            except Exception:  # noqa: BLE001
-                pass
 
     return {"message": "Canary promoted to stable", "new_image": canary_image or app.image_tag}
 
@@ -327,6 +327,7 @@ async def rollback_canary(
     app_slug: str,
     db: DBSession,
     k8s: K8sDep,
+    current_user: CurrentUser,
 ) -> dict:
     """Rollback canary: disable canary, all traffic returns to stable."""
     tenant = await _get_tenant_or_404(tenant_slug, db)
@@ -345,9 +346,7 @@ async def rollback_canary(
             (k8s.apps_v1.delete_namespaced_deployment, f"{app.slug}-canary"),
             (k8s.core_v1.delete_namespaced_service, f"{app.slug}-canary"),
         ]:
-            try:
+            with contextlib.suppress(Exception):
                 await asyncio.to_thread(cleanup[0], name=cleanup[1], namespace=tenant.namespace)
-            except Exception:  # noqa: BLE001
-                pass
 
     return {"message": "Canary rolled back, all traffic on stable"}

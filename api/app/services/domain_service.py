@@ -5,8 +5,6 @@ Handles DNS ownership verification (TXT record) and cert-manager Certificate CRD
 import asyncio
 import logging
 import re
-import uuid
-from datetime import UTC, datetime
 
 import dns.exception
 import dns.resolver
