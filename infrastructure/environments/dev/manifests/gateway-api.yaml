@@ -73,6 +73,10 @@ spec:
     - argocd.46.225.42.2.sslip.io
     - keycloak.46.225.42.2.sslip.io
     - api.46.225.42.2.sslip.io
+    - everest.46.225.42.2.sslip.io
+    - grafana.46.225.42.2.sslip.io
+    - longhorn.46.225.42.2.sslip.io
+    - hubble.46.225.42.2.sslip.io
 
 ---
 # Gateway: HTTP (port 80) + HTTPS (port 443) listeners
@@ -344,3 +348,84 @@ spec:
         - name: nginx-conf
           configMap:
             name: nginx-conf
+
+---
+# ============================================================
+# HTTPRoutes — Platform Operator UIs
+# ============================================================
+
+---
+# HTTPRoute: Percona Everest Database Management UI
+# Service: everest-server (everest-system, port 8080)
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: everest
+  namespace: everest-system
+spec:
+  parentRefs:
+    - name: haven-gateway
+      namespace: haven-gateway
+  hostnames:
+    - "everest.46.225.42.2.sslip.io"
+  rules:
+    - backendRefs:
+        - name: everest-server
+          port: 8080
+
+---
+# HTTPRoute: Grafana Observability Dashboard
+# Service: kube-prometheus-stack-grafana (monitoring, port 80)
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: grafana
+  namespace: monitoring
+spec:
+  parentRefs:
+    - name: haven-gateway
+      namespace: haven-gateway
+  hostnames:
+    - "grafana.46.225.42.2.sslip.io"
+  rules:
+    - backendRefs:
+        - name: kube-prometheus-stack-grafana
+          port: 80
+
+---
+# HTTPRoute: Longhorn Storage UI
+# Service: longhorn-frontend (longhorn-system, port 80)
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: longhorn
+  namespace: longhorn-system
+spec:
+  parentRefs:
+    - name: haven-gateway
+      namespace: haven-gateway
+  hostnames:
+    - "longhorn.46.225.42.2.sslip.io"
+  rules:
+    - backendRefs:
+        - name: longhorn-frontend
+          port: 80
+
+---
+# HTTPRoute: Hubble UI (Cilium Network Observability)
+# Service: hubble-ui (kube-system, port 80)
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: hubble-ui
+  namespace: kube-system
+spec:
+  parentRefs:
+    - name: haven-gateway
+      namespace: haven-gateway
+  hostnames:
+    - "hubble.46.225.42.2.sslip.io"
+  rules:
+    - backendRefs:
+        - name: hubble-ui
+          port: 80

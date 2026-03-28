@@ -29,6 +29,9 @@ locals {
   minio_host     = "minio.${local.lb_dns}.sslip.io"
   s3_host        = "s3.${local.lb_dns}.sslip.io"
   everest_host   = "everest.${local.lb_dns}.sslip.io"
+  grafana_host   = "grafana.${local.lb_dns}.sslip.io"
+  longhorn_host  = "longhorn.${local.lb_dns}.sslip.io"
+  hubble_host    = "hubble.${local.lb_dns}.sslip.io"
 }
 
 # --- 1. SSH Key ---
