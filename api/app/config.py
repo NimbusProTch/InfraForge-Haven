@@ -10,6 +10,10 @@ class Settings(BaseSettings):
     # Keycloak
     keycloak_url: str = "http://keycloak.keycloak.svc.cluster.local:8080"
     keycloak_realm: str = "haven"
+    # Keycloak Admin API credentials (K8s Secret in prod)
+    keycloak_admin_user: str = "admin"
+    keycloak_admin_password: str = "admin"
+    keycloak_admin_client_id: str = "admin-cli"
 
     # Kubernetes
     k8s_incluster: bool = False
@@ -40,7 +44,7 @@ class Settings(BaseSettings):
     # GitOps — monorepo (InfraForge-Haven), gitops/ prefix
     # Set GITOPS_REPO_URL env var to enable GitOps mode; empty = direct K8s API
     gitops_repo_url: str = ""
-    gitops_branch: str = "feature/platform-v2"
+    gitops_branch: str = "main"
     gitops_clone_dir: str = "/tmp/haven-gitops"
     gitops_deploy_key_path: str = ""
     # GitHub PAT for pushing to the monorepo (set via GITOPS_GITHUB_TOKEN in secrets)

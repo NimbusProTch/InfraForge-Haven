@@ -24,6 +24,7 @@ from app.models.base import Base  # noqa: E402
 from app.models.deployment import BuildJob, Deployment  # noqa: E402, F401
 from app.models.managed_service import ManagedService  # noqa: E402, F401
 from app.models.tenant import Tenant  # noqa: E402, F401
+from app.models.tenant_member import TenantMember  # noqa: E402, F401
 
 target_metadata = Base.metadata
 

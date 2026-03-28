@@ -1,10 +1,15 @@
+import logging
+
 from fastapi import APIRouter, HTTPException, status
 from sqlalchemy import select
 
 from app.deps import DBSession, K8sDep
 from app.models.tenant import Tenant
 from app.schemas.tenant import TenantCreate, TenantResponse, TenantUpdate
+from app.services.keycloak_service import keycloak_service
 from app.services.tenant_service import TenantService
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/tenants", tags=["tenants"])
 
@@ -52,6 +57,12 @@ async def create_tenant(body: TenantCreate, db: DBSession, k8s: K8sDep) -> Tenan
         storage_limit=body.storage_limit,
     )
 
+    # Create per-tenant Keycloak realm (non-blocking — log on failure, don't abort)
+    try:
+        await keycloak_service.create_realm(body.slug)
+    except Exception as exc:
+        logger.warning("Keycloak realm creation failed for %s: %s", body.slug, exc)
+
     await db.commit()
     await db.refresh(tenant)
     return tenant
@@ -82,6 +93,12 @@ async def delete_tenant(tenant_slug: str, db: DBSession, k8s: K8sDep) -> None:
 
     svc = TenantService(k8s)
     await svc.deprovision(tenant.namespace)
+
+    # Delete per-tenant Keycloak realm
+    try:
+        await keycloak_service.delete_realm(tenant.slug)
+    except Exception as exc:
+        logger.warning("Keycloak realm deletion failed for %s: %s", tenant.slug, exc)
 
     await db.delete(tenant)
     await db.commit()

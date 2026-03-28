@@ -9,6 +9,7 @@ from app.models.base import Base, TimestampMixin
 if TYPE_CHECKING:
     from app.models.application import Application
     from app.models.managed_service import ManagedService
+    from app.models.tenant_member import TenantMember
 
 
 class Tenant(Base, TimestampMixin):
@@ -34,5 +35,8 @@ class Tenant(Base, TimestampMixin):
         back_populates="tenant", cascade="all, delete-orphan"
     )
     services: Mapped[list["ManagedService"]] = relationship(
+        back_populates="tenant", cascade="all, delete-orphan"
+    )
+    members: Mapped[list["TenantMember"]] = relationship(
         back_populates="tenant", cascade="all, delete-orphan"
     )
