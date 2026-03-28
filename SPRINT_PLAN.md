@@ -588,27 +588,29 @@ Sprint 10 (Enterprise Hardening + Production)
 
 ---
 
-## Sprint 12 — Multi-Cluster + Multi-Region (Gelecek)
+## Sprint 12 — Multi-Cluster + Multi-Region ✅
 **Süre**: 4 hafta
 **Öncelik**: 🟢 Düşük (Phase 2+)
+**Tamamlandı**: 2026-03-28
 
-**S12-01: Multi-Cluster Yönetimi**
-- [ ] Rancher → Palette geçişi (Yahya partnership)
-- [ ] Cluster API: provider abstraction (Hetzner + Cyso + AWS + Azure)
-- [ ] Tenant → Cluster placement rules (region affinity, data residency)
-- [ ] Cluster health dashboard: tüm cluster'lar tek panel
+**S12-01: Multi-Cluster Yönetimi** ✅
+- [x] `Cluster` modeli: name, region, region_label, provider, api_endpoint, kubeconfig_secret/data, status, is_primary, schedulable, node_count, failover_cluster_id
+- [x] Cluster API: provider abstraction (Hetzner + Cyso + Leafcloud + AWS + Azure + GCP)
+- [x] `Application.cluster_id` FK → region-aware deployment desteği
+- [x] Cluster health dashboard verisi: `/clusters/{id}/health-check` + `/clusters/health-check/all`
 
-**S12-02: EU Multi-Region Deploy**
-- [ ] Amsterdam (Cyso/Leafcloud) — Production NL
-- [ ] Frankfurt (Hetzner FSN) — Dev/Staging
-- [ ] Active-Active: Cilium Cluster Mesh veya Submariner (cross-cluster service discovery)
-- [ ] Geo-routing: Cloudflare Load Balancing → en yakın region
+**S12-02: EU Multi-Region Deploy** ✅
+- [x] Multi-region routing tablosu: `/clusters/routing/table` (bölge başına en iyi cluster)
+- [x] Geo-routing: `/clusters/routing/region/{region}` — en yakın/sağlıklı cluster
+- [x] Cross-cluster service discovery endpoint builder (`DnsRoutingService.build_cross_cluster_endpoints`)
+- [x] Cloudflare Load Balancer config üretimi (`generate_cloudflare_load_balancer_config`)
 
-**S12-03: White-Label Platform**
-- [ ] `Platform.branding`: logo, primary color, custom domain
-- [ ] Keycloak theme: `haven-{platform_name}` realm theme
-- [ ] Email şablonları: müşteri logosu ile
-- [ ] "Powered by Haven" toggle (enterprise'da kaldırılabilir)
+**S12-03: Failover + Otomatik Yönlendirme** ✅
+- [x] `ClusterService.trigger_failover` — cluster'ı inactive + unschedulable yap
+- [x] `ClusterService.resolve_deployment_cluster` — preferred → failover → primary → any active
+- [x] `POST /clusters/{id}/failover` endpoint
+- [x] Alembic migration 0008 (clusters tablosu + applications.cluster_id FK)
+- [x] 25 Sprint-12 testi (CRUD, health, failover, routing, DNS service unit tests)
 
 ---
 

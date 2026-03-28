@@ -9,6 +9,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.models.base import Base, TimestampMixin
 
 if TYPE_CHECKING:
+    from app.models.cluster import Cluster
     from app.models.cronjob import CronJob
     from app.models.deployment import Deployment
     from app.models.domain import DomainVerification
@@ -75,6 +76,11 @@ class Application(Base, TimestampMixin):
     # Sprint 11: Persistent volumes (JSON array of {name, mount_path, size_gi})
     volumes: Mapped[list | None] = mapped_column(JSON, nullable=True, default=None)
 
+    # Sprint 12: target cluster for region-aware deployment
+    cluster_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("clusters.id"), nullable=True, index=True
+    )
+
     tenant: Mapped["Tenant"] = relationship(back_populates="applications")
     deployments: Mapped[list["Deployment"]] = relationship(
         back_populates="application", cascade="all, delete-orphan"
@@ -87,4 +93,7 @@ class Application(Base, TimestampMixin):
     )
     cronjobs: Mapped[list["CronJob"]] = relationship(
         back_populates="application", cascade="all, delete-orphan"
+    )
+    cluster: Mapped["Cluster | None"] = relationship(
+        back_populates="applications", foreign_keys=[cluster_id]
     )

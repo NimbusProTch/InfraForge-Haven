@@ -17,6 +17,7 @@ from app.routers import (
     backup,
     billing,
     canary,
+    clusters,
     cronjobs,
     deployments,
     domains,
@@ -127,3 +128,4 @@ app.include_router(backup.router, prefix=settings.api_prefix)
 app.include_router(canary.router, prefix=settings.api_prefix)
 app.include_router(cronjobs.router, prefix=settings.api_prefix)
 app.include_router(pvcs.router, prefix=settings.api_prefix)
+app.include_router(clusters.router, prefix=settings.api_prefix)
