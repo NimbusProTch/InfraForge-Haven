@@ -31,6 +31,9 @@ dependencies = [
 
     # DNS verification for custom domains
     "dnspython>=2.7.0",
+
+    # Rate limiting
+    "slowapi>=0.1.9",
 ]
 
 [project.optional-dependencies]
