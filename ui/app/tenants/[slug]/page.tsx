@@ -25,6 +25,7 @@ import {
   ExternalLink,
   Clock,
   Activity,
+  FolderKanban,
 } from "lucide-react";
 
 const LB_IP = process.env.NEXT_PUBLIC_LB_IP ?? "";
@@ -42,13 +43,12 @@ const SERVICE_ICONS: Record<string, string> = {
   mongodb: "🍃",
 };
 
-const SERVICE_STATUS_VARIANT: Record<string, "success" | "warning" | "destructive" | "secondary"> =
-  {
-    ready: "success",
-    provisioning: "warning",
-    failed: "destructive",
-    deleting: "secondary",
-  };
+const SERVICE_STATUS_VARIANT: Record<string, "success" | "warning" | "destructive" | "secondary"> = {
+  ready: "success",
+  provisioning: "warning",
+  failed: "destructive",
+  deleting: "secondary",
+};
 
 const DEPLOY_STATUS_VARIANT: Record<string, "success" | "warning" | "destructive" | "secondary" | "default"> = {
   running: "success",
@@ -60,9 +60,9 @@ const DEPLOY_STATUS_VARIANT: Record<string, "success" | "warning" | "destructive
 
 const STATUS_DOT: Record<string, string> = {
   running: "bg-emerald-500",
-  building: "bg-yellow-500 animate-pulse",
+  building: "bg-amber-500 animate-pulse",
   deploying: "bg-blue-500 animate-pulse",
-  pending: "bg-gray-400",
+  pending: "bg-zinc-500",
   failed: "bg-red-500",
 };
 
@@ -75,7 +75,7 @@ function CopyButton({ text }: { text: string }) {
         setCopied(true);
         setTimeout(() => setCopied(false), 1500);
       }}
-      className="text-gray-400 dark:text-[#555] hover:text-gray-700 dark:hover:text-white transition-colors"
+      className="text-zinc-600 hover:text-zinc-300 transition-colors"
     >
       {copied ? <Check className="w-3 h-3 text-emerald-500" /> : <Copy className="w-3 h-3" />}
     </button>
@@ -95,24 +95,24 @@ function AppCard({
   const deployStatus = latestDeployment?.status;
 
   return (
-    <div className="bg-white dark:bg-[#141414] border border-gray-200 dark:border-[#222] rounded-lg p-4 hover:border-gray-300 dark:hover:border-[#333] transition-colors group">
+    <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-4 hover:border-zinc-700 transition-colors group">
       <div className="flex items-start justify-between mb-3">
         <Link href={`/tenants/${tenantSlug}/apps/${app.slug}`} className="flex items-center gap-2.5 flex-1 min-w-0">
           <div className="relative shrink-0">
-            <div className="w-8 h-8 rounded-md bg-gray-100 dark:bg-[#1f1f1f] flex items-center justify-center">
-              <Server className="w-4 h-4 text-gray-500 dark:text-[#666]" />
+            <div className="w-8 h-8 rounded-lg bg-zinc-800 flex items-center justify-center">
+              <Server className="w-4 h-4 text-zinc-500" />
             </div>
             {deployStatus && (
               <span
-                className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-white dark:border-[#141414] ${STATUS_DOT[deployStatus] ?? "bg-gray-400"}`}
+                className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-zinc-900 ${STATUS_DOT[deployStatus] ?? "bg-zinc-500"}`}
               />
             )}
           </div>
           <div className="min-w-0">
-            <p className="text-sm font-medium text-gray-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors truncate">
+            <p className="text-sm font-medium text-zinc-200 group-hover:text-zinc-100 transition-colors truncate">
               {app.name}
             </p>
-            <p className="text-xs text-gray-400 dark:text-[#555] font-mono mt-0.5 truncate">
+            <p className="text-xs text-zinc-600 font-mono mt-0.5 truncate">
               {app.slug}
             </p>
           </div>
@@ -124,7 +124,7 @@ function AppCard({
         )}
       </div>
 
-      <div className="flex items-center gap-3 text-xs text-gray-400 dark:text-[#555]">
+      <div className="flex items-center gap-3 text-xs text-zinc-600">
         <span className="flex items-center gap-1">
           <GitBranch className="w-3 h-3" />
           {app.branch}
@@ -146,7 +146,7 @@ function AppCard({
           href={url}
           target="_blank"
           rel="noopener noreferrer"
-          className="mt-3 flex items-center gap-1 text-xs text-blue-500 hover:text-blue-400 transition-colors font-mono truncate"
+          className="mt-3 flex items-center gap-1 text-xs text-emerald-500 hover:text-emerald-400 transition-colors font-mono truncate"
           onClick={(e) => e.stopPropagation()}
         >
           <ExternalLink className="w-3 h-3 shrink-0" />
@@ -192,7 +192,6 @@ export default function TenantDetailPage() {
       setApps(a);
       setServices(s);
 
-      // Fetch latest deployment per app
       const depResults = await Promise.allSettled(
         a.map((app) => api.deployments.list(slug, app.slug, accessToken))
       );
@@ -243,7 +242,7 @@ export default function TenantDetailPage() {
     return (
       <AppShell userEmail={session?.user?.email}>
         <div className="flex items-center justify-center h-full min-h-[400px]">
-          <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
+          <Loader2 className="w-5 h-5 animate-spin text-zinc-600" />
         </div>
       </AppShell>
     );
@@ -259,7 +258,7 @@ export default function TenantDetailPage() {
       <div className="p-6 max-w-5xl">
         <Breadcrumb
           items={[
-            { label: "Tenants", href: "/tenants" },
+            { label: "Projects", href: "/tenants" },
             { label: tenant.name },
           ]}
         />
@@ -267,44 +266,39 @@ export default function TenantDetailPage() {
         {/* Header */}
         <div className="flex items-start justify-between mb-6">
           <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-xl font-semibold text-gray-900 dark:text-white">
-                {tenant.name}
-              </h1>
+            <div className="flex items-center gap-2.5 mb-1">
+              <div className="w-8 h-8 rounded-lg bg-violet-500/10 border border-violet-500/20 flex items-center justify-center">
+                <FolderKanban className="w-4 h-4 text-violet-400" />
+              </div>
+              <h1 className="text-2xl font-bold text-zinc-100">{tenant.name}</h1>
               <Badge variant={tenant.active ? "success" : "secondary"}>
                 {tenant.active ? "active" : "inactive"}
               </Badge>
             </div>
-            <p className="text-sm text-gray-400 dark:text-[#555] font-mono mt-0.5">
-              {tenant.namespace}
-            </p>
+            <p className="text-sm text-zinc-600 font-mono pl-10">{tenant.namespace}</p>
           </div>
           <button
             onClick={() => setShowDeleteDialog(true)}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-red-300 dark:border-red-900/50 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30 text-xs font-medium transition-colors"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-red-900/50 text-red-400 hover:bg-red-950/30 hover:border-red-800 text-xs font-medium transition-colors"
           >
             <Trash2 className="w-3 h-3" />
-            Delete Tenant
+            Delete Project
           </button>
         </div>
 
-        {/* Delete confirmation dialog */}
+        {/* Delete dialog */}
         {showDeleteDialog && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-            <div className="bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-[#333] rounded-lg p-6 w-full max-w-md mx-4 shadow-xl">
-              <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
-                Delete Tenant
-              </h2>
-              <p className="text-sm text-gray-500 dark:text-[#888] mb-1">
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
+            <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6 w-full max-w-md mx-4 shadow-2xl">
+              <h2 className="text-base font-semibold text-zinc-100 mb-2">Delete Project</h2>
+              <p className="text-sm text-zinc-500 mb-1">
                 This will permanently delete{" "}
-                <strong className="text-gray-900 dark:text-white">{tenant.name}</strong> and all its
+                <strong className="text-zinc-200">{tenant.name}</strong> and all its
                 applications and services. This action cannot be undone.
               </p>
-              <p className="text-sm text-gray-500 dark:text-[#888] mb-4">
+              <p className="text-sm text-zinc-500 mb-4">
                 Type{" "}
-                <span className="font-mono font-medium text-gray-900 dark:text-white">
-                  {tenant.slug}
-                </span>{" "}
+                <span className="font-mono font-medium text-zinc-200">{tenant.slug}</span>{" "}
                 to confirm.
               </p>
               <input
@@ -312,7 +306,7 @@ export default function TenantDetailPage() {
                 value={deleteConfirmText}
                 onChange={(e) => setDeleteConfirmText(e.target.value)}
                 placeholder={tenant.slug}
-                className="w-full px-3 py-2 rounded-md border border-gray-200 dark:border-[#333] bg-white dark:bg-[#141414] text-sm text-gray-900 dark:text-white placeholder:text-gray-300 dark:placeholder:text-[#444] focus:outline-none focus:ring-2 focus:ring-red-500/30 font-mono mb-4"
+                className="w-full px-3 py-2 rounded-lg border border-zinc-700 bg-zinc-800 text-sm text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-red-700 focus:ring-1 focus:ring-red-700/30 font-mono mb-4"
                 autoFocus
               />
               <div className="flex justify-end gap-2">
@@ -321,21 +315,21 @@ export default function TenantDetailPage() {
                     setShowDeleteDialog(false);
                     setDeleteConfirmText("");
                   }}
-                  className="px-3 py-1.5 rounded-md text-xs font-medium text-gray-600 dark:text-[#888] hover:bg-gray-100 dark:hover:bg-[#222] transition-colors"
+                  className="px-3 py-1.5 rounded-lg text-xs font-medium text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800 transition-colors"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={deleteTenant}
                   disabled={deleteConfirmText !== tenant.slug || deletingTenant}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-red-600 hover:bg-red-700 text-white text-xs font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-white text-xs font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   {deletingTenant ? (
                     <Loader2 className="w-3 h-3 animate-spin" />
                   ) : (
                     <Trash2 className="w-3 h-3" />
                   )}
-                  Delete Tenant
+                  Delete Project
                 </button>
               </div>
             </div>
@@ -352,17 +346,17 @@ export default function TenantDetailPage() {
           ].map(({ label, value, mono }) => (
             <div
               key={label}
-              className="bg-white dark:bg-[#141414] border border-gray-200 dark:border-[#222] rounded-lg px-3 py-2.5"
+              className="bg-zinc-900/50 border border-zinc-800 rounded-xl px-3 py-3"
             >
-              <p className="text-xs text-gray-400 dark:text-[#555]">{label}</p>
-              <p className={`text-sm font-medium text-gray-900 dark:text-white mt-0.5 ${mono ? "font-mono" : ""}`}>
+              <p className="text-xs text-zinc-600 mb-1">{label}</p>
+              <p className={`text-sm font-medium text-zinc-200 ${mono ? "font-mono" : ""}`}>
                 {value}
               </p>
             </div>
           ))}
-          <div className="bg-white dark:bg-[#141414] border border-gray-200 dark:border-[#222] rounded-lg px-3 py-2.5">
-            <p className="text-xs text-gray-400 dark:text-[#555]">App Health</p>
-            <div className="flex items-center gap-2 mt-0.5">
+          <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl px-3 py-3">
+            <p className="text-xs text-zinc-600 mb-1">App Health</p>
+            <div className="flex items-center gap-2">
               {runningApps > 0 && (
                 <span className="flex items-center gap-1 text-xs text-emerald-500 font-medium">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
@@ -376,7 +370,7 @@ export default function TenantDetailPage() {
                 </span>
               )}
               {apps.length === 0 && (
-                <span className="text-xs text-gray-400 dark:text-[#555]">—</span>
+                <span className="text-xs text-zinc-600">—</span>
               )}
             </div>
           </div>
@@ -387,21 +381,21 @@ export default function TenantDetailPage() {
           <TabsList>
             <TabsTrigger value="apps">
               Applications
-              <span className="ml-1.5 text-xs text-gray-400 dark:text-[#555]">{apps.length}</span>
+              <span className="ml-1.5 text-xs text-zinc-600">{apps.length}</span>
             </TabsTrigger>
             <TabsTrigger value="services">
               Services
-              <span className="ml-1.5 text-xs text-gray-400 dark:text-[#555]">{services.length}</span>
+              <span className="ml-1.5 text-xs text-zinc-600">{services.length}</span>
             </TabsTrigger>
           </TabsList>
 
           {/* Applications tab */}
           <TabsContent value="apps" className="pt-5">
             <div className="flex items-center justify-between mb-4">
-              <p className="text-sm text-gray-500 dark:text-[#888]">Deployed applications</p>
+              <p className="text-sm text-zinc-500">Deployed applications</p>
               <Link
                 href={`/tenants/${slug}/apps/new`}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium transition-colors"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-medium transition-colors"
               >
                 <Plus className="w-3 h-3" />
                 New App
@@ -409,12 +403,12 @@ export default function TenantDetailPage() {
             </div>
 
             {apps.length === 0 ? (
-              <div className="text-center py-16 text-gray-400 dark:text-[#555]">
-                <Box className="w-8 h-8 mx-auto mb-2 opacity-40" />
-                <p className="text-sm">No applications yet.</p>
+              <div className="text-center py-16 border border-dashed border-zinc-800 rounded-xl">
+                <Box className="w-8 h-8 mx-auto mb-2 text-zinc-700" />
+                <p className="text-sm text-zinc-500">No applications yet.</p>
                 <Link
                   href={`/tenants/${slug}/apps/new`}
-                  className="inline-block mt-2 text-xs text-blue-600 hover:text-blue-500"
+                  className="inline-block mt-2 text-xs text-emerald-500 hover:text-emerald-400 transition-colors"
                 >
                   Deploy your first app →
                 </Link>
@@ -436,7 +430,7 @@ export default function TenantDetailPage() {
           {/* Services tab */}
           <TabsContent value="services" className="pt-5">
             <div className="flex items-center justify-between mb-4">
-              <p className="text-sm text-gray-500 dark:text-[#888]">
+              <p className="text-sm text-zinc-500">
                 Managed services (PostgreSQL, Redis, RabbitMQ)
               </p>
               <AddServiceModal
@@ -447,25 +441,23 @@ export default function TenantDetailPage() {
             </div>
 
             {services.length === 0 ? (
-              <div className="text-center py-16 text-gray-400 dark:text-[#555]">
-                <Database className="w-8 h-8 mx-auto mb-2 opacity-40" />
-                <p className="text-sm">No managed services yet.</p>
+              <div className="text-center py-16 border border-dashed border-zinc-800 rounded-xl">
+                <Database className="w-8 h-8 mx-auto mb-2 text-zinc-700" />
+                <p className="text-sm text-zinc-500">No managed services yet.</p>
               </div>
             ) : (
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 {services.map((svc) => (
                   <div
                     key={svc.id}
-                    className="bg-white dark:bg-[#141414] border border-gray-200 dark:border-[#222] rounded-lg p-4"
+                    className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-4 hover:border-zinc-700 transition-colors"
                   >
                     <div className="flex items-start justify-between">
                       <div className="flex items-center gap-2">
                         <span className="text-lg">{SERVICE_ICONS[svc.service_type] ?? "🔧"}</span>
                         <div>
-                          <p className="text-sm font-medium text-gray-900 dark:text-white">
-                            {svc.name}
-                          </p>
-                          <p className="text-xs text-gray-400 dark:text-[#555]">
+                          <p className="text-sm font-medium text-zinc-200">{svc.name}</p>
+                          <p className="text-xs text-zinc-600">
                             {svc.service_type} · {svc.tier}
                           </p>
                         </div>
@@ -477,7 +469,7 @@ export default function TenantDetailPage() {
                         <button
                           onClick={() => deleteService(svc.name)}
                           disabled={deletingService === svc.name}
-                          className="text-gray-400 dark:text-[#444] hover:text-red-500 transition-colors disabled:opacity-50"
+                          className="text-zinc-700 hover:text-red-500 transition-colors disabled:opacity-50"
                         >
                           {deletingService === svc.name ? (
                             <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -489,8 +481,8 @@ export default function TenantDetailPage() {
                     </div>
 
                     {svc.connection_hint && (
-                      <div className="mt-3 flex items-center gap-1">
-                        <p className="text-xs font-mono text-gray-400 dark:text-[#555] truncate flex-1">
+                      <div className="mt-3 flex items-center gap-1 bg-zinc-800 rounded-lg px-2 py-1.5">
+                        <p className="text-xs font-mono text-zinc-500 truncate flex-1">
                           {svc.connection_hint}
                         </p>
                         <CopyButton text={svc.connection_hint} />

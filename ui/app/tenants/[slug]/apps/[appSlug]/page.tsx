@@ -3,7 +3,6 @@
 import { useEffect, useState, useRef, useCallback } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter, useParams } from "next/navigation";
-import Link from "next/link";
 import { AppShell } from "@/components/AppShell";
 import { Badge } from "@/components/ui/badge";
 import { Breadcrumb } from "@/components/Breadcrumb";
@@ -34,7 +33,7 @@ import {
 
 const LB_IP = process.env.NEXT_PUBLIC_LB_IP ?? "";
 
-// ---- Pipeline types and helpers ----
+// ---- Pipeline types ----
 
 type PipelineStepStatus = "pending" | "running" | "success" | "failed";
 
@@ -44,7 +43,6 @@ interface PipelineStep {
   status: PipelineStepStatus;
 }
 
-// Derive pipeline step statuses from a deployment object
 function derivePipelineSteps(deployment: Deployment): PipelineStep[] {
   const keys = [
     { key: "clone", label: "Clone" },
@@ -70,7 +68,6 @@ function derivePipelineSteps(deployment: Deployment): PipelineStep[] {
       statuses = ["success", "success", "success", "success", "success"];
       break;
     case "failed":
-      // If image_tag exists, build+push succeeded so deploy step failed
       if (deployment.image_tag) {
         statuses = ["success", "success", "success", "success", "failed"];
       } else {
@@ -84,38 +81,34 @@ function derivePipelineSteps(deployment: Deployment): PipelineStep[] {
   return keys.map((step, i) => ({ ...step, status: statuses[i] }));
 }
 
-// ---- Pipeline step status icon ----
-
 function StepStatusIcon({ status }: { status: PipelineStepStatus }) {
   switch (status) {
     case "success":
       return (
-        <div className="w-5 h-5 rounded-full bg-emerald-500/15 flex items-center justify-center">
+        <div className="w-6 h-6 rounded-full bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center">
           <Check className="w-3 h-3 text-emerald-400" />
         </div>
       );
     case "running":
       return (
-        <div className="w-5 h-5 rounded-full bg-blue-500/15 flex items-center justify-center">
+        <div className="w-6 h-6 rounded-full bg-blue-500/15 border border-blue-500/30 flex items-center justify-center">
           <Loader2 className="w-3 h-3 text-blue-400 animate-spin" />
         </div>
       );
     case "failed":
       return (
-        <div className="w-5 h-5 rounded-full bg-red-500/15 flex items-center justify-center">
+        <div className="w-6 h-6 rounded-full bg-red-500/15 border border-red-500/30 flex items-center justify-center">
           <X className="w-3 h-3 text-red-400" />
         </div>
       );
     default:
       return (
-        <div className="w-5 h-5 rounded-full bg-[#222] flex items-center justify-center">
-          <Circle className="w-2.5 h-2.5 text-[#555]" />
+        <div className="w-6 h-6 rounded-full bg-zinc-800 border border-zinc-700 flex items-center justify-center">
+          <Circle className="w-2.5 h-2.5 text-zinc-600" />
         </div>
       );
   }
 }
-
-// ---- Pipeline visualization component ----
 
 function PipelineVisualization({
   steps,
@@ -124,24 +117,24 @@ function PipelineVisualization({
   steps: PipelineStep[];
   compact?: boolean;
 }) {
-  const connectorColor = (prev: PipelineStepStatus, curr: PipelineStepStatus) => {
-    if (prev === "success" && curr !== "pending") return "bg-emerald-500/40";
-    if (prev === "success") return "bg-emerald-500/20";
-    return "bg-[#222]";
+  const connectorColor = (prev: PipelineStepStatus) => {
+    if (prev === "success") return "bg-emerald-500/30";
+    if (prev === "failed") return "bg-red-500/20";
+    return "bg-zinc-800";
   };
 
   const textColor = (s: PipelineStepStatus) => {
     if (s === "running") return "text-blue-400";
     if (s === "success") return "text-emerald-400";
     if (s === "failed") return "text-red-400";
-    return "text-[#555]";
+    return "text-zinc-600";
   };
 
   return (
     <div className={`flex items-center ${compact ? "gap-1" : "gap-0"} w-full`}>
       {steps.map((step, i) => (
         <div key={step.key} className="flex items-center flex-1 last:flex-none">
-          <div className="flex flex-col items-center gap-1">
+          <div className="flex flex-col items-center gap-1.5">
             {compact ? (
               <StepStatusIcon status={step.status} />
             ) : (
@@ -151,7 +144,7 @@ function PipelineVisualization({
                   ${step.status === "running" ? "border-blue-500/30 bg-blue-500/5" : ""}
                   ${step.status === "success" ? "border-emerald-500/20 bg-emerald-500/5" : ""}
                   ${step.status === "failed" ? "border-red-500/30 bg-red-500/5" : ""}
-                  ${step.status === "pending" ? "border-[#222] bg-[#141414]" : ""}
+                  ${step.status === "pending" ? "border-zinc-800 bg-zinc-900/50" : ""}
                 `}
               >
                 <StepStatusIcon status={step.status} />
@@ -161,18 +154,18 @@ function PipelineVisualization({
               </div>
             )}
             {compact && (
-              <span className={`text-[10px] font-medium ${step.status === "pending" ? "text-[#444]" : textColor(step.status)}`}>
+              <span
+                className={`text-[10px] font-medium ${
+                  step.status === "pending" ? "text-zinc-700" : textColor(step.status)
+                }`}
+              >
                 {step.label}
               </span>
             )}
           </div>
-          {/* Connector line between steps */}
           {i < steps.length - 1 && (
             <div
-              className={`flex-1 h-px mx-1 ${compact ? "min-w-2" : "min-w-4"} ${connectorColor(
-                step.status,
-                steps[i + 1].status
-              )}`}
+              className={`flex-1 h-px mx-2 ${compact ? "min-w-2" : "min-w-4"} ${connectorColor(step.status)}`}
             />
           )}
         </div>
@@ -180,8 +173,6 @@ function PipelineVisualization({
     </div>
   );
 }
-
-// ---- Status variant and color maps ----
 
 const DEPLOY_STATUS_VARIANT: Record<
   string,
@@ -196,13 +187,11 @@ const DEPLOY_STATUS_VARIANT: Record<
 
 const STATUS_DOT_COLORS: Record<string, string> = {
   running: "bg-emerald-500",
-  building: "bg-yellow-500 animate-pulse",
+  building: "bg-amber-500 animate-pulse",
   deploying: "bg-blue-500 animate-pulse",
-  pending: "bg-gray-500",
+  pending: "bg-zinc-500",
   failed: "bg-red-500",
 };
-
-// ---- Deployment card component ----
 
 function DeploymentCard({
   deployment,
@@ -220,26 +209,23 @@ function DeploymentCard({
 
   return (
     <div
-      className={`border-b border-[#1e1e1e] last:border-0 transition-colors ${
-        isActive ? "bg-[#0d1117]" : ""
+      className={`border-b border-zinc-800/60 last:border-0 transition-colors ${
+        isActive ? "bg-blue-500/3" : ""
       }`}
     >
-      {/* Main row */}
-      <div className="flex items-center justify-between px-4 py-3">
+      <div className="flex items-center justify-between px-4 py-3.5">
         <div className="flex items-center gap-3 min-w-0 flex-1">
-          {/* Status dot */}
           <div className="shrink-0">
             <div
               className={`w-2 h-2 rounded-full ${
-                STATUS_DOT_COLORS[deployment.status] ?? "bg-gray-500"
+                STATUS_DOT_COLORS[deployment.status] ?? "bg-zinc-500"
               }`}
             />
           </div>
 
-          {/* Commit info */}
           <div className="min-w-0 shrink-0">
             <div className="flex items-center gap-2">
-              <span className="text-xs font-mono text-[#ccc]">
+              <span className="text-xs font-mono text-zinc-300">
                 {deployment.commit_sha ? deployment.commit_sha.slice(0, 7) : "manual"}
               </span>
               <Badge variant={DEPLOY_STATUS_VARIANT[deployment.status] ?? "secondary"}>
@@ -247,18 +233,17 @@ function DeploymentCard({
               </Badge>
             </div>
             <div className="flex items-center gap-2 mt-0.5">
-              <span className="text-xs text-[#555]">
+              <span className="text-xs text-zinc-600">
                 {new Date(deployment.created_at).toLocaleString()}
               </span>
               {deployment.image_tag && deployment.status === "running" && (
-                <span className="text-xs font-mono text-[#444]">
+                <span className="text-xs font-mono text-zinc-700">
                   {deployment.image_tag.split(":").pop()}
                 </span>
               )}
             </div>
           </div>
 
-          {/* Compact pipeline for active/failed/running deployments on wider screens */}
           {(isActive || isFailed || deployment.status === "running") && (
             <div className="hidden md:flex flex-1 mx-4">
               <PipelineVisualization steps={pipelineSteps} compact />
@@ -266,13 +251,11 @@ function DeploymentCard({
           )}
         </div>
 
-        {/* Actions */}
         <div className="flex items-center gap-2 shrink-0 ml-3">
-          {/* Expand/collapse for failed deployments with error messages */}
           {isFailed && deployment.error_message && (
             <button
               onClick={() => setExpanded(!expanded)}
-              className="text-[#444] hover:text-white transition-colors"
+              className="text-zinc-600 hover:text-zinc-300 transition-colors"
               title="Show error details"
             >
               {expanded ? (
@@ -282,13 +265,12 @@ function DeploymentCard({
               )}
             </button>
           )}
-          {/* Rollback button */}
           {["running", "failed"].includes(deployment.status) && deployment.image_tag && (
             <button
               onClick={() => onRollback(deployment.id)}
               disabled={rolling === deployment.id}
               title="Rollback to this deployment"
-              className="text-[#444] hover:text-white transition-colors disabled:opacity-50"
+              className="text-zinc-600 hover:text-zinc-300 transition-colors disabled:opacity-50"
             >
               {rolling === deployment.id ? (
                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -300,10 +282,9 @@ function DeploymentCard({
         </div>
       </div>
 
-      {/* Expanded error message */}
       {expanded && isFailed && deployment.error_message && (
         <div className="px-4 pb-3">
-          <div className="bg-red-500/5 border border-red-500/20 rounded-md p-3">
+          <div className="bg-red-500/5 border border-red-500/20 rounded-lg p-3">
             <pre className="text-xs font-mono text-red-400 whitespace-pre-wrap break-all">
               {deployment.error_message}
             </pre>
@@ -311,7 +292,6 @@ function DeploymentCard({
         </div>
       )}
 
-      {/* Pipeline visualization for active/failed builds on mobile */}
       {(isActive || isFailed) && (
         <div className="md:hidden px-4 pb-3">
           <PipelineVisualization steps={pipelineSteps} compact />
@@ -320,8 +300,6 @@ function DeploymentCard({
     </div>
   );
 }
-
-// ---- Build log terminal (shown inline during active builds) ----
 
 function BuildLogTerminal({
   logs,
@@ -334,7 +312,6 @@ function BuildLogTerminal({
 }) {
   const endRef = useRef<HTMLDivElement>(null);
 
-  // Auto-scroll as new logs arrive
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [logs]);
@@ -345,8 +322,8 @@ function BuildLogTerminal({
     <div className="mt-4">
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-2">
-          <Terminal className="w-3.5 h-3.5 text-[#555]" />
-          <span className="text-xs font-medium text-[#888]">Build Output</span>
+          <Terminal className="w-3.5 h-3.5 text-zinc-600" />
+          <span className="text-xs font-medium text-zinc-500">Build Output</span>
           {streaming && (
             <span className="flex items-center gap-1.5 text-xs text-emerald-500">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
@@ -357,15 +334,21 @@ function BuildLogTerminal({
         {streaming && (
           <button
             onClick={onStop}
-            className="inline-flex items-center gap-1 px-2 py-1 rounded text-xs text-[#666] hover:text-white transition-colors"
+            className="inline-flex items-center gap-1 px-2 py-1 rounded text-xs text-zinc-600 hover:text-zinc-300 transition-colors"
           >
             <StopCircle className="w-3 h-3" />
             Stop
           </button>
         )}
       </div>
-      <div className="bg-[#0a0a0a] border border-[#1a1a1a] rounded-lg overflow-hidden">
-        <pre className="p-4 text-xs font-mono text-emerald-400/80 overflow-auto max-h-[400px] whitespace-pre-wrap break-all leading-relaxed">
+      <div className="bg-zinc-950 border border-zinc-800 rounded-xl overflow-hidden">
+        <div className="flex items-center gap-1.5 px-4 py-2.5 border-b border-zinc-800">
+          <span className="w-2.5 h-2.5 rounded-full bg-red-500/40" />
+          <span className="w-2.5 h-2.5 rounded-full bg-amber-500/40" />
+          <span className="w-2.5 h-2.5 rounded-full bg-emerald-500/40" />
+          <span className="text-xs text-zinc-700 ml-2 font-mono">build.log</span>
+        </div>
+        <pre className="p-4 text-xs font-mono text-emerald-400/90 overflow-auto max-h-[400px] whitespace-pre-wrap break-all leading-relaxed">
           {logs}
           <div ref={endRef} />
         </pre>
@@ -374,7 +357,7 @@ function BuildLogTerminal({
   );
 }
 
-// ---- Main page component ----
+// ---- Main page ----
 
 export default function AppDetailPage() {
   const { data: session, status } = useSession();
@@ -390,22 +373,16 @@ export default function AppDetailPage() {
   const [actionLoading, setActionLoading] = useState<"build" | "deploy" | null>(null);
   const [rolling, setRolling] = useState<string | null>(null);
 
-  // Edit state (kept for header display sync with AppSettings)
   const [editName, setEditName] = useState("");
   const [editRepoUrl, setEditRepoUrl] = useState("");
   const [editBranch, setEditBranch] = useState("");
   const [editReplicas, setEditReplicas] = useState(1);
 
-  // Logs state
   const [logs, setLogs] = useState<string>("");
   const [streaming, setStreaming] = useState(false);
   const logsEndRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
-
-  // Polling ref for deployment status
   const deployPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  // Track previous active state for auto-stream start/stop
   const prevActiveRef = useRef(false);
 
   const accessToken = (session as typeof session & { accessToken?: string })?.accessToken;
@@ -424,7 +401,6 @@ export default function AppDetailPage() {
     }
   }, [tenantSlug, appSlug, status, accessToken]);
 
-  // Initial data load
   useEffect(() => {
     if (status !== "authenticated") return;
     async function load() {
@@ -448,13 +424,11 @@ export default function AppDetailPage() {
     load();
   }, [tenantSlug, appSlug, status, accessToken, router]);
 
-  // Determine if there is an active build/deploy
   const latestDeployment = deployments[0];
   const isActiveBuild =
     latestDeployment != null &&
     ["building", "deploying", "pending"].includes(latestDeployment.status);
 
-  // Poll deployments every 5s while there is an active build
   useEffect(() => {
     if (isActiveBuild) {
       deployPollRef.current = setInterval(() => {
@@ -469,7 +443,6 @@ export default function AppDetailPage() {
     };
   }, [isActiveBuild, loadDeployments]);
 
-  // Auto-start log streaming when a build becomes active, stop when it finishes
   useEffect(() => {
     const shouldStream =
       latestDeployment != null &&
@@ -487,13 +460,11 @@ export default function AppDetailPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [latestDeployment?.status]);
 
-  // Auto-scroll the Logs tab terminal
   useEffect(() => {
     logsEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [logs]);
 
   async function startLogs() {
-    // Abort any previous stream
     if (abortRef.current) {
       abortRef.current.abort();
       abortRef.current = null;
@@ -525,14 +496,12 @@ export default function AppDetailPage() {
         if (done) break;
         buffer += decoder.decode(value, { stream: true });
 
-        // Parse SSE lines from buffer
         const parts = buffer.split("\n\n");
         buffer = parts.pop() ?? "";
         for (const part of parts) {
           for (const line of part.split("\n")) {
             if (line.startsWith("data: ")) {
               const text = line.slice(6);
-              // Stop on end marker
               if (text === "[end]" || text === "[end of logs]") continue;
               setLogs((prev) => prev + text + "\n");
             }
@@ -541,7 +510,7 @@ export default function AppDetailPage() {
       }
     } catch (err) {
       if (err instanceof DOMException && err.name === "AbortError") {
-        // User cancelled - expected
+        // User cancelled
       } else {
         setLogs((prev) => prev + `[connection error]\n`);
       }
@@ -557,7 +526,6 @@ export default function AppDetailPage() {
     setStreaming(false);
   }
 
-  // Cleanup on unmount
   useEffect(() => {
     return () => {
       abortRef.current?.abort();
@@ -604,13 +572,11 @@ export default function AppDetailPage() {
     }
   }
 
-  // Save and delete are now handled by the AppSettings component
-
   if (status === "loading" || loading) {
     return (
       <AppShell userEmail={session?.user?.email}>
         <div className="flex items-center justify-center h-full min-h-[400px]">
-          <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
+          <Loader2 className="w-5 h-5 animate-spin text-zinc-600" />
         </div>
       </AppShell>
     );
@@ -628,7 +594,7 @@ export default function AppDetailPage() {
       <div className="p-6 max-w-5xl">
         <Breadcrumb
           items={[
-            { label: "Tenants", href: "/tenants" },
+            { label: "Projects", href: "/tenants" },
             { label: tenantSlug, href: `/tenants/${tenantSlug}` },
             { label: app.name },
           ]}
@@ -637,23 +603,26 @@ export default function AppDetailPage() {
         {/* Header */}
         <div className="flex items-start justify-between mb-6">
           <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-xl font-semibold text-gray-900 dark:text-white">{app.name}</h1>
+            <div className="flex items-center gap-2.5 mb-1">
+              <div className="w-8 h-8 rounded-lg bg-blue-500/10 border border-blue-500/20 flex items-center justify-center shrink-0">
+                <span className="text-sm">⚡</span>
+              </div>
+              <h1 className="text-2xl font-bold text-zinc-100">{app.name}</h1>
               {currentStatus && (
                 <Badge variant={DEPLOY_STATUS_VARIANT[currentStatus] ?? "secondary"}>
                   {currentStatus}
                 </Badge>
               )}
             </div>
-            <div className="flex items-center gap-3 mt-1">
-              <p className="text-xs text-gray-400 dark:text-[#555] font-mono">
+            <div className="flex items-center gap-3 mt-1 pl-10">
+              <p className="text-xs text-zinc-600 font-mono">
                 <span
-                  className="hover:text-blue-500 cursor-pointer"
+                  className="hover:text-blue-400 cursor-pointer transition-colors"
                   onClick={() => window.open(app.repo_url, "_blank")}
                 >
                   {app.repo_url.replace("https://github.com/", "")}
                 </span>
-                <ChevronRight className="inline w-3 h-3 mx-0.5" />
+                <ChevronRight className="inline w-3 h-3 mx-0.5 text-zinc-700" />
                 <span className="inline-flex items-center gap-0.5">
                   <GitBranch className="w-3 h-3" />
                   {app.branch}
@@ -664,7 +633,7 @@ export default function AppDetailPage() {
                   href={appPublicUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 text-xs text-blue-500 hover:text-blue-400 transition-colors font-mono"
+                  className="inline-flex items-center gap-1 text-xs text-emerald-500 hover:text-emerald-400 transition-colors font-mono"
                 >
                   <ExternalLink className="w-3 h-3" />
                   {appPublicUrl.replace("https://", "")}
@@ -678,7 +647,7 @@ export default function AppDetailPage() {
             <button
               onClick={handleBuild}
               disabled={!!actionLoading}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-gray-200 dark:border-[#2e2e2e] bg-white dark:bg-[#141414] hover:bg-gray-50 dark:hover:bg-[#1a1a1a] text-gray-700 dark:text-[#ccc] text-xs font-medium transition-colors disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-zinc-800 hover:border-zinc-700 bg-zinc-900/50 hover:bg-zinc-800/50 text-zinc-400 hover:text-zinc-200 text-xs font-medium transition-colors disabled:opacity-50"
             >
               {actionLoading === "build" ? (
                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -691,7 +660,7 @@ export default function AppDetailPage() {
               onClick={handleDeploy}
               disabled={!!actionLoading || !app.image_tag}
               title={!app.image_tag ? "No image built yet" : "Deploy current image"}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-medium transition-colors"
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-medium transition-colors"
             >
               {actionLoading === "deploy" ? (
                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -703,22 +672,21 @@ export default function AppDetailPage() {
           </div>
         </div>
 
-        {/* Active build: pipeline visualization + auto-streaming logs */}
+        {/* Active build: pipeline + logs */}
         {isActiveBuild && latestDeployment && (
-          <div className="mb-6 bg-[#141414] border border-[#222] rounded-lg p-4">
-            <div className="flex items-center gap-2 mb-3">
-              <Loader2 className="w-3.5 h-3.5 text-blue-400 animate-spin" />
-              <span className="text-xs font-medium text-[#888]">
+          <div className="mb-6 bg-zinc-900/80 border border-zinc-800 rounded-xl p-4">
+            <div className="flex items-center gap-2 mb-4">
+              <div className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
+              <span className="text-xs font-medium text-zinc-400">
                 Deployment in progress
               </span>
               {latestDeployment.commit_sha && (
-                <span className="text-xs font-mono text-[#555]">
+                <span className="text-xs font-mono text-zinc-600">
                   {latestDeployment.commit_sha.slice(0, 7)}
                 </span>
               )}
             </div>
             <PipelineVisualization steps={derivePipelineSteps(latestDeployment)} />
-            {/* Build logs auto-stream during active builds */}
             <BuildLogTerminal logs={logs} streaming={streaming} onStop={stopLogs} />
           </div>
         )}
@@ -736,12 +704,10 @@ export default function AppDetailPage() {
           ].map(({ label, value }) => (
             <div
               key={label}
-              className="bg-white dark:bg-[#141414] border border-gray-200 dark:border-[#222] rounded-lg px-3 py-2.5"
+              className="bg-zinc-900/50 border border-zinc-800 rounded-xl px-3 py-3"
             >
-              <p className="text-xs text-gray-400 dark:text-[#555]">{label}</p>
-              <p className="text-sm font-medium text-gray-900 dark:text-white font-mono mt-0.5 truncate">
-                {value}
-              </p>
+              <p className="text-xs text-zinc-600 mb-1">{label}</p>
+              <p className="text-sm font-medium text-zinc-200 font-mono truncate">{value}</p>
             </div>
           ))}
         </div>
@@ -751,9 +717,7 @@ export default function AppDetailPage() {
           <TabsList>
             <TabsTrigger value="deployments">
               Deployments
-              <span className="ml-1.5 text-xs text-gray-400 dark:text-[#555]">
-                {deployments.length}
-              </span>
+              <span className="ml-1.5 text-xs text-zinc-600">{deployments.length}</span>
             </TabsTrigger>
             <TabsTrigger value="observability">
               <Activity className="w-3.5 h-3.5 mr-1" />
@@ -772,13 +736,13 @@ export default function AppDetailPage() {
           {/* Deployments tab */}
           <TabsContent value="deployments" className="pt-5">
             {deployments.length === 0 ? (
-              <div className="text-center py-16 text-gray-400 dark:text-[#555]">
-                <Package className="w-8 h-8 mx-auto mb-2 opacity-40" />
-                <p className="text-sm">No deployments yet.</p>
-                <p className="text-xs mt-1">Click &quot;Build&quot; to trigger the first build.</p>
+              <div className="text-center py-16 border border-dashed border-zinc-800 rounded-xl">
+                <Package className="w-8 h-8 mx-auto mb-2 text-zinc-700" />
+                <p className="text-sm text-zinc-500">No deployments yet.</p>
+                <p className="text-xs mt-1 text-zinc-600">Click &quot;Build&quot; to trigger the first build.</p>
               </div>
             ) : (
-              <div className="bg-white dark:bg-[#141414] border border-gray-200 dark:border-[#222] rounded-lg overflow-hidden">
+              <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl overflow-hidden">
                 {deployments.map((d) => (
                   <DeploymentCard
                     key={d.id}
@@ -811,7 +775,7 @@ export default function AppDetailPage() {
               {!streaming ? (
                 <button
                   onClick={startLogs}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-medium transition-colors"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-medium transition-colors"
                 >
                   <Terminal className="w-3.5 h-3.5" />
                   Stream logs
@@ -819,7 +783,7 @@ export default function AppDetailPage() {
               ) : (
                 <button
                   onClick={stopLogs}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-red-600 hover:bg-red-700 text-white text-xs font-medium transition-colors"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-white text-xs font-medium transition-colors"
                 >
                   <StopCircle className="w-3.5 h-3.5" />
                   Stop
@@ -834,23 +798,36 @@ export default function AppDetailPage() {
               {logs && !streaming && (
                 <button
                   onClick={() => setLogs("")}
-                  className="text-xs text-gray-400 dark:text-[#555] hover:text-gray-700 dark:hover:text-[#888] transition-colors"
+                  className="text-xs text-zinc-600 hover:text-zinc-400 transition-colors"
                 >
                   Clear
                 </button>
               )}
             </div>
 
-            <div className="bg-[#0a0a0a] border border-[#1a1a1a] rounded-lg overflow-hidden">
-              <pre className="p-4 text-xs font-mono text-emerald-400/80 overflow-auto min-h-[240px] max-h-[500px] whitespace-pre-wrap break-all leading-relaxed">
-                {logs ||
-                  "# Click 'Stream logs' to start receiving live logs from running pods...\n"}
+            <div className="bg-zinc-950 border border-zinc-800 rounded-xl overflow-hidden">
+              <div className="flex items-center gap-1.5 px-4 py-2.5 border-b border-zinc-800">
+                <span className="w-2.5 h-2.5 rounded-full bg-red-500/40" />
+                <span className="w-2.5 h-2.5 rounded-full bg-amber-500/40" />
+                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500/40" />
+                <span className="text-xs text-zinc-700 ml-2 font-mono">
+                  {app.name} · live logs
+                </span>
+                {streaming && (
+                  <span className="ml-auto flex items-center gap-1 text-xs text-emerald-500">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                    live
+                  </span>
+                )}
+              </div>
+              <pre className="p-4 text-xs font-mono text-emerald-400/90 overflow-auto min-h-[240px] max-h-[500px] whitespace-pre-wrap break-all leading-relaxed">
+                {logs || "# Click 'Stream logs' to start receiving live logs from running pods...\n"}
                 <div ref={logsEndRef} />
               </pre>
             </div>
           </TabsContent>
 
-          {/* Settings tab - delegated to AppSettings component */}
+          {/* Settings tab */}
           <TabsContent value="settings" className="pt-5">
             <AppSettings
               tenantSlug={tenantSlug}

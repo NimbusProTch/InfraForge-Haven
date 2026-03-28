@@ -231,6 +231,15 @@ class DeployService:
                                     initial_delay_seconds=10,
                                     period_seconds=10,
                                 ),
+                                security_context=k8s_client_lib.V1SecurityContext(
+                                    allow_privilege_escalation=False,
+                                    run_as_non_root=True,
+                                    run_as_user=1000,
+                                    capabilities=k8s_client_lib.V1Capabilities(drop=["ALL"]),
+                                    seccomp_profile=k8s_client_lib.V1SeccompProfile(
+                                        type="RuntimeDefault"
+                                    ),
+                                ),
                             )
                         ],
                         tolerations=[k8s_client_lib.V1Toleration(operator="Exists")],

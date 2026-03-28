@@ -71,3 +71,8 @@ charts/
 # ===== Logs =====
 *.log
 logs/
+
+# ===== Misc =====
+tsconfig.tsbuildinfo
+test-results/
+playwright-report/
