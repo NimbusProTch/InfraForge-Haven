@@ -7,6 +7,7 @@ from kubernetes.client.exceptions import ApiException
 
 from app.config import settings
 from app.k8s.client import K8sClient
+from app.services.harbor_service import HarborService
 
 logger = logging.getLogger(__name__)
 
@@ -105,8 +106,9 @@ _CILIUM_NETPOL_TEMPLATE: dict = {
 class TenantService:
     """Handles Kubernetes provisioning for tenant lifecycle."""
 
-    def __init__(self, k8s: K8sClient) -> None:
+    def __init__(self, k8s: K8sClient, harbor: HarborService | None = None) -> None:
         self.k8s = k8s
+        self.harbor = harbor or HarborService()
 
     async def provision(
         self,
@@ -138,10 +140,11 @@ class TenantService:
         await self._create_network_policy(namespace)
         await self._create_rbac(namespace, slug)
         await self._create_harbor_registry_secret(namespace)
+        await self._provision_harbor_project(slug, namespace, tier)
         logger.info("Tenant %s provisioned in namespace %s (tier=%s)", slug, namespace, tier)
 
-    async def deprovision(self, namespace: str) -> None:
-        """Delete tenant namespace (cascades everything inside)."""
+    async def deprovision(self, namespace: str, slug: str | None = None) -> None:
+        """Delete tenant namespace and Harbor project."""
         if not self.k8s.is_available() or self.k8s.core_v1 is None:
             return
         try:
@@ -150,6 +153,13 @@ class TenantService:
         except ApiException as e:
             if e.status != 404:
                 raise
+
+        # Clean up Harbor project (non-blocking — log on failure, don't abort)
+        if slug:
+            try:
+                await self.harbor.delete_project(slug)
+            except Exception as exc:
+                logger.warning("Harbor project deletion failed for tenant %s: %s", slug, exc)
 
     # ------------------------------------------------------------------
     # Private helpers
@@ -323,3 +333,38 @@ class TenantService:
             except ApiException as e:
                 if e.status != 409:
                     raise
+
+    async def _provision_harbor_project(self, slug: str, namespace: str, tier: str) -> None:
+        """Create Harbor project + robot account + per-tenant imagePullSecret.
+
+        Non-blocking: errors are logged but do not abort tenant provisioning.
+        The admin pull secret (harbor-registry-secret) is still created by
+        _create_harbor_registry_secret for build pipeline compatibility.
+        """
+        if self.k8s.core_v1 is None:
+            return
+        try:
+            await self.harbor.create_project(slug, tier)
+            creds = await self.harbor.create_robot_account(slug)
+            secret_manifest = self.harbor.build_imagepull_secret(slug, creds)
+            # Create K8s secret in tenant namespace
+            secret = k8s_lib.V1Secret(
+                metadata=k8s_lib.V1ObjectMeta(
+                    name=secret_manifest["metadata"]["name"],
+                    namespace=namespace,
+                ),
+                type=secret_manifest["type"],
+                data=secret_manifest["data"],
+            )
+            try:
+                self.k8s.core_v1.create_namespaced_secret(namespace, secret)
+            except ApiException as e:
+                if e.status == 409:
+                    self.k8s.core_v1.replace_namespaced_secret(
+                        namespace=namespace, name=secret_manifest["metadata"]["name"], body=secret
+                    )
+                else:
+                    raise
+            logger.info("Harbor project + robot account provisioned for tenant %s", slug)
+        except Exception as exc:
+            logger.warning("Harbor provisioning failed for tenant %s (non-fatal): %s", slug, exc)

@@ -27,7 +27,7 @@ grafana:
     enabled: true
     storageClassName: ${storage_class}
     size: 10Gi
-  adminPassword: "HavenAdmin2026!"
+  adminPassword: "${grafana_admin_password}"
   tolerations:
     - operator: "Exists"
 

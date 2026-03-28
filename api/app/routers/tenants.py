@@ -94,7 +94,7 @@ async def delete_tenant(tenant_slug: str, db: DBSession, k8s: K8sDep, current_us
     tenant = await _get_tenant_or_404(tenant_slug, db)
 
     svc = TenantService(k8s)
-    await svc.deprovision(tenant.namespace)
+    await svc.deprovision(tenant.namespace, slug=tenant.slug)
 
     # Delete per-tenant Keycloak realm
     try:
