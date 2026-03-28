@@ -1,6 +1,6 @@
 # Haven Platform — Developer Brief
 
-> **Hedef kitle**: Frontend developer (Enes)
+> **Hedef kitle**: Full-stack developer (Enes) — backend, DB, migration, test ve frontend
 > **Tarih**: 2026-03-28
 > **Branch**: `main` (tüm sprintler merge edildi)
 
@@ -21,7 +21,8 @@ self-service olarak yapabilir.
 |--------|-----------|
 | Frontend | **Next.js 14** (App Router) + **shadcn/ui** + **Tailwind CSS** |
 | Backend API | **FastAPI** (Python 3.12+) — async, 20 router, 60+ endpoint |
-| Database | **PostgreSQL** (CloudNativePG) — async SQLAlchemy |
+| Database | **PostgreSQL** (CloudNativePG) — async SQLAlchemy 2.0 |
+| Migrations | **Alembic** (0001→0014 zinciri) |
 | K8s | **RKE2** + **Cilium** Gateway API (Hetzner dev cluster) |
 | Auth | **Keycloak** 26 (OIDC) + **NextAuth** |
 | GitOps | **ArgoCD** |
@@ -39,8 +40,11 @@ haven-platform/
 │   │   ├── services/         # Business logic
 │   │   ├── models/           # SQLAlchemy ORM
 │   │   ├── schemas/          # Pydantic v2
+│   │   ├── deps.py           # DBSession, CurrentUser, K8sDep
 │   │   └── k8s/              # Kubernetes client wrapper
-│   └── tests/                # 274 test (pytest)
+│   ├── alembic/
+│   │   └── versions/         # 0001_initial_schema → 0014_add_clusters
+│   └── tests/                # pytest, 274+ test
 ├── ui/                       # Next.js 14 frontend
 │   ├── app/                  # App Router sayfaları
 │   └── lib/api.ts            # Merkezi TypeScript API client
@@ -204,9 +208,19 @@ Bir belediye IT yetkilisi platforma girip backend + database + frontend deploy e
 
 ---
 
-## D. UI Görevleri (Öncelik Sırasıyla)
+## D. Görevler (Öncelik Sırasıyla)
+
+Her görev için hangi katmanların tamamlanması gerektiği belirtilmiştir.
 
 ### 1. Service → App Bağlantı UI ⭐⭐⭐ (Kritik)
+
+| Katman | Durum |
+|--------|-------|
+| Backend endpoint | ✅ Hazır |
+| DB model | ✅ Hazır (`Application.env_from_secrets`) |
+| Migration | ✅ Hazır |
+| Tests | ✅ Hazır (`test_service_connect.py`) |
+| **Frontend** | ❌ Yapılacak |
 
 **Ne**: Service detay sayfasında veya App detay sayfasında "Connect to App" butonu.
 Butona basınca seçili app'e service secret'ı otomatik inject edilir (Kubernetes envFrom).
@@ -248,8 +262,13 @@ Service Detay: my-pg (PostgreSQL · ready)
 
 ### 2. Connection String / Credentials Paneli ⭐⭐⭐ (Kritik)
 
-**Ne**: Managed service oluşturulduktan/hazır olduktan sonra credentials ve connection string
-gösterimi. Tek tıkla kopyalama + güvenli gösterim (şifre maskelenmiş, göster/gizle).
+| Katman | Durum |
+|--------|-------|
+| Backend endpoint | ✅ Hazır |
+| DB model | ✅ Hazır (`ManagedService.secret_name`, `.connection_hint`) |
+| Migration | ✅ Hazır |
+| Tests | ✅ Hazır (`test_service_connect.py`) |
+| **Frontend** | ❌ Yapılacak |
 
 **API** (`api.ts`'te hazır):
 ```typescript
@@ -286,8 +305,13 @@ Service: my-pg (PostgreSQL)
 
 ### 3. Members UI ⭐⭐ (Önemli)
 
-**Ne**: Tenant detay sayfasına "Members" tab'ı. Takım üyesi davet etme, rol atama (admin /
-developer / viewer), çıkarma.
+| Katman | Durum |
+|--------|-------|
+| Backend endpoint | ✅ Hazır (`routers/members.py`) |
+| DB model | ✅ Hazır (`TenantMember`, roller: owner/admin/member/viewer) |
+| Migration | ✅ Hazır (0007_add_tenant_members) |
+| Tests | ⚠️ Eksik — test_members.py yok, yaz |
+| **Frontend** | ❌ Yapılacak |
 
 **API'ler** (`api.ts`'te hazır):
 ```typescript
@@ -305,24 +329,30 @@ Tenant: gemeente-amsterdam
 ┌─────────────────────────────────────────────┐
 │ Members (3)                    [+ Invite]   │
 │ ─────────────────────────────────────────── │
-│ user@gemeente.nl       admin    [·]          │
-│ dev1@gemeente.nl       developer [·]         │
+│ user@gemeente.nl       owner    [·]          │
+│ dev1@gemeente.nl       member   [·]          │
 │ viewer@gemeente.nl     viewer   [·]          │
 └─────────────────────────────────────────────┘
 ```
 
 **Kabul Kriterleri**:
-- Invite modal: email input + rol seçimi (admin/developer/viewer)
+- Invite modal: email input + rol seçimi (owner/admin/member/viewer)
 - Rol dropdown ile inline değiştirme
 - Üye çıkarma → confirm dialog
 - Kendi kendini çıkaramaz (self-remove disabled)
+- Son owner'ı çıkaramaz / downgrade edemezsin (backend 409 döner)
 
 ---
 
 ### 4. Environment Switcher ⭐⭐ (Önemli)
 
-**Ne**: App detay sayfasında production/staging/preview environment seçimi.
-Her environment ayrı URL, ayrı build/deploy akışı.
+| Katman | Durum |
+|--------|-------|
+| Backend endpoint | ✅ Hazır (`routers/environments.py`) |
+| DB model | ✅ Hazır (`Environment`) |
+| Migration | ✅ Hazır (0008_add_environments) |
+| Tests | ✅ Hazır (`test_environments.py`) |
+| **Frontend** | ❌ Yapılacak |
 
 **API'ler** (`api.ts`'te hazır):
 ```typescript
@@ -352,7 +382,13 @@ Build / Deploy / Logs: seçili environment'a göre
 
 ### 5. Audit Log Viewer ⭐ (Orta)
 
-**Ne**: Tenant bazlı audit log sayfası. Kim ne zaman ne yaptı.
+| Katman | Durum |
+|--------|-------|
+| Backend endpoint | ✅ Hazır (`routers/audit.py`) |
+| DB model | ✅ Hazır (`AuditLog`) |
+| Migration | ✅ Hazır (0009_add_audit_logs) |
+| Tests | ✅ Hazır (`test_audit.py`) |
+| **Frontend** | ❌ Yapılacak |
 
 **API** (`api.ts`'te hazır):
 ```typescript
@@ -380,8 +416,13 @@ Audit Logs [Filter: action ▼] [resource_type ▼]
 
 ### 6. Billing / Usage Dashboard ⭐ (Orta)
 
-**Ne**: Tenant'ın kaynak kullanımını gösteren dashboard. CPU, RAM, storage, build dakikaları.
-Plan bilgisi (free/starter/pro/enterprise) ve upgrade butonu.
+| Katman | Durum |
+|--------|-------|
+| Backend endpoint | ✅ Hazır (`routers/billing.py`) |
+| DB model | ✅ Hazır (`UsageRecord`) |
+| Migration | ✅ Hazır (0010_add_billing) |
+| Tests | ✅ Hazır (`test_billing.py`) |
+| **Frontend** | ❌ Yapılacak |
 
 **API** (`api.ts`'te hazır):
 ```typescript
@@ -413,8 +454,13 @@ Usage This Month:
 
 ### 7. Organization Yönetimi ⭐ (Orta)
 
-**Ne**: Birden fazla tenant'ı gruplayan organization CRUD. SSO konfigürasyonu (Keycloak OIDC
-client). Org-level billing özeti.
+| Katman | Durum |
+|--------|-------|
+| Backend endpoint | ✅ Hazır (`routers/organizations.py`) |
+| DB model | ✅ Hazır (`Organization`, `OrganizationMember`, `SSOConfig`) |
+| Migration | ✅ Hazır (0012_add_organizations_sso) |
+| Tests | ✅ Hazır (`test_organizations.py`) |
+| **Frontend** | ❌ Yapılacak |
 
 **API'ler** (`api.ts`'te hazır — `api.organizations.*`):
 - Org CRUD: `list`, `create`, `get`, `update`, `delete`
@@ -430,33 +476,402 @@ client). Org-level billing özeti.
 
 ---
 
+### 8. Webhook URL Gösterimi
+
+| Katman | Durum |
+|--------|-------|
+| Backend endpoint | ✅ Hazır (`routers/webhooks.py`) |
+| DB model | ✅ Hazır (`Application.webhook_token`) |
+| Migration | ✅ Hazır (0003_add_webhook_token) |
+| **Frontend** | ❌ Yapılacak |
+
+App detay → Settings tab'ında webhook URL'i göster:
+```
+Webhook URL: https://api.haven.nl/api/v1/webhooks/github
+Secret Token: [Copy]
+```
+
+---
+
+### 9. GitHub Seamless OAuth Flow
+
+| Katman | Durum |
+|--------|-------|
+| Backend | ✅ Hazır |
+| **Frontend UX** | ⚠️ İyileştirilebilir |
+
+OAuth callback sonrası tenant seçimine yönlendir (şu an `/tenants` genel listesi).
+"Connect GitHub" butonu zaten bağlıysa devre dışı + "Connected ✓" göster.
+
+---
+
 ## E. Backend Görevleri
 
 Backend büyük ölçüde tamamlanmış. Kalan eksikler:
 
-1. **Keycloak Self-Service Signup** — `keycloak/haven-realm.json`'da registration enabled
+1. **`test_members.py` eksik** — `routers/members.py` kapsanmıyor. Yazılmalı (aşağıda pattern var).
+
+2. **Keycloak Self-Service Signup** — `keycloak/haven-realm.json`'da registration enabled
    yapılmalı. Şu an sadece admin console üzerinden kullanıcı açılabiliyor.
 
-2. **Tenant RBAC Enforcement** — `TenantMember` tablosu var, `CurrentUser` dependency aktif,
+3. **Tenant RBAC Enforcement** — `TenantMember` tablosu var, `CurrentUser` dependency aktif,
    ama tenant'a üyelik kontrolü endpoint'lerde yapılmıyor. Hangi user hangi tenant'a
    erişebilir kontrolü eklenecek.
 
-3. **Observability Entegrasyonu** — Loki/Mimir/Tempo stub durumunda. Gerçek log aggregation
+4. **Observability Entegrasyonu** — Loki/Mimir/Tempo stub durumunda. Gerçek log aggregation
    ve metrics için Grafana data source entegrasyonu gerekli (Sprint 5).
-
-4. **Alembic Migrations** — Şu an `create_all` ile schema oluşturuluyor. Production'da
-   Alembic migration'ları gerekli (pyproject.toml'da alembic bağımlılığı var).
 
 ---
 
-## F. Coding Standards
+## F. DB Katmanı
 
-### TypeScript
+### Stack
+
+- **PostgreSQL** (prod: CloudNativePG cluster `haven-platform`)
+- **SQLAlchemy 2.0** async (`AsyncSession`, `mapped_column`, `DeclarativeBase`)
+- **Alembic** migration zinciri
+
+### Migration Zinciri
+
+```
+0001_initial_schema          ← Tenant, Application, Deployment, Domain
+0002_add_managed_services    ← ManagedService
+0003_add_webhook_token       ← Application.webhook_token
+0004_add_monorepo_and_detection
+0005_add_mysql_mongodb_service_types
+0006_add_github_token_to_tenants
+0007_add_tenant_members      ← TenantMember
+0008_add_environments        ← Environment
+0009_add_audit_logs          ← AuditLog
+0010_add_billing             ← UsageRecord
+0011_add_gdpr_models         ← DataRetentionPolicy, UserConsent
+0012_add_organizations_sso   ← Organization, OrganizationMember, SSOConfig
+0013_add_canary_apptype_volumes_cronjobs
+0014_add_clusters            ← Cluster
+```
+
+### Mevcut Modeller ve İlişkiler
+
+```
+Tenant (1) ──< Application (many)
+Tenant (1) ──< ManagedService (many)
+Tenant (1) ──< TenantMember (many)
+Tenant (1) ──< AuditLog (many)
+Tenant (1) ──< UsageRecord (many)
+Application (1) ──< Deployment (many)
+Application (1) ──< Domain (many)
+Application (1) ──< Environment (many)
+Application (1) ──< CronJob (many)
+Organization (1) ──< OrganizationMember (many)
+Organization (1) ──< SSOConfig (many)
+```
+
+### DB Schema Değişikliği Nasıl Yapılır
+
+**Adım 1** — Modeli değiştir ya da yeni model oluştur (`api/app/models/`):
+
+```python
+# api/app/models/my_model.py
+import uuid
+from sqlalchemy import ForeignKey, String
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+from app.models.base import Base, TimestampMixin
+
+class MyModel(Base, TimestampMixin):
+    __tablename__ = "my_models"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("tenants.id", ondelete="CASCADE"), index=True
+    )
+    name: Mapped[str] = mapped_column(String(255))
+    optional_field: Mapped[str | None] = mapped_column(String(255), nullable=True)
+```
+
+**Adım 2** — `__init__.py`'ye import ekle (varsa):
+
+```python
+# api/app/models/__init__.py — gerekirse yeni modeli buraya ekle
+```
+
+**Adım 3** — Migration oluştur:
+
+```bash
+cd api
+alembic revision --autogenerate -m "add_my_model"
+# → alembic/versions/0015_add_my_model.py oluşur
+# İçeriği kontrol et, gerekirse düzenle
+alembic upgrade head
+```
+
+**Adım 4** — Schema oluşturma (test ortamı için gereksiz — conftest `create_all` kullanır):
+
+```bash
+# Test: pytest fixtures SQLite in-memory kullanır, migration gereksiz
+# Dev: alembic upgrade head (yukarıda)
+```
+
+### Enum Gotcha
+
+SQLAlchemy Enum ile Python StrEnum aynı değerleri kullanmalı:
+
+```python
+class MyStatus(StrEnum):
+    active = "active"
+    deleted = "deleted"
+
+# Model'de values_callable ZORUNLU (DB lowercase, Python camelcase uyumsuzluğu):
+status: Mapped[MyStatus] = mapped_column(
+    Enum(MyStatus, values_callable=lambda e: [x.value for x in e]),
+    default=MyStatus.active,
+)
+```
+
+---
+
+## G. API Endpoint Pattern
+
+### Tam Router Örneği
+
+`api/app/routers/members.py`'dan:
+
+```python
+"""Router docstring."""
+from fastapi import APIRouter, HTTPException, status
+from sqlalchemy import select
+
+from app.deps import CurrentUser, DBSession  # her router'da bunlar
+from app.models.tenant import Tenant
+from app.models.tenant_member import TenantMember
+from app.schemas.tenant_member import TenantMemberResponse, TenantMemberInvite
+
+router = APIRouter(prefix="/tenants/{tenant_slug}/members", tags=["members"])
+
+
+# Ortak helper: 404 wrapper
+async def _get_tenant_or_404(tenant_slug: str, db: DBSession) -> Tenant:
+    result = await db.execute(select(Tenant).where(Tenant.slug == tenant_slug))
+    tenant = result.scalar_one_or_none()
+    if tenant is None:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+    return tenant
+
+
+# GET list
+@router.get("", response_model=list[TenantMemberResponse])
+async def list_members(tenant_slug: str, db: DBSession, current_user: CurrentUser):
+    tenant = await _get_tenant_or_404(tenant_slug, db)
+    result = await db.execute(
+        select(TenantMember).where(TenantMember.tenant_id == tenant.id)
+    )
+    return list(result.scalars().all())
+
+
+# POST create
+@router.post("", response_model=TenantMemberResponse, status_code=status.HTTP_201_CREATED)
+async def add_member(tenant_slug: str, body: TenantMemberInvite, db: DBSession, current_user: CurrentUser):
+    tenant = await _get_tenant_or_404(tenant_slug, db)
+    member = TenantMember(tenant_id=tenant.id, email=body.email, role=body.role)
+    db.add(member)
+    await db.commit()
+    await db.refresh(member)
+    return member
+
+
+# DELETE
+@router.delete("/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def remove_member(tenant_slug: str, user_id: str, db: DBSession, current_user: CurrentUser):
+    tenant = await _get_tenant_or_404(tenant_slug, db)
+    # ... fetch + delete
+    await db.delete(member)
+    await db.commit()
+```
+
+### Router'ı `main.py`'ye Kaydet
+
+```python
+# api/app/main.py
+from app.routers import my_new_router
+app.include_router(my_new_router.router, prefix="/api/v1")
+```
+
+### CurrentUser Pattern
+
+```python
+from app.deps import CurrentUser
+
+@router.get("/me")
+async def get_me(current_user: CurrentUser):
+    # current_user = {"sub": "keycloak-user-id", "email": "user@x.nl", ...}
+    user_id = current_user["sub"]
+    user_email = current_user["email"]
+```
+
+### Pagination Pattern
+
+```python
+from fastapi import Query
+
+@router.get("", response_model=PaginatedResponse[ItemSchema])
+async def list_items(
+    tenant_slug: str,
+    db: DBSession,
+    current_user: CurrentUser,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+):
+    offset = (page - 1) * page_size
+    count_result = await db.execute(select(func.count()).select_from(Item).where(...))
+    total = count_result.scalar_one()
+    result = await db.execute(select(Item).where(...).offset(offset).limit(page_size))
+    return {"items": list(result.scalars()), "total": total, "page": page, "page_size": page_size}
+```
+
+### Error Handling
+
+```python
+# 404
+raise HTTPException(status_code=404, detail="Resource not found")
+
+# 409 Conflict
+raise HTTPException(status_code=409, detail="Resource already exists")
+
+# 503 Service unavailable (K8s down)
+if not k8s.is_available():
+    raise HTTPException(status_code=503, detail="Kubernetes unavailable")
+```
+
+---
+
+## H. Test Pattern
+
+### conftest.py Nasıl Çalışıyor
+
+`api/tests/conftest.py` üç şeyi sağlar:
+
+1. **`db_session`**: Her test için sıfır SQLite in-memory DB (`Base.metadata.create_all`).
+2. **`mock_k8s`**: `K8sClient`'ın tüm sub-client'ları `MagicMock` (unavailable by default).
+3. **`async_client`**: FastAPI `app` + DB override + K8s override + `verify_token` bypass.
+
+`verify_token` override:
+```python
+app.dependency_overrides[verify_token] = lambda: {"sub": "test-user", "email": "test@haven.nl"}
+```
+Test'te auth yok — her istek `test-user` olarak geçer.
+
+### Async Test Yazma
+
+```python
+# Dosya: api/tests/test_members.py
+import uuid
+import pytest
+from httpx import AsyncClient
+from sqlalchemy.ext.asyncio import AsyncSession
+from app.models.tenant import Tenant
+
+# pytest.ini / pyproject.toml'da asyncio_mode = "auto" — @pytest.mark.asyncio gerekmez
+
+
+async def test_list_members_empty(async_client: AsyncClient, sample_tenant: Tenant):
+    resp = await async_client.get(f"/api/v1/tenants/{sample_tenant.slug}/members")
+    assert resp.status_code == 200
+    assert resp.json() == []
+
+
+async def test_add_member(async_client: AsyncClient, sample_tenant: Tenant):
+    resp = await async_client.post(
+        f"/api/v1/tenants/{sample_tenant.slug}/members",
+        json={"email": "dev@gemeente.nl", "role": "member"},
+    )
+    assert resp.status_code == 201
+    data = resp.json()
+    assert data["email"] == "dev@gemeente.nl"
+    assert data["role"] == "member"
+
+
+async def test_add_duplicate_member_returns_409(async_client: AsyncClient, sample_tenant: Tenant):
+    payload = {"email": "dup@gemeente.nl", "role": "viewer"}
+    await async_client.post(f"/api/v1/tenants/{sample_tenant.slug}/members", json=payload)
+    resp = await async_client.post(f"/api/v1/tenants/{sample_tenant.slug}/members", json=payload)
+    assert resp.status_code == 409
+```
+
+### Mock K8s Nasıl Kullanılır
+
+```python
+# K8s unavailable (default mock_k8s):
+async def test_credentials_503_when_k8s_down(async_client: AsyncClient, sample_tenant):
+    resp = await async_client.get(f"/api/v1/tenants/{sample_tenant.slug}/services/my-pg/credentials")
+    assert resp.status_code == 503
+
+# K8s available ile özel mock:
+@pytest.fixture
+def mock_k8s_with_secret():
+    import base64
+    k8s = MagicMock(spec=K8sClient)
+    k8s.is_available.return_value = True
+    k8s.core_v1 = MagicMock()
+    secret = MagicMock()
+    secret.data = {"password": base64.b64encode(b"s3cr3t").decode()}
+    k8s.core_v1.read_namespaced_secret.return_value = secret
+    return k8s
+
+@pytest_asyncio.fixture
+async def client_with_k8s(db_session, mock_k8s_with_secret):
+    app.dependency_overrides[get_db] = lambda: (yield db_session)  # async generator
+    app.dependency_overrides[get_k8s] = lambda: mock_k8s_with_secret
+    app.dependency_overrides[verify_token] = lambda: {"sub": "u1", "email": "u@x.nl"}
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        yield c
+    app.dependency_overrides.clear()
+```
+
+### Minimum Test Coverage Beklentisi
+
+Her yeni router/endpoint için:
+- [ ] Happy path (200/201/204)
+- [ ] 404 (resource not found)
+- [ ] 409 (conflict, varsa)
+- [ ] Auth olmadan erişim → 401 (override kaldırarak test edilebilir)
+- [ ] K8s unavailable → 503 (K8s kullanan endpoint'lerde)
+
+```bash
+cd api && python3 -m pytest -q    # tüm testler geçmeli
+cd api && python3 -m ruff check app/ tests/  # lint temiz olmalı
+```
+
+---
+
+## I. Coding Standards
+
+### Python / FastAPI
+
+```python
+# Python 3.12+, type hints zorunlu
+# Pydantic v2: model_validator, field_validator
+# SQLAlchemy 2.0: mapped_column, DeclarativeBase, async session
+# Ruff: linter + formatter (line-length = 120)
+
+# Import sırası: stdlib → third-party → local
+import uuid
+from fastapi import HTTPException
+from sqlalchemy.orm import Mapped
+from app.models.base import Base
+```
+
+Ruff config (`pyproject.toml`'da):
+```toml
+[tool.ruff]
+line-length = 120
+[tool.ruff.lint]
+select = ["E", "F", "I"]
+```
+
+### TypeScript / Next.js
 
 ```typescript
 // TypeScript strict mode
-// Tailwind CSS class-variance-authority (cva) ile variant'lar
-// shadcn/ui component'lerini extend et, sıfırdan yazma
+// Tailwind CSS + shadcn/ui component'lerini extend et
 // api.ts'teki tipleri import et, tekrar tanımlama
 import { api, type ManagedService, type ServiceCredentials } from "@/lib/api"
 
@@ -470,7 +885,6 @@ try {
 
 // Loading state:
 const [loading, setLoading] = useState(false)
-// ...
 setLoading(true)
 try { ... } finally { setLoading(false) }
 ```
@@ -498,49 +912,43 @@ Yeni görevler için önerilen:
 - Billing: `Progress` + shadcn `Chart` (recharts wrapper)
 - Audit: `Table` + `Select` (filter)
 
-### Test Beklentisi
+### PR / Commit Kuralları
 
-UI testleri zorunlu değil (küçük ekip), ama component'ler testlenebilir şekilde yazılmalı.
-Backend değişiklik yaparsan pytest + ruff temiz olmalı:
+- Commit: conventional commits (`feat:`, `fix:`, `ui:`, `test:`, `db:`)
+- PR gerekli değil, direkt `main`'e push
+- Her PR/commit'te: `pytest` temiz + `ruff` temiz + TypeScript type-check geçmeli
 
 ```bash
-cd api && python3 -m pytest -q    # 274+ passed
-cd api && python3 -m ruff check app/ tests/
-```
-
-### API Pattern
-
-```typescript
-// api.ts'ten:
-api.services.connectToApp(tenantSlug, appSlug, serviceName, token)
-api.services.credentials(tenantSlug, serviceName, token)
-api.members.list(tenantSlug, token)
-
-// Server Actions veya Client Component'te useEffect kullan
-// SSE (log streaming) için getLogsUrl() helper'ını kullan:
-import { getLogsUrl } from "@/lib/api"
-const url = getLogsUrl(tenantSlug, appSlug, token)
-const es = new EventSource(url)
+# Tüm kontroller:
+cd api && python3 -m pytest -q && python3 -m ruff check app/ tests/
+cd ui && npx tsc --noEmit
 ```
 
 ---
 
-## G. Ortam Kurulumu
+## J. Ortam Kurulumu
 
 ```bash
 # Backend
 cd api
 pip install -e ".[dev]"
 # .env dosyası gerekli (api/app/config.py'ye bak)
+# DATABASE_URL, KEYCLOAK_URL, KEYCLOAK_REALM, vb.
 
 # Frontend
 cd ui
 npm install
-# .env.local gerekli: NEXT_PUBLIC_API_URL=http://localhost:8000
+# .env.local gerekli:
+# NEXT_PUBLIC_API_URL=http://localhost:8000
+# NEXTAUTH_URL=http://localhost:3000
+# NEXTAUTH_SECRET=...
 
 # Test
 cd api && python3 -m pytest -q
 cd api && python3 -m ruff check app/ tests/
+
+# Migration (dev DB üzerinde)
+cd api && alembic upgrade head
 ```
 
 ### Kilit Dosyalar
@@ -548,7 +956,12 @@ cd api && python3 -m ruff check app/ tests/
 | Dosya | Amaç |
 |-------|------|
 | `api/app/main.py` | FastAPI app, tüm router kayıtları |
+| `api/app/deps.py` | DBSession, CurrentUser, K8sDep tanımları |
 | `api/app/routers/` | 20 router dosyası |
+| `api/app/models/` | SQLAlchemy modelleri |
+| `api/app/schemas/` | Pydantic v2 request/response şemaları |
+| `api/alembic/versions/` | Migration zinciri (0001→0014) |
+| `api/tests/conftest.py` | Test fixtures (db_session, mock_k8s, async_client) |
 | `ui/lib/api.ts` | TypeScript API client (tek kaynak) |
 | `ui/app/tenants/[slug]/page.tsx` | Ana tenant sayfası |
 | `ui/app/tenants/[slug]/apps/[appSlug]/page.tsx` | Ana app sayfası |
@@ -556,9 +969,8 @@ cd api && python3 -m ruff check app/ tests/
 
 ---
 
-## H. İletişim ve Sorular
+## K. İletişim ve Sorular
 
 - Kod yorumları İngilizce yaz
-- Commit: conventional commits (`feat:`, `fix:`, `ui:`)
-- PR gerekli değil, direkt `main`'e push
+- CLAUDE.md ve bu brief Türkçe
 - Sorular için: (projeyi yöneten kişiye sor)
