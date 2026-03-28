@@ -34,6 +34,9 @@ dependencies = [
 
     # Rate limiting
     "slowapi>=0.1.9",
+
+    # Redis (git queue, session cache)
+    "redis[hiredis]>=5.0.0",
 ]
 
 [project.optional-dependencies]

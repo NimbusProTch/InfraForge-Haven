@@ -258,6 +258,75 @@ async def rollback_deployment(
     return rollback_record
 
 
+@router.post("/sync", status_code=status.HTTP_202_ACCEPTED)
+async def sync_app(
+    tenant_slug: str,
+    app_slug: str,
+    db: DBSession,
+    argocd: ArgoCDDep,
+    current_user: CurrentUser,
+) -> dict:
+    """Trigger an ArgoCD sync for this application."""
+    tenant = await _get_tenant_or_404(tenant_slug, db)
+    await _get_app_or_404(tenant.id, app_slug, db)
+
+    app_name = f"{tenant_slug}-{app_slug}"
+    triggered = await argocd.trigger_sync(app_name)
+    return {"triggered": triggered, "app_name": app_name}
+
+
+@router.get("/sync-status")
+async def get_sync_status(
+    tenant_slug: str,
+    app_slug: str,
+    db: DBSession,
+    argocd: ArgoCDDep,
+    current_user: CurrentUser,
+) -> dict:
+    """Get ArgoCD sync and health status for this application."""
+    tenant = await _get_tenant_or_404(tenant_slug, db)
+    await _get_app_or_404(tenant.id, app_slug, db)
+
+    app_name = f"{tenant_slug}-{app_slug}"
+    return await argocd.get_app_status(app_name)
+
+
+@router.get("/deploy-history")
+async def get_deploy_history(
+    tenant_slug: str,
+    app_slug: str,
+    db: DBSession,
+    argocd: ArgoCDDep,
+    current_user: CurrentUser,
+) -> list[dict]:
+    """Get ArgoCD deployment history for this application."""
+    tenant = await _get_tenant_or_404(tenant_slug, db)
+    await _get_app_or_404(tenant.id, app_slug, db)
+
+    app_name = f"{tenant_slug}-{app_slug}"
+    return await argocd.get_app_history(app_name)
+
+
+@router.post("/rollback/{revision}", status_code=status.HTTP_202_ACCEPTED)
+async def argocd_rollback(
+    tenant_slug: str,
+    app_slug: str,
+    revision: int,
+    db: DBSession,
+    argocd: ArgoCDDep,
+    current_user: CurrentUser,
+) -> dict:
+    """Trigger ArgoCD rollback to a specific history revision ID."""
+    tenant = await _get_tenant_or_404(tenant_slug, db)
+    await _get_app_or_404(tenant.id, app_slug, db)
+
+    app_name = f"{tenant_slug}-{app_slug}"
+    triggered = await argocd.rollback_app(app_name, revision)
+    if not triggered:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="ArgoCD rollback failed")
+    return {"triggered": True, "app_name": app_name, "revision": revision}
+
+
 @router.get("/logs")
 async def stream_logs(
     tenant_slug: str,

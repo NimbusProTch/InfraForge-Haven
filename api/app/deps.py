@@ -1,6 +1,7 @@
 from collections.abc import AsyncGenerator
 from typing import Annotated, Any
 
+import redis.asyncio as aioredis
 from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
@@ -8,6 +9,7 @@ from app.auth.jwt import verify_token
 from app.config import settings
 from app.k8s.client import K8sClient, k8s_client
 from app.services.argocd_service import ArgoCDService
+from app.services.git_queue_service import GitQueueService
 from app.services.gitops_service import GitOpsService
 
 # ---------------------------------------------------------------------------
@@ -57,6 +59,26 @@ def get_argocd() -> ArgoCDService:
 
 GitOpsDep = Annotated[GitOpsService, Depends(get_gitops)]
 ArgoCDDep = Annotated[ArgoCDService, Depends(get_argocd)]
+
+# ---------------------------------------------------------------------------
+# Git Queue (Redis-backed, optional)
+# ---------------------------------------------------------------------------
+_redis_client: aioredis.Redis | None = None
+_git_queue_service: GitQueueService | None = None
+
+
+def get_git_queue() -> GitQueueService | None:
+    """Return a GitQueueService backed by Redis, or None if not configured."""
+    if not settings.redis_url:
+        return None
+    global _redis_client, _git_queue_service  # noqa: PLW0603
+    if _git_queue_service is None:
+        _redis_client = aioredis.from_url(settings.redis_url, decode_responses=False)
+        _git_queue_service = GitQueueService(_redis_client)
+    return _git_queue_service
+
+
+GitQueueDep = Annotated[GitQueueService | None, Depends(get_git_queue)]
 
 # ---------------------------------------------------------------------------
 # Auth

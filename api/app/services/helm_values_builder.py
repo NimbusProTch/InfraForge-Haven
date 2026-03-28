@@ -4,7 +4,14 @@ Used by the GitOps service to generate values.yaml content that
 the ArgoCD ApplicationSet picks up and syncs to the cluster.
 """
 
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
 from app.config import settings
+
+if TYPE_CHECKING:
+    from app.models.application import Application
 
 
 def build_app_values(
@@ -73,6 +80,38 @@ def build_app_values(
         }
 
     return values
+
+
+def render_app_values(app: Application, tenant_slug: str) -> dict:
+    """Build Helm values dict from an Application model's current state.
+
+    Derives service secret names from app.env_from_secrets.
+    Namespace is derived as tenant-{tenant_slug}.
+    """
+    secret_names = [
+        e.get("secret_name", "")
+        for e in (app.env_from_secrets or [])
+        if e.get("secret_name")
+    ]
+    return build_app_values(
+        tenant_slug=tenant_slug,
+        app_slug=app.slug,
+        namespace=f"tenant-{tenant_slug}",
+        image=app.image_tag or "",
+        replicas=app.replicas,
+        env_vars=dict(app.env_vars or {}),
+        service_secret_names=secret_names,
+        port=app.port,
+        custom_domain=app.custom_domain or "",
+        health_check_path=app.health_check_path or "",
+        resource_cpu_request=app.resource_cpu_request,
+        resource_cpu_limit=app.resource_cpu_limit,
+        resource_memory_request=app.resource_memory_request,
+        resource_memory_limit=app.resource_memory_limit,
+        min_replicas=app.min_replicas,
+        max_replicas=app.max_replicas,
+        cpu_threshold=app.cpu_threshold,
+    )
 
 
 def build_service_values(

@@ -132,3 +132,62 @@ class ArgoCDService:
             return []
         except Exception:  # noqa: BLE001
             return []
+
+    async def get_app_history(self, app_name: str) -> list[dict]:
+        """Get deployment history for an ArgoCD Application.
+
+        Returns list of revision records from status.history, each containing:
+          id (int), revision (git SHA), deployedAt, source, etc.
+        Returns empty list on failure or when ArgoCD is not configured.
+        """
+        if not self._url:
+            return []
+
+        try:
+            async with httpx.AsyncClient(verify=False) as client:  # noqa: S501
+                response = await client.get(
+                    f"{self._url}/api/v1/applications/{app_name}",
+                    headers=self._headers(),
+                    timeout=15.0,
+                )
+            if not response.is_success:
+                logger.warning("ArgoCD get history failed: %d for app %s", response.status_code, app_name)
+                return []
+            data = response.json()
+            return data.get("status", {}).get("history", [])
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("ArgoCD get history error for %s: %s", app_name, exc)
+            return []
+
+    async def rollback_app(self, app_name: str, revision: int) -> bool:
+        """Rollback an ArgoCD Application to a specific history revision ID.
+
+        Args:
+            app_name: ArgoCD Application name (e.g. "gemeente-a-my-app")
+            revision: Integer history ID from status.history[].id
+
+        Returns:
+            True if rollback was triggered successfully, False otherwise.
+        """
+        if not self._url:
+            return False
+
+        try:
+            async with httpx.AsyncClient(verify=False) as client:  # noqa: S501
+                response = await client.post(
+                    f"{self._url}/api/v1/applications/{app_name}/rollback",
+                    headers=self._headers(),
+                    json={"id": revision},
+                    timeout=15.0,
+                )
+            if response.is_success:
+                logger.info("Triggered rollback for ArgoCD app %s to revision %d", app_name, revision)
+                return True
+            logger.warning(
+                "ArgoCD rollback failed: %d for app %s revision %d",
+                response.status_code, app_name, revision,
+            )
+            return False
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("ArgoCD rollback error for %s: %s", app_name, exc)
+            return False

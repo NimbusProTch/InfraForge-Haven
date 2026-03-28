@@ -11,6 +11,7 @@ Supports two deployment modes:
 import logging
 import uuid
 
+import yaml
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.config import settings
@@ -21,6 +22,7 @@ from app.models.environment import Environment, EnvironmentStatus
 from app.services.argocd_service import ArgoCDService
 from app.services.build_service import BuildService
 from app.services.deploy_service import DeployService, get_service_secret_names
+from app.services.git_queue_service import GitOperation, GitQueueService
 from app.services.gitops_service import GitOpsService
 from app.services.helm_values_builder import build_app_values
 
@@ -51,6 +53,7 @@ async def run_pipeline(
     github_token: str | None = None,
     gitops: GitOpsService | None = None,
     argocd: ArgoCDService | None = None,
+    queue: GitQueueService | None = None,
     # Extended app config
     custom_domain: str = "",
     health_check_path: str = "",
@@ -212,6 +215,45 @@ async def run_pipeline(
                 env.status = EnvironmentStatus.running
                 env.last_image_tag = image_name
                 await db.commit()
+
+    # Enqueue image tag update via git queue to keep gitops repo in sync
+    if queue is not None:
+        try:
+            values = build_app_values(
+                tenant_slug=tenant_slug,
+                app_slug=app_slug,
+                namespace=namespace,
+                image=image_name,
+                replicas=replicas,
+                env_vars=env_vars,
+                service_secret_names=list(secret_names),
+                port=port,
+                custom_domain=custom_domain,
+                health_check_path=health_check_path,
+                resource_cpu_request=resource_cpu_request,
+                resource_cpu_limit=resource_cpu_limit,
+                resource_memory_request=resource_memory_request,
+                resource_memory_limit=resource_memory_limit,
+                min_replicas=min_replicas,
+                max_replicas=max_replicas,
+                cpu_threshold=cpu_threshold,
+            )
+            await queue.enqueue(
+                GitOperation.UPDATE_FILE,
+                {
+                    "tenant_slug": tenant_slug,
+                    "app_slug": app_slug,
+                    "values": values,
+                    "repo": settings.gitea_gitops_repo,
+                    "path": f"gitops/tenants/{tenant_slug}/{app_slug}/values.yaml",
+                    "commit_message": f"[haven] deploy {tenant_slug}/{app_slug} image={commit_sha[:8]}",
+                    "author": "Haven Platform <haven@haven.dev>",
+                    "content": yaml.dump(values, default_flow_style=False, sort_keys=False),
+                },
+            )
+            logger.info("Enqueued image tag update for %s/%s", tenant_slug, app_slug)
+        except Exception:
+            logger.exception("Failed to enqueue image tag update for %s/%s", tenant_slug, app_slug)
 
     logger.info(
         "Pipeline complete: deployment=%s image=%s namespace=%s app=%s mode=%s",

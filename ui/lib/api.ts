@@ -486,6 +486,30 @@ export const api = {
         { method: "POST" },
         token
       ),
+    sync: (tenantSlug: string, appSlug: string, token?: string) =>
+      apiFetch<{ triggered: boolean; app_name: string }>(
+        `/tenants/${tenantSlug}/apps/${appSlug}/sync`,
+        { method: "POST" },
+        token
+      ),
+    syncStatus: (tenantSlug: string, appSlug: string, token?: string) =>
+      apiFetch<{ health: string; sync: string; operationState?: Record<string, unknown> }>(
+        `/tenants/${tenantSlug}/apps/${appSlug}/sync-status`,
+        {},
+        token
+      ),
+    deployHistory: (tenantSlug: string, appSlug: string, token?: string) =>
+      apiFetch<Array<Record<string, unknown>>>(
+        `/tenants/${tenantSlug}/apps/${appSlug}/deploy-history`,
+        {},
+        token
+      ),
+    argoCDRollback: (tenantSlug: string, appSlug: string, revision: number, token?: string) =>
+      apiFetch<{ triggered: boolean; app_name: string; revision: number }>(
+        `/tenants/${tenantSlug}/apps/${appSlug}/rollback/${revision}`,
+        { method: "POST" },
+        token
+      ),
   },
   services: {
     list: (tenantSlug: string, token?: string) =>
