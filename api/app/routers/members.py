@@ -6,7 +6,7 @@ import uuid
 from fastapi import APIRouter, HTTPException, status
 from sqlalchemy import select
 
-from app.deps import DBSession
+from app.deps import CurrentUser, DBSession
 from app.models.tenant import Tenant
 from app.models.tenant_member import MemberRole, TenantMember
 from app.schemas.tenant_member import TenantMemberInvite, TenantMemberResponse, TenantMemberUpdate
@@ -39,7 +39,7 @@ async def _get_member_or_404(tenant_id: uuid.UUID, user_id: str, db: DBSession) 
 
 
 @router.get("", response_model=list[TenantMemberResponse])
-async def list_members(tenant_slug: str, db: DBSession) -> list[TenantMember]:
+async def list_members(tenant_slug: str, db: DBSession, current_user: CurrentUser) -> list[TenantMember]:
     tenant = await _get_tenant_or_404(tenant_slug, db)
     result = await db.execute(
         select(TenantMember)
@@ -50,7 +50,9 @@ async def list_members(tenant_slug: str, db: DBSession) -> list[TenantMember]:
 
 
 @router.post("", response_model=TenantMemberResponse, status_code=status.HTTP_201_CREATED)
-async def add_member(tenant_slug: str, body: TenantMemberInvite, db: DBSession) -> TenantMember:
+async def add_member(
+    tenant_slug: str, body: TenantMemberInvite, db: DBSession, current_user: CurrentUser
+) -> TenantMember:
     tenant = await _get_tenant_or_404(tenant_slug, db)
 
     # Prevent duplicate membership
@@ -99,7 +101,7 @@ async def add_member(tenant_slug: str, body: TenantMemberInvite, db: DBSession) 
 
 @router.patch("/{user_id}", response_model=TenantMemberResponse)
 async def update_member_role(
-    tenant_slug: str, user_id: str, body: TenantMemberUpdate, db: DBSession
+    tenant_slug: str, user_id: str, body: TenantMemberUpdate, db: DBSession, current_user: CurrentUser
 ) -> TenantMember:
     tenant = await _get_tenant_or_404(tenant_slug, db)
     member = await _get_member_or_404(tenant.id, user_id, db)
@@ -122,7 +124,7 @@ async def update_member_role(
 
 
 @router.delete("/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def remove_member(tenant_slug: str, user_id: str, db: DBSession) -> None:
+async def remove_member(tenant_slug: str, user_id: str, db: DBSession, current_user: CurrentUser) -> None:
     tenant = await _get_tenant_or_404(tenant_slug, db)
     member = await _get_member_or_404(tenant.id, user_id, db)
 

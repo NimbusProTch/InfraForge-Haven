@@ -2,7 +2,7 @@
 from fastapi import APIRouter, HTTPException, status
 from sqlalchemy import select
 
-from app.deps import DBSession, K8sDep
+from app.deps import CurrentUser, DBSession, K8sDep
 from app.models.application import Application
 from app.models.tenant import Tenant
 from app.schemas.application import ApplicationCreate, ApplicationResponse, ApplicationUpdate
@@ -19,7 +19,7 @@ async def _get_tenant_or_404(tenant_slug: str, db: DBSession) -> Tenant:
 
 
 @router.get("", response_model=list[ApplicationResponse])
-async def list_applications(tenant_slug: str, db: DBSession) -> list[Application]:
+async def list_applications(tenant_slug: str, db: DBSession, current_user: CurrentUser) -> list[Application]:
     tenant = await _get_tenant_or_404(tenant_slug, db)
     result = await db.execute(
         select(Application)
@@ -31,7 +31,7 @@ async def list_applications(tenant_slug: str, db: DBSession) -> list[Application
 
 @router.post("", response_model=ApplicationResponse, status_code=status.HTTP_201_CREATED)
 async def create_application(
-    tenant_slug: str, body: ApplicationCreate, db: DBSession, k8s: K8sDep
+    tenant_slug: str, body: ApplicationCreate, db: DBSession, k8s: K8sDep, current_user: CurrentUser
 ) -> Application:
     tenant = await _get_tenant_or_404(tenant_slug, db)
 
@@ -65,7 +65,7 @@ async def create_application(
 
 
 @router.get("/{app_slug}", response_model=ApplicationResponse)
-async def get_application(tenant_slug: str, app_slug: str, db: DBSession) -> Application:
+async def get_application(tenant_slug: str, app_slug: str, db: DBSession, current_user: CurrentUser) -> Application:
     tenant = await _get_tenant_or_404(tenant_slug, db)
     result = await db.execute(
         select(Application).where(
@@ -80,7 +80,7 @@ async def get_application(tenant_slug: str, app_slug: str, db: DBSession) -> App
 
 @router.patch("/{app_slug}", response_model=ApplicationResponse)
 async def update_application(
-    tenant_slug: str, app_slug: str, body: ApplicationUpdate, db: DBSession
+    tenant_slug: str, app_slug: str, body: ApplicationUpdate, db: DBSession, current_user: CurrentUser
 ) -> Application:
     tenant = await _get_tenant_or_404(tenant_slug, db)
     result = await db.execute(
@@ -102,7 +102,7 @@ async def update_application(
 
 @router.delete("/{app_slug}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_application(
-    tenant_slug: str, app_slug: str, db: DBSession, k8s: K8sDep
+    tenant_slug: str, app_slug: str, db: DBSession, k8s: K8sDep, current_user: CurrentUser
 ) -> None:
     tenant = await _get_tenant_or_404(tenant_slug, db)
     result = await db.execute(

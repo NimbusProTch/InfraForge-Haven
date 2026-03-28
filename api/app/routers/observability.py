@@ -9,7 +9,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import select
 
-from app.deps import DBSession, K8sDep
+from app.deps import CurrentUser, DBSession, K8sDep
 from app.models.application import Application
 from app.models.tenant import Tenant
 
@@ -142,6 +142,7 @@ async def get_pods(
     app_slug: str,
     db: DBSession,
     k8s: K8sDep,
+    current_user: CurrentUser,
 ) -> PodsResponse:
     """Return pod status and resource metrics for an application.
 
@@ -262,6 +263,7 @@ async def get_events(
     app_slug: str,
     db: DBSession,
     k8s: K8sDep,
+    current_user: CurrentUser,
     limit: int = 20,
 ) -> EventsResponse:
     """Return recent K8s events for an application (pods + deployment).

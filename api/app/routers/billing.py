@@ -5,7 +5,7 @@ import logging
 from fastapi import APIRouter, HTTPException, Query, status
 from sqlalchemy import select
 
-from app.deps import DBSession
+from app.deps import CurrentUser, DBSession
 from app.models.tenant import Tenant
 from app.schemas.billing import VALID_TIERS, UsageSummary
 from app.services.usage_service import (
@@ -32,6 +32,7 @@ async def _get_tenant_or_404(slug: str, db: DBSession) -> Tenant:
 async def get_usage(
     tenant_slug: str,
     db: DBSession,
+    current_user: CurrentUser,
     history_months: int = Query(6, ge=1, le=24, description="Number of past months to include"),
 ) -> UsageSummary:
     """Return current period usage + history for a tenant."""
@@ -57,6 +58,7 @@ async def get_usage(
 async def update_tier(
     tenant_slug: str,
     db: DBSession,
+    current_user: CurrentUser,
     tier: str = Query(..., description="New tier: free | starter | pro | enterprise"),
 ) -> dict:
     """Update tenant billing tier (admin action)."""

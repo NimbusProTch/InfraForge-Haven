@@ -13,7 +13,7 @@ import logging
 from fastapi import APIRouter, HTTPException, status
 from sqlalchemy import select
 
-from app.deps import DBSession
+from app.deps import CurrentUser, DBSession
 from app.models.organization import (
     Organization,
     OrganizationMember,
@@ -54,13 +54,13 @@ async def _get_org_or_404(org_slug: str, db: DBSession) -> Organization:
 
 
 @router.get("", response_model=list[OrganizationResponse])
-async def list_organizations(db: DBSession) -> list[Organization]:
+async def list_organizations(db: DBSession, current_user: CurrentUser) -> list[Organization]:
     result = await db.execute(select(Organization).order_by(Organization.created_at.desc()))
     return list(result.scalars().all())
 
 
 @router.post("", response_model=OrganizationResponse, status_code=status.HTTP_201_CREATED)
-async def create_organization(body: OrganizationCreate, db: DBSession) -> Organization:
+async def create_organization(body: OrganizationCreate, db: DBSession, current_user: CurrentUser) -> Organization:
     existing = await db.execute(select(Organization).where(Organization.slug == body.slug))
     if existing.scalar_one_or_none() is not None:
         raise HTTPException(status_code=409, detail=f"Organization '{body.slug}' already exists")
@@ -73,12 +73,14 @@ async def create_organization(body: OrganizationCreate, db: DBSession) -> Organi
 
 
 @router.get("/{org_slug}", response_model=OrganizationResponse)
-async def get_organization(org_slug: str, db: DBSession) -> Organization:
+async def get_organization(org_slug: str, db: DBSession, current_user: CurrentUser) -> Organization:
     return await _get_org_or_404(org_slug, db)
 
 
 @router.patch("/{org_slug}", response_model=OrganizationResponse)
-async def update_organization(org_slug: str, body: OrganizationUpdate, db: DBSession) -> Organization:
+async def update_organization(
+    org_slug: str, body: OrganizationUpdate, db: DBSession, current_user: CurrentUser
+) -> Organization:
     org = await _get_org_or_404(org_slug, db)
     for field, value in body.model_dump(exclude_none=True).items():
         setattr(org, field, value)
@@ -88,7 +90,7 @@ async def update_organization(org_slug: str, body: OrganizationUpdate, db: DBSes
 
 
 @router.delete("/{org_slug}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_organization(org_slug: str, db: DBSession) -> None:
+async def delete_organization(org_slug: str, db: DBSession, current_user: CurrentUser) -> None:
     org = await _get_org_or_404(org_slug, db)
     await db.delete(org)
     await db.commit()
@@ -100,7 +102,7 @@ async def delete_organization(org_slug: str, db: DBSession) -> None:
 
 
 @router.get("/{org_slug}/members", response_model=list[OrgMemberResponse])
-async def list_members(org_slug: str, db: DBSession) -> list[OrganizationMember]:
+async def list_members(org_slug: str, db: DBSession, current_user: CurrentUser) -> list[OrganizationMember]:
     org = await _get_org_or_404(org_slug, db)
     result = await db.execute(
         select(OrganizationMember)
@@ -111,7 +113,9 @@ async def list_members(org_slug: str, db: DBSession) -> list[OrganizationMember]
 
 
 @router.post("/{org_slug}/members", response_model=OrgMemberResponse, status_code=status.HTTP_201_CREATED)
-async def invite_member(org_slug: str, body: OrgMemberInvite, db: DBSession) -> OrganizationMember:
+async def invite_member(
+    org_slug: str, body: OrgMemberInvite, db: DBSession, current_user: CurrentUser
+) -> OrganizationMember:
     org = await _get_org_or_404(org_slug, db)
 
     # Prevent duplicate membership
@@ -138,7 +142,9 @@ async def invite_member(org_slug: str, body: OrgMemberInvite, db: DBSession) -> 
 
 
 @router.patch("/{org_slug}/members/{user_id}", response_model=OrgMemberResponse)
-async def update_member_role(org_slug: str, user_id: str, body: OrgMemberUpdate, db: DBSession) -> OrganizationMember:
+async def update_member_role(
+    org_slug: str, user_id: str, body: OrgMemberUpdate, db: DBSession, current_user: CurrentUser
+) -> OrganizationMember:
     org = await _get_org_or_404(org_slug, db)
     result = await db.execute(
         select(OrganizationMember).where(
@@ -156,7 +162,7 @@ async def update_member_role(org_slug: str, user_id: str, body: OrgMemberUpdate,
 
 
 @router.delete("/{org_slug}/members/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def remove_member(org_slug: str, user_id: str, db: DBSession) -> None:
+async def remove_member(org_slug: str, user_id: str, db: DBSession, current_user: CurrentUser) -> None:
     org = await _get_org_or_404(org_slug, db)
     result = await db.execute(
         select(OrganizationMember).where(
@@ -177,7 +183,7 @@ async def remove_member(org_slug: str, user_id: str, db: DBSession) -> None:
 
 
 @router.get("/{org_slug}/sso", response_model=list[SSOConfigResponse])
-async def list_sso_configs(org_slug: str, db: DBSession) -> list[SSOConfig]:
+async def list_sso_configs(org_slug: str, db: DBSession, current_user: CurrentUser) -> list[SSOConfig]:
     org = await _get_org_or_404(org_slug, db)
     result = await db.execute(
         select(SSOConfig)
@@ -188,7 +194,9 @@ async def list_sso_configs(org_slug: str, db: DBSession) -> list[SSOConfig]:
 
 
 @router.post("/{org_slug}/sso", response_model=SSOConfigResponse, status_code=status.HTTP_201_CREATED)
-async def create_sso_config(org_slug: str, body: SSOConfigCreate, db: DBSession) -> SSOConfig:
+async def create_sso_config(
+    org_slug: str, body: SSOConfigCreate, db: DBSession, current_user: CurrentUser
+) -> SSOConfig:
     org = await _get_org_or_404(org_slug, db)
 
     if body.sso_type.value == "oidc" and not body.discovery_url:
@@ -213,7 +221,9 @@ async def create_sso_config(org_slug: str, body: SSOConfigCreate, db: DBSession)
 
 
 @router.patch("/{org_slug}/sso/{sso_id}", response_model=SSOConfigResponse)
-async def update_sso_config(org_slug: str, sso_id: str, body: SSOConfigUpdate, db: DBSession) -> SSOConfig:
+async def update_sso_config(
+    org_slug: str, sso_id: str, body: SSOConfigUpdate, db: DBSession, current_user: CurrentUser
+) -> SSOConfig:
     org = await _get_org_or_404(org_slug, db)
     result = await db.execute(
         select(SSOConfig).where(SSOConfig.organization_id == org.id, SSOConfig.id == sso_id)
@@ -229,7 +239,7 @@ async def update_sso_config(org_slug: str, sso_id: str, body: SSOConfigUpdate, d
 
 
 @router.delete("/{org_slug}/sso/{sso_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_sso_config(org_slug: str, sso_id: str, db: DBSession) -> None:
+async def delete_sso_config(org_slug: str, sso_id: str, db: DBSession, current_user: CurrentUser) -> None:
     org = await _get_org_or_404(org_slug, db)
     result = await db.execute(
         select(SSOConfig).where(SSOConfig.organization_id == org.id, SSOConfig.id == sso_id)
@@ -247,7 +257,7 @@ async def delete_sso_config(org_slug: str, sso_id: str, db: DBSession) -> None:
 
 
 @router.get("/{org_slug}/tenants", response_model=list[OrgTenantResponse])
-async def list_org_tenants(org_slug: str, db: DBSession) -> list[OrgTenantMembership]:
+async def list_org_tenants(org_slug: str, db: DBSession, current_user: CurrentUser) -> list[OrgTenantMembership]:
     org = await _get_org_or_404(org_slug, db)
     result = await db.execute(
         select(OrgTenantMembership).where(OrgTenantMembership.organization_id == org.id)
@@ -256,7 +266,9 @@ async def list_org_tenants(org_slug: str, db: DBSession) -> list[OrgTenantMember
 
 
 @router.post("/{org_slug}/tenants", response_model=OrgTenantResponse, status_code=status.HTTP_201_CREATED)
-async def add_tenant_to_org(org_slug: str, body: OrgTenantAdd, db: DBSession) -> OrgTenantMembership:
+async def add_tenant_to_org(
+    org_slug: str, body: OrgTenantAdd, db: DBSession, current_user: CurrentUser
+) -> OrgTenantMembership:
     org = await _get_org_or_404(org_slug, db)
 
     # Prevent duplicate
@@ -277,7 +289,7 @@ async def add_tenant_to_org(org_slug: str, body: OrgTenantAdd, db: DBSession) ->
 
 
 @router.delete("/{org_slug}/tenants/{tenant_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def remove_tenant_from_org(org_slug: str, tenant_id: str, db: DBSession) -> None:
+async def remove_tenant_from_org(org_slug: str, tenant_id: str, db: DBSession, current_user: CurrentUser) -> None:
     org = await _get_org_or_404(org_slug, db)
     result = await db.execute(
         select(OrgTenantMembership).where(
@@ -298,7 +310,7 @@ async def remove_tenant_from_org(org_slug: str, tenant_id: str, db: DBSession) -
 
 
 @router.get("/{org_slug}/billing", response_model=BillingSummaryResponse)
-async def billing_summary(org_slug: str, db: DBSession) -> BillingSummaryResponse:
+async def billing_summary(org_slug: str, db: DBSession, current_user: CurrentUser) -> BillingSummaryResponse:
     """Return billing aggregation summary for the organization."""
     org = await _get_org_or_404(org_slug, db)
     tenant_count_result = await db.execute(

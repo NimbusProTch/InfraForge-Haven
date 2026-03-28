@@ -6,7 +6,7 @@ from fastapi import APIRouter, HTTPException, status
 from sqlalchemy import select
 
 from app.config import settings
-from app.deps import DBSession, K8sDep
+from app.deps import CurrentUser, DBSession, K8sDep
 from app.models.application import Application
 from app.models.environment import Environment, EnvironmentStatus, EnvironmentType
 from app.models.tenant import Tenant
@@ -72,7 +72,9 @@ async def _get_env_or_404(app: Application, env_name: str, db: DBSession) -> Env
 
 
 @router.get("", response_model=list[EnvironmentResponse])
-async def list_environments(tenant_slug: str, app_slug: str, db: DBSession) -> list[Environment]:
+async def list_environments(
+    tenant_slug: str, app_slug: str, db: DBSession, current_user: CurrentUser
+) -> list[Environment]:
     tenant = await _get_tenant_or_404(tenant_slug, db)
     app = await _get_app_or_404(tenant, app_slug, db)
     result = await db.execute(
@@ -85,7 +87,7 @@ async def list_environments(tenant_slug: str, app_slug: str, db: DBSession) -> l
 
 @router.post("", response_model=EnvironmentResponse, status_code=status.HTTP_201_CREATED)
 async def create_environment(
-    tenant_slug: str, app_slug: str, body: EnvironmentCreate, db: DBSession
+    tenant_slug: str, app_slug: str, body: EnvironmentCreate, db: DBSession, current_user: CurrentUser
 ) -> Environment:
     tenant = await _get_tenant_or_404(tenant_slug, db)
     app = await _get_app_or_404(tenant, app_slug, db)
@@ -118,7 +120,7 @@ async def create_environment(
 
 @router.get("/{env_name}", response_model=EnvironmentResponse)
 async def get_environment(
-    tenant_slug: str, app_slug: str, env_name: str, db: DBSession
+    tenant_slug: str, app_slug: str, env_name: str, db: DBSession, current_user: CurrentUser
 ) -> Environment:
     tenant = await _get_tenant_or_404(tenant_slug, db)
     app = await _get_app_or_404(tenant, app_slug, db)
@@ -127,7 +129,7 @@ async def get_environment(
 
 @router.patch("/{env_name}", response_model=EnvironmentResponse)
 async def update_environment(
-    tenant_slug: str, app_slug: str, env_name: str, body: EnvironmentUpdate, db: DBSession
+    tenant_slug: str, app_slug: str, env_name: str, body: EnvironmentUpdate, db: DBSession, current_user: CurrentUser
 ) -> Environment:
     tenant = await _get_tenant_or_404(tenant_slug, db)
     app = await _get_app_or_404(tenant, app_slug, db)
@@ -143,7 +145,7 @@ async def update_environment(
 
 @router.delete("/{env_name}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_environment(
-    tenant_slug: str, app_slug: str, env_name: str, db: DBSession, k8s: K8sDep
+    tenant_slug: str, app_slug: str, env_name: str, db: DBSession, k8s: K8sDep, current_user: CurrentUser
 ) -> None:
     tenant = await _get_tenant_or_404(tenant_slug, db)
     app = await _get_app_or_404(tenant, app_slug, db)

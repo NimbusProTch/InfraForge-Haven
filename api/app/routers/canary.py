@@ -19,7 +19,7 @@ from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 
-from app.deps import DBSession, K8sDep
+from app.deps import CurrentUser, DBSession, K8sDep
 from app.models.application import Application
 from app.models.tenant import Tenant
 
@@ -136,6 +136,7 @@ async def get_canary_status(
     app_slug: str,
     db: DBSession,
     k8s: K8sDep,
+    current_user: CurrentUser,
 ) -> CanaryStatus:
     """Get current canary deployment status."""
     tenant = await _get_tenant_or_404(tenant_slug, db)
@@ -184,6 +185,7 @@ async def configure_canary(
     config: CanaryConfig,
     db: DBSession,
     k8s: K8sDep,
+    current_user: CurrentUser,
 ) -> CanaryStatus:
     """Enable/disable canary and set traffic weight.
 
@@ -276,6 +278,7 @@ async def promote_canary(
     app_slug: str,
     db: DBSession,
     k8s: K8sDep,
+    current_user: CurrentUser,
 ) -> dict:
     """Promote canary to stable: update stable image to canary image, disable canary.
 
@@ -324,6 +327,7 @@ async def rollback_canary(
     app_slug: str,
     db: DBSession,
     k8s: K8sDep,
+    current_user: CurrentUser,
 ) -> dict:
     """Rollback canary: disable canary, all traffic returns to stable."""
     tenant = await _get_tenant_or_404(tenant_slug, db)

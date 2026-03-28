@@ -15,7 +15,7 @@ from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy import select
 
-from app.deps import DBSession, K8sDep
+from app.deps import CurrentUser, DBSession, K8sDep
 from app.models.tenant import Tenant
 
 logger = logging.getLogger(__name__)
@@ -72,7 +72,7 @@ async def _get_tenant_or_404(tenant_slug: str, db: DBSession) -> Tenant:
 
 
 @router.get("", response_model=BackupListResponse)
-async def list_backups(tenant_slug: str, db: DBSession, k8s: K8sDep) -> BackupListResponse:
+async def list_backups(tenant_slug: str, db: DBSession, k8s: K8sDep, current_user: CurrentUser) -> BackupListResponse:
     """List CNPG backups for the tenant's database cluster."""
     tenant = await _get_tenant_or_404(tenant_slug, db)
 
@@ -108,7 +108,9 @@ async def list_backups(tenant_slug: str, db: DBSession, k8s: K8sDep) -> BackupLi
 
 
 @router.post("", response_model=BackupTriggerResponse, status_code=status.HTTP_202_ACCEPTED)
-async def trigger_backup(tenant_slug: str, db: DBSession, k8s: K8sDep) -> BackupTriggerResponse:
+async def trigger_backup(
+    tenant_slug: str, db: DBSession, k8s: K8sDep, current_user: CurrentUser
+) -> BackupTriggerResponse:
     """Trigger an on-demand CNPG backup for the tenant's database cluster."""
     tenant = await _get_tenant_or_404(tenant_slug, db)
 
@@ -156,6 +158,7 @@ async def configure_backup_schedule(
     config: BackupScheduleConfig,
     db: DBSession,
     k8s: K8sDep,
+    current_user: CurrentUser,
 ) -> dict:
     """Configure the CNPG scheduled backup for a tenant's database cluster.
 
