@@ -1,10 +1,12 @@
+import base64
+
 from fastapi import APIRouter, HTTPException, status
 from sqlalchemy import select
 
 from app.deps import CurrentUser, DBSession, K8sDep
 from app.models.managed_service import ManagedService, ServiceStatus
 from app.models.tenant import Tenant
-from app.schemas.managed_service import ManagedServiceCreate, ManagedServiceResponse
+from app.schemas.managed_service import ManagedServiceCreate, ManagedServiceResponse, ServiceCredentials
 from app.services.managed_service import ManagedServiceProvisioner
 
 router = APIRouter(
@@ -118,3 +120,46 @@ async def delete_service(
 
     await db.delete(svc)
     await db.commit()
+
+
+@router.get("/{service_name}/credentials", response_model=ServiceCredentials)
+async def get_service_credentials(
+    tenant_slug: str, service_name: str, db: DBSession, k8s: K8sDep, current_user: CurrentUser
+) -> ServiceCredentials:
+    """Return decoded K8s secret credentials for a managed service."""
+    tenant = await _get_tenant_or_404(tenant_slug, db)
+    result = await db.execute(
+        select(ManagedService).where(
+            ManagedService.tenant_id == tenant.id,
+            ManagedService.name == service_name,
+        )
+    )
+    svc = result.scalar_one_or_none()
+    if svc is None:
+        raise HTTPException(status_code=404, detail="Service not found")
+    if svc.status != ServiceStatus.READY:
+        raise HTTPException(status_code=409, detail=f"Service '{svc.name}' is not ready (status: {svc.status})")
+    if not svc.secret_name or not svc.service_namespace:
+        raise HTTPException(status_code=409, detail="Service has no credentials yet")
+
+    if not k8s.is_available() or k8s.core_v1 is None:
+        raise HTTPException(status_code=503, detail="Kubernetes unavailable — cannot read credentials")
+
+    try:
+        secret = k8s.core_v1.read_namespaced_secret(name=svc.secret_name, namespace=svc.service_namespace)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Failed to read K8s secret: {exc}") from exc
+
+    credentials: dict[str, str] = {}
+    for key, val in (secret.data or {}).items():
+        try:
+            credentials[key] = base64.b64decode(val).decode()
+        except Exception:
+            credentials[key] = val  # leave raw if decode fails
+
+    return ServiceCredentials(
+        service_name=svc.name,
+        secret_name=svc.secret_name,
+        connection_hint=svc.connection_hint,
+        credentials=credentials,
+    )

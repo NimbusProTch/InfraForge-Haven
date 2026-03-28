@@ -81,6 +81,9 @@ class Application(Base, TimestampMixin):
         ForeignKey("clusters.id"), nullable=True, index=True
     )
 
+    # Managed service connections: [{service_name, secret_name, namespace}]
+    env_from_secrets: Mapped[list | None] = mapped_column(JSON, nullable=True, default=None)
+
     tenant: Mapped["Tenant"] = relationship(back_populates="applications")
     deployments: Mapped[list["Deployment"]] = relationship(
         back_populates="application", cascade="all, delete-orphan"
