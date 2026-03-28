@@ -9,6 +9,7 @@ from app.models.base import Base, TimestampMixin
 
 if TYPE_CHECKING:
     from app.models.application import Application
+    from app.models.environment import Environment
 
 
 class DeploymentStatus(PyEnum):
@@ -24,6 +25,10 @@ class Deployment(Base, TimestampMixin):
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     application_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("applications.id"), index=True)
+    # Optional — set for environment-scoped deployments (staging/preview)
+    environment_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("environments.id", ondelete="CASCADE"), nullable=True, index=True
+    )
     commit_sha: Mapped[str] = mapped_column(String(40))
     status: Mapped[DeploymentStatus] = mapped_column(
         Enum(DeploymentStatus, values_callable=lambda e: [x.value for x in e]),
@@ -34,6 +39,7 @@ class Deployment(Base, TimestampMixin):
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     application: Mapped["Application"] = relationship(back_populates="deployments")
+    environment: Mapped["Environment | None"] = relationship(back_populates="deployments")
 
 
 class BuildJob(Base, TimestampMixin):

@@ -1,5 +1,5 @@
-import enum
 import uuid
+from enum import StrEnum
 from typing import TYPE_CHECKING
 
 from sqlalchemy import Enum, ForeignKey, String
@@ -11,7 +11,7 @@ if TYPE_CHECKING:
     from app.models.tenant import Tenant
 
 
-class MemberRole(str, enum.Enum):
+class MemberRole(StrEnum):
     owner = "owner"
     admin = "admin"
     member = "member"

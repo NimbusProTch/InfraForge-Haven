@@ -11,7 +11,9 @@ from app.config import settings
 from app.deps import DBSession, K8sDep, get_session_factory
 from app.models.application import Application
 from app.models.deployment import Deployment, DeploymentStatus
+from app.models.environment import Environment, EnvironmentStatus, EnvironmentType
 from app.models.tenant import Tenant
+from app.routers.environments import _compute_domain, _compute_namespace
 from app.services.pipeline import run_pipeline
 
 router = APIRouter(prefix="/webhooks", tags=["webhooks"])
@@ -48,21 +50,38 @@ async def github_webhook(
     x_hub_signature_256: str | None = Header(default=None),
     x_github_event: str | None = Header(default=None),
 ) -> dict[str, str]:
-    """Receive a GitHub push webhook and trigger a build.
+    """Receive GitHub push or pull_request webhooks.
 
     URL: POST /api/v1/webhooks/github/{webhook_token}
     The webhook_token is shown in the application detail response.
-    Configure it as the GitHub webhook secret payload URL.
+
+    Supported events:
+    - push → trigger build + deploy on configured branch
+    - pull_request (opened/synchronize) → create/update preview environment
+    - pull_request (closed) → delete preview environment + K8s namespace
     """
     body = await request.body()
     _verify_github_signature(body, settings.webhook_secret, x_hub_signature_256)
 
-    # Ignore non-push events (ping, etc.)
-    if x_github_event and x_github_event != "push":
-        logger.info("Webhook event %s ignored (not a push)", x_github_event)
-        return {"status": "ignored", "reason": f"event={x_github_event}"}
+    event = x_github_event or ""
 
-    # Look up application by webhook token
+    # Route to the correct handler
+    if event == "push":
+        return await _handle_push(webhook_token, request, db, k8s)
+    if event == "pull_request":
+        return await _handle_pull_request(webhook_token, request, db, k8s)
+
+    logger.info("Webhook event %s ignored", event)
+    return {"status": "ignored", "reason": f"event={event}"}
+
+
+# ---------------------------------------------------------------------------
+# Push handler (existing behaviour)
+# ---------------------------------------------------------------------------
+
+async def _handle_push(
+    webhook_token: str, request: Request, db: DBSession, k8s: K8sDep
+) -> dict[str, str]:
     result = await db.execute(
         select(Application).where(Application.webhook_token == webhook_token)
     )
@@ -76,15 +95,13 @@ async def github_webhook(
     branch = ref.removeprefix("refs/heads/")
 
     if branch != app.branch:
-        logger.info("Webhook ignored: branch %s != configured %s", branch, app.branch)
+        logger.info("Push webhook ignored: branch %s != configured %s", branch, app.branch)
         return {"status": "ignored", "reason": "branch mismatch"}
 
-    # Load tenant for namespace + slug
     tenant = await db.get(Tenant, app.tenant_id)
     if tenant is None:
         raise HTTPException(status_code=500, detail="Tenant not found for application")
 
-    # Create deployment record
     deployment = Deployment(
         application_id=app.id,
         commit_sha=commit_sha,
@@ -95,15 +112,9 @@ async def github_webhook(
     await db.refresh(deployment)
 
     logger.info(
-        "Deployment queued: app=%s tenant=%s branch=%s commit=%s deployment_id=%s",
-        app.slug,
-        tenant.slug,
-        branch,
-        commit_sha,
-        deployment.id,
+        "Push deployment queued: app=%s tenant=%s branch=%s commit=%s deployment_id=%s",
+        app.slug, tenant.slug, branch, commit_sha, deployment.id,
     )
-
-    session_factory = get_session_factory()
 
     asyncio.create_task(
         run_pipeline(
@@ -119,7 +130,7 @@ async def github_webhook(
             env_vars=dict(app.env_vars),
             replicas=app.replicas,
             port=app.port,
-            session_factory=session_factory,
+            session_factory=get_session_factory(),
             k8s=k8s,
             github_token=tenant.github_token,
         ),
@@ -127,3 +138,181 @@ async def github_webhook(
     )
 
     return {"status": "queued", "deployment_id": str(deployment.id)}
+
+
+# ---------------------------------------------------------------------------
+# Pull Request handler (preview environments)
+# ---------------------------------------------------------------------------
+
+async def _handle_pull_request(
+    webhook_token: str, request: Request, db: DBSession, k8s: K8sDep
+) -> dict[str, str]:
+    result = await db.execute(
+        select(Application).where(Application.webhook_token == webhook_token)
+    )
+    app = result.scalar_one_or_none()
+    if app is None:
+        raise HTTPException(status_code=404, detail="No application found for this webhook token")
+
+    tenant = await db.get(Tenant, app.tenant_id)
+    if tenant is None:
+        raise HTTPException(status_code=500, detail="Tenant not found for application")
+
+    payload: dict[str, Any] = await request.json()
+    action: str = payload.get("action", "")
+    pr: dict[str, Any] = payload.get("pull_request", {})
+    pr_number: int = pr.get("number", 0)
+    head: dict[str, Any] = pr.get("head", {})
+    branch: str = head.get("ref", "")
+    commit_sha: str = head.get("sha", "unknown")
+    env_name = f"pr-{pr_number}"
+
+    if action in ("opened", "synchronize", "reopened"):
+        return await _upsert_preview(
+            app=app,
+            tenant=tenant,
+            env_name=env_name,
+            pr_number=pr_number,
+            branch=branch,
+            commit_sha=commit_sha,
+            db=db,
+            k8s=k8s,
+        )
+
+    if action in ("closed",):
+        return await _delete_preview(
+            app=app,
+            tenant=tenant,
+            env_name=env_name,
+            db=db,
+            k8s=k8s,
+        )
+
+    logger.info("PR action %s ignored for app=%s pr=%d", action, app.slug, pr_number)
+    return {"status": "ignored", "reason": f"action={action}"}
+
+
+async def _upsert_preview(
+    *,
+    app: Application,
+    tenant: Tenant,
+    env_name: str,
+    pr_number: int,
+    branch: str,
+    commit_sha: str,
+    db: DBSession,
+    k8s: K8sDep,
+) -> dict[str, str]:
+    """Create or update a preview environment, then queue a build+deploy."""
+    # Find or create the Environment record
+    result = await db.execute(
+        select(Environment).where(
+            Environment.application_id == app.id, Environment.name == env_name
+        )
+    )
+    env = result.scalar_one_or_none()
+
+    if env is None:
+        env = Environment(
+            application_id=app.id,
+            name=env_name,
+            env_type=EnvironmentType.preview,
+            branch=branch,
+            pr_number=pr_number,
+            env_vars={},
+        )
+        db.add(env)
+        await db.flush()
+        env.domain = _compute_domain(tenant.slug, app.slug, env)
+
+    # Update branch in case the PR head changed
+    env.branch = branch
+    env.status = EnvironmentStatus.building
+    await db.commit()
+    await db.refresh(env)
+
+    # Merge app env_vars with environment overrides
+    merged_env_vars = {**dict(app.env_vars), **dict(env.env_vars)}
+
+    namespace = _compute_namespace(tenant.slug, env)
+    deployment = Deployment(
+        application_id=app.id,
+        environment_id=env.id,
+        commit_sha=commit_sha,
+        status=DeploymentStatus.PENDING,
+    )
+    db.add(deployment)
+    await db.commit()
+    await db.refresh(deployment)
+
+    logger.info(
+        "Preview deployment queued: app=%s env=%s pr=%d branch=%s commit=%s",
+        app.slug, env_name, pr_number, branch, commit_sha,
+    )
+
+    asyncio.create_task(
+        run_pipeline(
+            deployment_id=deployment.id,
+            app_id=app.id,
+            repo_url=app.repo_url,
+            branch=branch,
+            commit_sha=commit_sha,
+            app_slug=app.slug,
+            tenant_slug=tenant.slug,
+            namespace=namespace,
+            tenant_id=tenant.id,
+            env_vars=merged_env_vars,
+            replicas=env.replicas or app.replicas,
+            port=app.port,
+            session_factory=get_session_factory(),
+            k8s=k8s,
+            github_token=tenant.github_token,
+            environment_id=env.id,
+        ),
+        name=f"pipeline-{deployment.id}",
+    )
+
+    return {
+        "status": "queued",
+        "deployment_id": str(deployment.id),
+        "environment": env_name,
+        "url": env.domain or "",
+    }
+
+
+async def _delete_preview(
+    *,
+    app: Application,
+    tenant: Tenant,
+    env_name: str,
+    db: DBSession,
+    k8s: K8sDep,
+) -> dict[str, str]:
+    """Delete a preview environment when PR is closed."""
+    result = await db.execute(
+        select(Environment).where(
+            Environment.application_id == app.id, Environment.name == env_name
+        )
+    )
+    env = result.scalar_one_or_none()
+    if env is None:
+        logger.info("No preview environment %s to delete", env_name)
+        return {"status": "ignored", "reason": "no preview environment found"}
+
+    env.status = EnvironmentStatus.deleting
+    await db.commit()
+
+    # Delete K8s namespace (removes all resources)
+    namespace = _compute_namespace(tenant.slug, env)
+    if k8s.is_available() and k8s.core_v1 is not None:
+        try:
+            k8s.core_v1.delete_namespace(namespace)
+            logger.info("Deleted K8s namespace %s for preview %s", namespace, env_name)
+        except Exception:
+            logger.warning("Could not delete namespace %s — may not exist", namespace)
+
+    await db.delete(env)
+    await db.commit()
+
+    logger.info("Preview environment %s deleted for app=%s", env_name, app.slug)
+    return {"status": "deleted", "environment": env_name}

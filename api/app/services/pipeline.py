@@ -17,6 +17,7 @@ from app.config import settings
 from app.k8s.client import K8sClient
 from app.models.application import Application
 from app.models.deployment import Deployment, DeploymentStatus
+from app.models.environment import Environment, EnvironmentStatus
 from app.services.argocd_service import ArgoCDService
 from app.services.build_service import BuildService
 from app.services.deploy_service import DeployService, get_service_secret_names
@@ -60,6 +61,8 @@ async def run_pipeline(
     min_replicas: int = 1,
     max_replicas: int = 5,
     cpu_threshold: int = 70,
+    # Optional: environment context (staging/preview)
+    environment_id: uuid.UUID | None = None,
 ) -> None:
     """Run full build → deploy pipeline, persisting status to DB at each step."""
     harbor_host = settings.harbor_url.removeprefix("https://").removeprefix("http://")
@@ -91,7 +94,7 @@ async def run_pipeline(
         )
     except Exception as exc:
         logger.exception("Failed to submit build job for deployment %s", deployment_id)
-        await _fail(deployment_id, str(exc), session_factory)
+        await _fail(deployment_id, str(exc), session_factory, environment_id)
         return
 
     async with session_factory() as db:
@@ -109,7 +112,7 @@ async def run_pipeline(
         if all_logs:
             error_msg += f"\n\n{all_logs[-3000:]}"
         logger.error(error_msg)
-        await _fail(deployment_id, error_msg, session_factory)
+        await _fail(deployment_id, error_msg, session_factory, environment_id)
         return
 
     # --- DEPLOYING ------------------------------------------------------
@@ -174,7 +177,7 @@ async def run_pipeline(
             )
     except Exception as exc:
         logger.exception("Deploy failed for deployment %s", deployment_id)
-        await _fail(deployment_id, str(exc), session_factory)
+        await _fail(deployment_id, str(exc), session_factory, environment_id)
         return
 
     # --- WAIT FOR READY -------------------------------------------------
@@ -187,7 +190,7 @@ async def run_pipeline(
 
     if not ready:
         logger.error("Deployment not ready: %s (deployment=%s)", msg, deployment_id)
-        await _fail(deployment_id, msg, session_factory)
+        await _fail(deployment_id, msg, session_factory, environment_id)
         return
 
     # --- RUNNING --------------------------------------------------------
@@ -201,6 +204,14 @@ async def run_pipeline(
         if app:
             app.image_tag = image_name
             await db.commit()
+
+        # Update environment status if this is a scoped deployment
+        if environment_id is not None:
+            env = await db.get(Environment, environment_id)
+            if env:
+                env.status = EnvironmentStatus.running
+                env.last_image_tag = image_name
+                await db.commit()
 
     logger.info(
         "Pipeline complete: deployment=%s image=%s namespace=%s app=%s mode=%s",
@@ -216,6 +227,7 @@ async def _fail(
     deployment_id: uuid.UUID,
     error_message: str,
     session_factory: async_sessionmaker[AsyncSession],
+    environment_id: uuid.UUID | None = None,
 ) -> None:
     async with session_factory() as db:
         deployment = await db.get(Deployment, deployment_id)
@@ -223,3 +235,9 @@ async def _fail(
             deployment.status = DeploymentStatus.FAILED
             deployment.error_message = error_message[:4096]
             await db.commit()
+
+        if environment_id is not None:
+            env = await db.get(Environment, environment_id)
+            if env:
+                env.status = EnvironmentStatus.failed
+                await db.commit()

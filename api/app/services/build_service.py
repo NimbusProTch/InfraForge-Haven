@@ -5,7 +5,6 @@ import uuid
 from kubernetes import client as k8s_client_lib
 from kubernetes.client.exceptions import ApiException
 
-from app.config import settings
 from app.k8s.client import K8sClient
 
 logger = logging.getLogger(__name__)
@@ -325,12 +324,6 @@ class BuildService:
                 ],
             ),
         ]
-
-        # BuildKit cache repo for layer caching
-        cache_repo = (
-            f"{settings.harbor_url.removeprefix('https://').removeprefix('http://')}"
-            f"/{settings.harbor_project}/cache"
-        )
 
         buildctl_container = k8s_client_lib.V1Container(
             name="buildctl",

@@ -2,7 +2,7 @@
 
 import uuid
 from collections.abc import AsyncGenerator
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 import pytest_asyncio
@@ -17,6 +17,21 @@ from app.models.base import Base
 from app.models.tenant import Tenant
 
 TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
+
+
+# ---------------------------------------------------------------------------
+# Global patch: prevent real run_pipeline from creating unawaited coroutines
+# in webhook tests. Each test that needs to verify pipeline behaviour can
+# re-patch locally.
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(autouse=True)
+def _patch_pipeline_globally():
+    """Patch run_pipeline with a plain MagicMock so asyncio.create_task receives
+    a non-coroutine value and no unawaited-coroutine RuntimeWarnings are raised."""
+    with patch("app.routers.webhooks.run_pipeline", MagicMock(return_value=None)):
+        yield
 
 
 # ---------------------------------------------------------------------------

@@ -1,6 +1,9 @@
 from app.models.application import Application
 from app.models.base import Base
 from app.models.deployment import BuildJob, Deployment
+from app.models.environment import Environment
+from app.models.managed_service import ManagedService
 from app.models.tenant import Tenant
+from app.models.tenant_member import TenantMember
 
-__all__ = ["Base", "Tenant", "Application", "Deployment", "BuildJob"]
+__all__ = ["Base", "Tenant", "Application", "Deployment", "BuildJob", "Environment", "ManagedService", "TenantMember"]

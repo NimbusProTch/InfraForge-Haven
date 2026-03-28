@@ -3,7 +3,7 @@
 import asyncio
 import logging
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
@@ -65,8 +65,8 @@ def _format_age(created_at) -> str:  # type: ignore[return]
         return "unknown"
     try:
         if hasattr(created_at, "tzinfo") and created_at.tzinfo is None:
-            created_at = created_at.replace(tzinfo=timezone.utc)
-        now = datetime.now(tz=timezone.utc)
+            created_at = created_at.replace(tzinfo=UTC)
+        now = datetime.now(tz=UTC)
         delta = now - created_at
         seconds = int(delta.total_seconds())
         if seconds < 60:
@@ -296,9 +296,9 @@ async def get_events(
         first_time = ev.first_timestamp
         last_time = ev.last_timestamp
         if first_time and hasattr(first_time, "tzinfo") and first_time.tzinfo is None:
-            first_time = first_time.replace(tzinfo=timezone.utc)
+            first_time = first_time.replace(tzinfo=UTC)
         if last_time and hasattr(last_time, "tzinfo") and last_time.tzinfo is None:
-            last_time = last_time.replace(tzinfo=timezone.utc)
+            last_time = last_time.replace(tzinfo=UTC)
 
         app_events.append(
             AppEvent(
@@ -314,7 +314,7 @@ async def get_events(
 
     # Sort newest first (by last_time, fall back to first_time)
     def _sort_key(e: AppEvent):
-        return e.last_time or e.first_time or datetime.min.replace(tzinfo=timezone.utc)
+        return e.last_time or e.first_time or datetime.min.replace(tzinfo=UTC)
 
     app_events.sort(key=_sort_key, reverse=True)
 
