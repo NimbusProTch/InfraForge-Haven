@@ -1,0 +1,74 @@
+# =============================================================================
+# Haven Platform - Tenant Admin Role (IS4-02)
+# =============================================================================
+# Bound to Keycloak OIDC group: oidc:tenant_{SLUG}_admin
+# Permissions: full namespace-scoped access (deploy, scale, logs, services)
+#
+# This is a template. The Haven API generates per-tenant Role/RoleBinding
+# objects via TenantService._create_rbac() using the tenant slug.
+#
+# OIDC group naming convention:
+#   Keycloak group:  tenant_{slug}_admin
+#   K8s subject:     oidc:tenant_{slug}_admin   (prefix: "oidc:")
+# =============================================================================
+
+# --- Role: full namespace access ---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: haven-tenant-admin
+  namespace: tenant-SLUG  # replaced by API at provision time
+  labels:
+    haven.io/managed: "true"
+    haven.io/role-type: "tenant-admin"
+rules:
+  # Core workload management
+  - apiGroups: ["", "apps", "batch", "autoscaling"]
+    resources:
+      - pods
+      - pods/log
+      - pods/exec
+      - pods/portforward
+      - deployments
+      - statefulsets
+      - daemonsets
+      - replicasets
+      - jobs
+      - cronjobs
+      - horizontalpodautoscalers
+      - services
+      - endpoints
+      - configmaps
+      - persistentvolumeclaims
+      - events
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  # Secrets: read-only (no create — prevents exfiltrating cluster secrets)
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "list", "watch"]
+  # Networking: HTTPRoutes, NetworkPolicies
+  - apiGroups: ["gateway.networking.k8s.io"]
+    resources: ["httproutes", "grpcroutes", "tcproutes"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["cilium.io"]
+    resources: ["ciliumnetworkpolicies"]
+    verbs: ["get", "list", "watch"]
+
+---
+# --- RoleBinding: bind to OIDC group tenant_{slug}_admin ---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: haven-tenant-admin-binding
+  namespace: tenant-SLUG  # replaced by API at provision time
+  labels:
+    haven.io/managed: "true"
+    haven.io/role-type: "tenant-admin"
+subjects:
+  - kind: Group
+    name: "oidc:tenant_SLUG_admin"  # Keycloak group → K8s group via OIDC prefix
+    apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: Role
+  name: haven-tenant-admin
+  apiGroup: rbac.authorization.k8s.io

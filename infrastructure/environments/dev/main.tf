@@ -19,19 +19,25 @@ locals {
   # First master gets a static private IP for other nodes to join
   first_master_private_ip = "10.0.1.10"
 
-  # sslip.io hostnames (replaced by External-DNS + real domain in production)
+  # IS5-02: Hostname resolution — sslip.io (dev) or real domain (prod)
+  # Toggle: set use_real_domain = true + domain = "yourdomain.com" in terraform.tfvars
+  # sslip.io: LB IP encoded in hostname (no DNS record needed, great for dev)
+  # real domain: External-DNS + Cloudflare manages DNS automatically (IS5-01)
   lb_dns = module.hetzner_infra.load_balancer_ip
-  harbor_host    = "harbor.${local.lb_dns}.sslip.io"
-  argocd_host    = "argocd.${local.lb_dns}.sslip.io"
-  keycloak_host  = "keycloak.${local.lb_dns}.sslip.io"
-  api_host       = "api.${local.lb_dns}.sslip.io"
-  ui_host        = "ui.${local.lb_dns}.sslip.io"
-  minio_host     = "minio.${local.lb_dns}.sslip.io"
-  s3_host        = "s3.${local.lb_dns}.sslip.io"
-  everest_host   = "everest.${local.lb_dns}.sslip.io"
-  grafana_host   = "grafana.${local.lb_dns}.sslip.io"
-  longhorn_host  = "longhorn.${local.lb_dns}.sslip.io"
-  hubble_host    = "hubble.${local.lb_dns}.sslip.io"
+  _sslip_suffix = "${local.lb_dns}.sslip.io"
+  _domain_suffix = var.domain
+
+  harbor_host    = var.use_real_domain ? "harbor.${local._domain_suffix}"    : "harbor.${local._sslip_suffix}"
+  argocd_host    = var.use_real_domain ? "argocd.${local._domain_suffix}"    : "argocd.${local._sslip_suffix}"
+  keycloak_host  = var.use_real_domain ? "keycloak.${local._domain_suffix}"  : "keycloak.${local._sslip_suffix}"
+  api_host       = var.use_real_domain ? "api.${local._domain_suffix}"       : "api.${local._sslip_suffix}"
+  ui_host        = var.use_real_domain ? "ui.${local._domain_suffix}"        : "ui.${local._sslip_suffix}"
+  minio_host     = var.use_real_domain ? "minio.${local._domain_suffix}"     : "minio.${local._sslip_suffix}"
+  s3_host        = var.use_real_domain ? "s3.${local._domain_suffix}"        : "s3.${local._sslip_suffix}"
+  everest_host   = var.use_real_domain ? "everest.${local._domain_suffix}"   : "everest.${local._sslip_suffix}"
+  grafana_host   = var.use_real_domain ? "grafana.${local._domain_suffix}"   : "grafana.${local._sslip_suffix}"
+  longhorn_host  = var.use_real_domain ? "longhorn.${local._domain_suffix}"  : "longhorn.${local._sslip_suffix}"
+  hubble_host    = var.use_real_domain ? "hubble.${local._domain_suffix}"    : "hubble.${local._sslip_suffix}"
 }
 
 # --- 1. SSH Key ---
@@ -212,6 +218,17 @@ disable-kube-proxy: true
 profile: cis
 protect-kernel-defaults: true
 write-kubeconfig-mode: "0644"
+secrets-encryption: true
+${var.enable_oidc ? <<-OIDCEOF
+kube-apiserver-arg:
+  - "oidc-issuer-url=https://${local.keycloak_host}/realms/haven"
+  - "oidc-client-id=kubernetes"
+  - "oidc-username-claim=preferred_username"
+  - "oidc-groups-claim=groups"
+  - "oidc-username-prefix=oidc:"
+  - "oidc-groups-prefix=oidc:"
+OIDCEOF
+: ""}
 RKEEOF
 
       mkdir -p /var/lib/rancher/rke2/server/manifests
@@ -238,6 +255,14 @@ spec:
         enabled: true
     ipam:
       mode: kubernetes
+    ${var.enable_wireguard_encryption ? <<-WGEOF
+    encryption:
+      enabled: true
+      type: wireguard
+      wireguard:
+        userspaceFallback: true
+    WGEOF
+: ""}
     tolerations:
       - operator: Exists
 CILEOF
@@ -298,6 +323,17 @@ disable-kube-proxy: true
 profile: cis
 protect-kernel-defaults: true
 write-kubeconfig-mode: "0644"
+secrets-encryption: true
+${var.enable_oidc ? <<-OIDCEOF
+kube-apiserver-arg:
+  - "oidc-issuer-url=https://${local.keycloak_host}/realms/haven"
+  - "oidc-client-id=kubernetes"
+  - "oidc-username-claim=preferred_username"
+  - "oidc-groups-claim=groups"
+  - "oidc-username-prefix=oidc:"
+  - "oidc-groups-prefix=oidc:"
+OIDCEOF
+: ""}
 RKEEOF
 
       curl -sfL https://get.rke2.io | INSTALL_RKE2_VERSION=${var.kubernetes_version} sh -

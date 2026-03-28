@@ -1,0 +1,69 @@
+# =============================================================================
+# Haven Platform - Tenant Developer Role (IS4-02)
+# =============================================================================
+# Bound to Keycloak OIDC group: oidc:tenant_{SLUG}_developer
+# Permissions: deploy + view (can push code, cannot manage infrastructure)
+#
+# OIDC group naming convention:
+#   Keycloak group:  tenant_{slug}_developer
+#   K8s subject:     oidc:tenant_{slug}_developer   (prefix: "oidc:")
+# =============================================================================
+
+# --- Role: deploy + read access ---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: haven-tenant-developer
+  namespace: tenant-SLUG  # replaced by API at provision time
+  labels:
+    haven.io/managed: "true"
+    haven.io/role-type: "tenant-developer"
+rules:
+  # Read everything
+  - apiGroups: ["", "apps", "batch", "autoscaling"]
+    resources:
+      - pods
+      - pods/log
+      - deployments
+      - statefulsets
+      - replicasets
+      - jobs
+      - cronjobs
+      - horizontalpodautoscalers
+      - services
+      - endpoints
+      - configmaps
+      - events
+      - persistentvolumeclaims
+    verbs: ["get", "list", "watch"]
+  # Can exec into pods (debugging)
+  - apiGroups: [""]
+    resources: ["pods/exec", "pods/portforward"]
+    verbs: ["create"]
+  # Can update deployments (rollout restart, image update)
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "list", "watch", "update", "patch"]
+  # ConfigMaps: create/update (app config)
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
+
+---
+# --- RoleBinding: bind to OIDC group tenant_{slug}_developer ---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: haven-tenant-developer-binding
+  namespace: tenant-SLUG  # replaced by API at provision time
+  labels:
+    haven.io/managed: "true"
+    haven.io/role-type: "tenant-developer"
+subjects:
+  - kind: Group
+    name: "oidc:tenant_SLUG_developer"  # Keycloak group → K8s group via OIDC prefix
+    apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: Role
+  name: haven-tenant-developer
+  apiGroup: rbac.authorization.k8s.io

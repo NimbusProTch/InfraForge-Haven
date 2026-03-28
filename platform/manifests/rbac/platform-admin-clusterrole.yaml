@@ -1,0 +1,35 @@
+# =============================================================================
+# Haven Platform - Platform Admin ClusterRole (IS4-02)
+# =============================================================================
+# Bound to Keycloak OIDC group: oidc:haven_admins
+# Permissions: cluster-admin equivalent (full cluster access)
+#
+# Apply once after Keycloak OIDC is configured:
+#   kubectl apply -f platform/manifests/rbac/platform-admin-clusterrole.yaml
+#
+# OIDC group naming convention:
+#   Keycloak group:  haven_admins
+#   K8s subject:     oidc:haven_admins   (prefix: "oidc:")
+#
+# Keycloak setup (performed via Haven API or keycloak admin console):
+#   1. Create group "haven_admins" in realm "haven"
+#   2. Add "groups" claim to Keycloak "kubernetes" OIDC client token mapper
+#   3. Assign platform admins to group "haven_admins"
+# =============================================================================
+
+# --- ClusterRoleBinding: platform admins get cluster-admin ---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: haven-platform-admins
+  labels:
+    haven.io/managed: "true"
+    haven.io/role-type: "platform-admin"
+subjects:
+  - kind: Group
+    name: "oidc:haven_admins"  # Keycloak group → K8s group via OIDC prefix
+    apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: ClusterRole
+  name: cluster-admin  # Built-in K8s ClusterRole
+  apiGroup: rbac.authorization.k8s.io
