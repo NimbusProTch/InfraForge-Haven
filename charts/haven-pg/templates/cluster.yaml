@@ -1,0 +1,48 @@
+{{- $name := include "haven-pg.name" . }}
+{{- $backupEnabled := eq (include "haven-pg.backupEnabled" .) "true" }}
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: {{ $name }}
+  namespace: {{ include "haven-pg.namespace" . }}
+  labels:
+    {{- include "haven-pg.labels" . | nindent 4 }}
+spec:
+  instances: {{ include "haven-pg.instances" . }}
+
+  postgresql:
+    parameters:
+      {{- range $k, $v := .Values.parameters }}
+      {{ $k }}: {{ $v | quote }}
+      {{- end }}
+
+  storage:
+    storageClass: {{ .Values.storage.storageClass }}
+    size: {{ include "haven-pg.storageSize" . }}
+
+  bootstrap:
+    initdb:
+      database: {{ $name | replace "-" "_" }}
+      owner: {{ $name | replace "-" "_" }}_user
+
+  affinity:
+    tolerations:
+      {{- toYaml .Values.tolerations | nindent 6 }}
+
+  {{- if $backupEnabled }}
+  backup:
+    barmanObjectStore:
+      destinationPath: {{ include "haven-pg.s3Destination" . | quote }}
+      endpointURL: {{ .Values.backup.endpointURL | quote }}
+      s3Credentials:
+        accessKeyId:
+          name: {{ .Values.backup.credentialsSecret }}
+          key: ACCESS_KEY_ID
+        secretAccessKey:
+          name: {{ .Values.backup.credentialsSecret }}
+          key: ACCESS_SECRET_KEY
+      wal:
+        compression: {{ .Values.backup.wal.compression }}
+        maxParallel: {{ .Values.backup.wal.maxParallel }}
+    retentionPolicy: {{ .Values.backup.retentionPolicy | quote }}
+  {{- end }}

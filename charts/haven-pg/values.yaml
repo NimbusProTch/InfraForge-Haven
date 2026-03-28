@@ -1,0 +1,61 @@
+# haven-pg/values.yaml — Default values for a Haven PostgreSQL cluster.
+# Override per-tenant via gitops/tenants/{slug}/apps/{app}/values.yaml
+
+# Cluster identity
+name: ""          # Required: e.g. "utrecht-pg"
+namespace: ""     # Required: e.g. "tenant-utrecht"
+tenantSlug: ""    # Required: e.g. "utrecht" (used in S3 path)
+
+# Tier: dev | prod
+# dev  → 1 instance, 5 Gi storage, no backup
+# prod → 3 instances, 20 Gi storage, backup enabled
+tier: dev
+
+# PostgreSQL version (major)
+postgresVersion: "16"
+
+# Resource sizing
+instances: 1          # overridden by tier if not set explicitly
+storage:
+  size: 5Gi
+  storageClass: longhorn
+
+# PostgreSQL parameters
+parameters:
+  max_connections: "200"
+  shared_buffers: "256MB"
+
+# ---------------------------------------------------------------------------
+# Backup configuration
+# ---------------------------------------------------------------------------
+backup:
+  # Set to true to enable barman object-store backup (MinIO S3)
+  enabled: false   # auto-set to true when tier=prod
+
+  # MinIO / S3 connection
+  endpointURL: "http://minio.minio-system.svc:9000"
+  bucketName: "haven-backups"
+
+  # Credentials K8s Secret (created by setup-minio-backup-bucket.sh)
+  credentialsSecret: "backup-s3-credentials"
+
+  # WAL archiving
+  wal:
+    compression: gzip
+    maxParallel: 2
+
+  # Retention policy (CNPG format)
+  retentionPolicy: "30d"
+
+  # Scheduled backup (cron, UTC)
+  schedule: "0 2 * * *"   # 02:00 UTC daily
+
+  # Point-in-time recovery window
+  # Keep WAL segments for this many days beyond the last base backup
+  pitrWindowDays: 7
+
+# ---------------------------------------------------------------------------
+# Tolerations (CIS hardened nodes)
+# ---------------------------------------------------------------------------
+tolerations:
+  - operator: "Exists"
