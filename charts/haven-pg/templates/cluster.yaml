@@ -1,46 +1,48 @@
+{{- $name := include "haven-pg.name" . }}
+{{- $backupEnabled := eq (include "haven-pg.backupEnabled" .) "true" }}
 apiVersion: postgresql.cnpg.io/v1
 kind: Cluster
 metadata:
-  name: {{ .Values.name }}
-  namespace: {{ .Values.namespace }}
+  name: {{ $name }}
+  namespace: {{ include "haven-pg.namespace" . }}
   labels:
     {{- include "haven-pg.labels" . | nindent 4 }}
 spec:
-  instances: {{ .Values.postgres.instances }}
-  imageName: ghcr.io/cloudnative-pg/postgresql:{{ .Values.postgres.version }}
-  storage:
-    storageClass: {{ .Values.postgres.storageClass }}
-    size: {{ .Values.postgres.storage }}
+  instances: {{ include "haven-pg.instances" . }}
+
   postgresql:
     parameters:
-      max_connections: "200"
-      shared_buffers: "256MB"
-  resources:
-    requests:
-      cpu: {{ .Values.postgres.resources.requests.cpu }}
-      memory: {{ .Values.postgres.resources.requests.memory }}
-    limits:
-      cpu: {{ .Values.postgres.resources.limits.cpu }}
-      memory: {{ .Values.postgres.resources.limits.memory }}
+      {{- range $k, $v := .Values.parameters }}
+      {{ $k }}: {{ $v | quote }}
+      {{- end }}
+
+  storage:
+    storageClass: {{ .Values.storage.storageClass }}
+    size: {{ include "haven-pg.storageSize" . }}
+
   bootstrap:
     initdb:
-      database: {{ .Values.name | replace "-" "_" }}
-      owner: {{ .Values.name | replace "-" "_" }}_user
+      database: {{ $name | replace "-" "_" }}
+      owner: {{ $name | replace "-" "_" }}_user
+
   affinity:
     tolerations:
-      - operator: "Exists"
-  {{- if .Values.backup.enabled }}
+      {{- toYaml .Values.tolerations | nindent 6 }}
+
+  {{- if $backupEnabled }}
   backup:
     barmanObjectStore:
-      destinationPath: "s3://{{ .Values.backup.bucket }}/{{ .Values.name }}"
+      destinationPath: {{ include "haven-pg.s3Destination" . | quote }}
+      endpointURL: {{ .Values.backup.endpointURL | quote }}
       s3Credentials:
         accessKeyId:
-          name: minio-backup-credentials
+          name: {{ .Values.backup.credentialsSecret }}
           key: ACCESS_KEY_ID
         secretAccessKey:
-          name: minio-backup-credentials
+          name: {{ .Values.backup.credentialsSecret }}
           key: ACCESS_SECRET_KEY
       wal:
-        compression: gzip
-    retentionPolicy: "{{ .Values.backup.retentionDays }}d"
+        compression: {{ .Values.backup.wal.compression }}
+        maxParallel: {{ .Values.backup.wal.maxParallel }}
+    retentionPolicy: {{ .Values.backup.retentionPolicy | quote }}
   {{- end }}

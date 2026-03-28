@@ -1,0 +1,19 @@
+{{- $backupEnabled := eq (include "haven-pg.backupEnabled" .) "true" }}
+{{- if $backupEnabled }}
+---
+# ScheduledBackup — daily base backup via barman object store
+apiVersion: postgresql.cnpg.io/v1
+kind: ScheduledBackup
+metadata:
+  name: {{ include "haven-pg.name" . }}-scheduled
+  namespace: {{ include "haven-pg.namespace" . }}
+  labels:
+    {{- include "haven-pg.labels" . | nindent 4 }}
+spec:
+  schedule: {{ .Values.backup.schedule | quote }}
+  backupOwnerReference: self
+  cluster:
+    name: {{ include "haven-pg.name" . }}
+  method: barmanObjectStore
+  immediate: false
+{{- end }}

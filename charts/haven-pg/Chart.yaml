@@ -1,13 +1,19 @@
 apiVersion: v2
 name: haven-pg
-description: Haven Platform managed PostgreSQL chart (CNPG Cluster)
+description: >
+  Haven-managed PostgreSQL cluster via CloudNativePG (CNPG).
+  Wraps the CNPG Cluster CRD and ScheduledBackup with sane defaults
+  for Haven tenants, including MinIO barman object-store backup support.
 type: application
 version: 0.1.0
 appVersion: "16"
 keywords:
-  - haven
   - postgresql
   - cnpg
-  - database
+  - haven
+  - backup
+home: https://cloudnative-pg.io
+sources:
+  - https://github.com/cloudnative-pg/cloudnative-pg
 maintainers:
   - name: Haven Platform Team
