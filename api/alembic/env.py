@@ -20,11 +20,20 @@ if os.environ.get("DATABASE_URL"):
 
 # Import all models so Alembic can detect them
 from app.models.application import Application  # noqa: E402, F401
+from app.models.audit_log import AuditLog  # noqa: E402, F401
 from app.models.base import Base  # noqa: E402
+from app.models.cluster import Cluster  # noqa: E402, F401
+from app.models.cronjob import CronJob  # noqa: E402, F401
+from app.models.data_retention_policy import DataRetentionPolicy  # noqa: E402, F401
 from app.models.deployment import BuildJob, Deployment  # noqa: E402, F401
+from app.models.domain import DomainVerification  # noqa: E402, F401
+from app.models.environment import Environment  # noqa: E402, F401
 from app.models.managed_service import ManagedService  # noqa: E402, F401
+from app.models.organization import Organization, OrganizationMember, OrgTenantMembership, SSOConfig  # noqa: E402, F401
 from app.models.tenant import Tenant  # noqa: E402, F401
 from app.models.tenant_member import TenantMember  # noqa: E402, F401
+from app.models.usage_record import UsageRecord  # noqa: E402, F401
+from app.models.user_consent import UserConsent  # noqa: E402, F401
 
 target_metadata = Base.metadata
 
