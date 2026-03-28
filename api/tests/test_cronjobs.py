@@ -9,6 +9,7 @@ import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.auth.jwt import verify_token
 from app.deps import get_db, get_k8s
 from app.main import app
 from app.models.application import Application
@@ -34,6 +35,7 @@ async def k8s_client(db_session: AsyncSession) -> AsyncGenerator[AsyncClient, No
 
     app.dependency_overrides[get_db] = _override_db
     app.dependency_overrides[get_k8s] = lambda: mock_k8s
+    app.dependency_overrides[verify_token] = lambda: {"sub": "test-user", "email": "test@haven.nl"}
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         yield client
