@@ -42,6 +42,12 @@ class ApplicationCreate(BaseModel):
     cpu_threshold: int = Field(default=70, ge=10, le=100)
     auto_deploy: bool = Field(default=True)
 
+    # Sprint 11: advanced deploy
+    app_type: str = Field(default="web", pattern=r"^(web|worker|cronjob)$")
+    canary_enabled: bool = Field(default=False)
+    canary_weight: int = Field(default=10, ge=0, le=100)
+    volumes: list[dict] | None = Field(default=None)
+
 
 class ApplicationUpdate(BaseModel):
     name: str | None = Field(default=None, max_length=255)
@@ -67,6 +73,12 @@ class ApplicationUpdate(BaseModel):
     max_replicas: int | None = Field(default=None, ge=1, le=100)
     cpu_threshold: int | None = Field(default=None, ge=10, le=100)
     auto_deploy: bool | None = None
+
+    # Sprint 11: advanced deploy
+    app_type: str | None = Field(default=None, pattern=r"^(web|worker|cronjob)$")
+    canary_enabled: bool | None = None
+    canary_weight: int | None = Field(default=None, ge=0, le=100)
+    volumes: list[dict] | None = None
 
 
 class ApplicationResponse(BaseModel):
@@ -101,6 +113,12 @@ class ApplicationResponse(BaseModel):
     max_replicas: int = 5
     cpu_threshold: int = 70
     auto_deploy: bool = True
+
+    # Sprint 11: advanced deploy
+    app_type: str = "web"
+    canary_enabled: bool = False
+    canary_weight: int = 10
+    volumes: list[dict] | None = None
 
     created_at: datetime
     updated_at: datetime

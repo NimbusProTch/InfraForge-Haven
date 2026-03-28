@@ -53,6 +53,10 @@ async def create_application(
         env_vars=body.env_vars,
         replicas=body.replicas,
         port=body.port,
+        app_type=body.app_type,
+        canary_enabled=body.canary_enabled,
+        canary_weight=body.canary_weight,
+        volumes=body.volumes,
     )
     db.add(app)
     await db.commit()

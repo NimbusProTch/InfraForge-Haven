@@ -1,13 +1,15 @@
 import secrets
 import uuid
+from enum import StrEnum as PyEnum
 from typing import TYPE_CHECKING
 
-from sqlalchemy import JSON, Boolean, ForeignKey, Integer, String
+from sqlalchemy import JSON, Boolean, Enum, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TimestampMixin
 
 if TYPE_CHECKING:
+    from app.models.cronjob import CronJob
     from app.models.deployment import Deployment
     from app.models.domain import DomainVerification
     from app.models.environment import Environment
@@ -16,6 +18,12 @@ if TYPE_CHECKING:
 
 def _generate_webhook_token() -> str:
     return secrets.token_hex(32)
+
+
+class AppType(PyEnum):
+    WEB = "web"
+    WORKER = "worker"
+    CRONJOB = "cronjob"
 
 
 class Application(Base, TimestampMixin):
@@ -54,6 +62,19 @@ class Application(Base, TimestampMixin):
     cpu_threshold: Mapped[int] = mapped_column(Integer, default=70)
     auto_deploy: Mapped[bool] = mapped_column(Boolean, default=True)
 
+    # Sprint 11: App type
+    app_type: Mapped[str] = mapped_column(
+        Enum(AppType, values_callable=lambda e: [x.value for x in e]),
+        default=AppType.WEB.value,
+    )
+
+    # Sprint 11: Canary deploy
+    canary_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    canary_weight: Mapped[int] = mapped_column(Integer, default=10)
+
+    # Sprint 11: Persistent volumes (JSON array of {name, mount_path, size_gi})
+    volumes: Mapped[list | None] = mapped_column(JSON, nullable=True, default=None)
+
     tenant: Mapped["Tenant"] = relationship(back_populates="applications")
     deployments: Mapped[list["Deployment"]] = relationship(
         back_populates="application", cascade="all, delete-orphan"
@@ -62,5 +83,8 @@ class Application(Base, TimestampMixin):
         back_populates="application", cascade="all, delete-orphan"
     )
     domains: Mapped[list["DomainVerification"]] = relationship(
+        back_populates="application", cascade="all, delete-orphan"
+    )
+    cronjobs: Mapped[list["CronJob"]] = relationship(
         back_populates="application", cascade="all, delete-orphan"
     )
