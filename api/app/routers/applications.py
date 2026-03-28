@@ -1,19 +1,51 @@
 import logging
 
+import yaml
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy import select
 
-from app.deps import CurrentUser, DBSession, K8sDep
+from app.config import settings
+from app.deps import CurrentUser, DBSession, GitQueueDep, K8sDep
 from app.models.application import Application
 from app.models.managed_service import ManagedService, ServiceStatus
 from app.models.tenant import Tenant
 from app.schemas.application import ApplicationCreate, ApplicationResponse, ApplicationUpdate
+from app.services.git_queue_service import GitOperation, GitQueueService
 from app.services.gitops_scaffold import gitops_scaffold
+from app.services.helm_values_builder import render_app_values
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/tenants/{tenant_slug}/apps", tags=["applications"])
+
+
+async def _enqueue_app_values_update(
+    queue: GitQueueService,
+    tenant_slug: str,
+    app: Application,
+    reason: str,
+) -> None:
+    """Enqueue a values.yaml UPDATE_FILE job for an application."""
+    try:
+        values = render_app_values(app, tenant_slug)
+        content = yaml.dump(values, default_flow_style=False, sort_keys=False)
+        await queue.enqueue(
+            GitOperation.UPDATE_FILE,
+            {
+                "tenant_slug": tenant_slug,
+                "app_slug": app.slug,
+                "values": values,
+                "repo": settings.gitea_gitops_repo,
+                "path": f"gitops/tenants/{tenant_slug}/{app.slug}/values.yaml",
+                "commit_message": f"[haven] update {tenant_slug}/{app.slug} — {reason}",
+                "author": "Haven Platform <haven@haven.dev>",
+                "content": content,
+            },
+        )
+        logger.info("Enqueued gitops update for %s/%s (%s)", tenant_slug, app.slug, reason)
+    except Exception:
+        logger.exception("Failed to enqueue gitops update for %s/%s", tenant_slug, app.slug)
 
 
 async def _get_tenant_or_404(tenant_slug: str, db: DBSession) -> Tenant:
@@ -96,7 +128,12 @@ async def get_application(tenant_slug: str, app_slug: str, db: DBSession, curren
 
 @router.patch("/{app_slug}", response_model=ApplicationResponse)
 async def update_application(
-    tenant_slug: str, app_slug: str, body: ApplicationUpdate, db: DBSession, current_user: CurrentUser
+    tenant_slug: str,
+    app_slug: str,
+    body: ApplicationUpdate,
+    db: DBSession,
+    current_user: CurrentUser,
+    queue: GitQueueDep,
 ) -> Application:
     tenant = await _get_tenant_or_404(tenant_slug, db)
     result = await db.execute(
@@ -108,11 +145,22 @@ async def update_application(
     if app is None:
         raise HTTPException(status_code=404, detail="Application not found")
 
-    for field, value in body.model_dump(exclude_none=True).items():
+    updated_fields = body.model_dump(exclude_none=True)
+    for field, value in updated_fields.items():
         setattr(app, field, value)
 
     await db.commit()
     await db.refresh(app)
+
+    # Enqueue values.yaml update for any config change
+    if queue is not None and updated_fields:
+        gitops_fields = {"env_vars", "replicas", "port", "resources", "custom_domain",
+                         "health_check_path", "resource_cpu_request", "resource_cpu_limit",
+                         "resource_memory_request", "resource_memory_limit",
+                         "min_replicas", "max_replicas", "cpu_threshold"}
+        if updated_fields.keys() & gitops_fields:
+            await _enqueue_app_values_update(queue, tenant_slug, app, "config update")
+
     return app
 
 
@@ -164,6 +212,7 @@ async def connect_service(
     body: _ConnectServiceBody,
     db: DBSession,
     current_user: CurrentUser,
+    queue: GitQueueDep,
 ) -> Application:
     """Attach a managed service secret to an app's envFrom list."""
     tenant = await _get_tenant_or_404(tenant_slug, db)
@@ -197,6 +246,10 @@ async def connect_service(
         app.env_from_secrets = existing
         await db.commit()
         await db.refresh(app)
+
+    if queue is not None:
+        await _enqueue_app_values_update(queue, tenant_slug, app, f"connect service {svc.name}")
+
     return app
 
 
@@ -207,6 +260,7 @@ async def disconnect_service(
     service_name: str,
     db: DBSession,
     current_user: CurrentUser,
+    queue: GitQueueDep,
 ) -> None:
     """Remove a managed service secret from an app's envFrom list."""
     tenant = await _get_tenant_or_404(tenant_slug, db)
@@ -216,3 +270,7 @@ async def disconnect_service(
     updated = [e for e in existing if e.get("service_name") != service_name]
     app.env_from_secrets = updated or None
     await db.commit()
+    await db.refresh(app)
+
+    if queue is not None:
+        await _enqueue_app_values_update(queue, tenant_slug, app, f"disconnect service {service_name}")

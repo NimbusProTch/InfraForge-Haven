@@ -54,6 +54,9 @@ class Settings(BaseSettings):
     argocd_url: str = "http://argocd-server.argocd.svc.cluster.local:80"
     argocd_auth_token: str = ""
 
+    # Redis (git queue, session cache)
+    redis_url: str = "redis://localhost:6379/0"
+
     # Gitea self-hosted git server
     # Set GITEA_URL to the in-cluster service URL (e.g. http://gitea-http.gitea-system.svc.cluster.local:3000)
     gitea_url: str = ""
