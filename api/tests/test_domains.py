@@ -10,14 +10,12 @@ Covers:
 - Wildcard cert endpoint
 - Domain schema validation
 """
-import uuid
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from app.models.domain import CertificateStatus, DomainVerification
+from app.models.domain import CertificateStatus
 from app.schemas.domain import DomainCreate
-
 
 # ---------------------------------------------------------------------------
 # Helpers

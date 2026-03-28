@@ -11,13 +11,11 @@ from app.schemas.billing import PLAN_LIMITS
 from app.services.usage_service import (
     add_build_minutes,
     compute_usage_pct,
-    enforce_app_quota,
     enforce_build_quota,
     get_or_create_current_record,
     get_plan_limits,
     get_usage_history,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fixtures

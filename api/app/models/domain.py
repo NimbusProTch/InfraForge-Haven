@@ -1,7 +1,7 @@
-import enum
 import secrets
 import uuid
 from datetime import datetime
+from enum import StrEnum
 from typing import TYPE_CHECKING
 
 from sqlalchemy import DateTime, Enum, ForeignKey, String
@@ -17,7 +17,7 @@ def _generate_verification_token() -> str:
     return secrets.token_hex(24)
 
 
-class CertificateStatus(str, enum.Enum):
+class CertificateStatus(StrEnum):
     pending = "pending"
     issuing = "issuing"
     issued = "issued"

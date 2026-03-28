@@ -15,21 +15,21 @@ from sqlalchemy import select
 
 from app.deps import DBSession
 from app.models.organization import (
-    OrgTenantMembership,
     Organization,
     OrganizationMember,
+    OrgTenantMembership,
     SSOConfig,
 )
 from app.schemas.organization import (
     BillingSummaryResponse,
+    OrganizationCreate,
+    OrganizationResponse,
+    OrganizationUpdate,
     OrgMemberInvite,
     OrgMemberResponse,
     OrgMemberUpdate,
     OrgTenantAdd,
     OrgTenantResponse,
-    OrganizationCreate,
-    OrganizationResponse,
-    OrganizationUpdate,
     SSOConfigCreate,
     SSOConfigResponse,
     SSOConfigUpdate,

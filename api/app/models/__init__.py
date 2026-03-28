@@ -7,7 +7,7 @@ from app.models.deployment import BuildJob, Deployment
 from app.models.domain import DomainVerification
 from app.models.environment import Environment
 from app.models.managed_service import ManagedService
-from app.models.organization import OrgTenantMembership, Organization, OrganizationMember, SSOConfig
+from app.models.organization import Organization, OrganizationMember, OrgTenantMembership, SSOConfig
 from app.models.tenant import Tenant
 from app.models.tenant_member import TenantMember
 from app.models.usage_record import UsageRecord

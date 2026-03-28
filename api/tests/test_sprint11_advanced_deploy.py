@@ -15,7 +15,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.deployment import Deployment, DeploymentStatus
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -49,8 +48,9 @@ async def test_rollback_requires_existing_deployment(async_client, db_session: A
 @pytest.mark.asyncio
 async def test_rollback_requires_image_tag(async_client, db_session: AsyncSession, sample_tenant):
     """Rollback target deployment must have an image_tag."""
-    from app.models.application import Application
     from sqlalchemy import select
+
+    from app.models.application import Application
 
     app_data = await _create_app(async_client, sample_tenant.slug, "roll-app2")
     result = await db_session.execute(
@@ -78,8 +78,9 @@ async def test_rollback_requires_image_tag(async_client, db_session: AsyncSessio
 @pytest.mark.asyncio
 async def test_rollback_success(async_client, mock_k8s, db_session: AsyncSession, sample_tenant):
     """Successful rollback creates a new deployment record with the target image."""
-    from app.models.application import Application
     from sqlalchemy import select
+
+    from app.models.application import Application
 
     mock_k8s.is_available.return_value = False  # Skip actual K8s ops
 

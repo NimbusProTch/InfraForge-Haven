@@ -23,7 +23,6 @@ from app.models.user_consent import ConsentType, UserConsent
 from app.schemas.gdpr import (
     ConsentGrant,
     ConsentResponse,
-    ConsentRevoke,
     DataExportResponse,
     ErasureRequest,
     ErasureResponse,
@@ -80,7 +79,9 @@ async def grant_consent(tenant_slug: str, body: ConsentGrant, db: DBSession, use
 
 
 @router.delete("/consent/{consent_type}", status_code=status.HTTP_200_OK, response_model=ConsentResponse)
-async def revoke_consent(tenant_slug: str, consent_type: ConsentType, db: DBSession, user_id: str = "anonymous") -> UserConsent:
+async def revoke_consent(
+    tenant_slug: str, consent_type: ConsentType, db: DBSession, user_id: str = "anonymous"
+) -> UserConsent:
     """Revoke a consent type — creates a new revocation record (GDPR Art. 7(3))."""
     tenant = await _get_tenant_or_404(tenant_slug, db)
     revocation = UserConsent(
@@ -225,7 +226,9 @@ async def export_data(tenant_slug: str, db: DBSession, user_id: str = "anonymous
 
 
 @router.post("/erase", response_model=ErasureResponse)
-async def erase_data(tenant_slug: str, body: ErasureRequest, db: DBSession, user_id: str = "anonymous") -> ErasureResponse:
+async def erase_data(
+    tenant_slug: str, body: ErasureRequest, db: DBSession, user_id: str = "anonymous"
+) -> ErasureResponse:
     """Erase all data for this tenant (GDPR Art. 17 — right to erasure).
 
     This permanently deletes all applications, deployments, consents, and members.

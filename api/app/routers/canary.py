@@ -11,6 +11,7 @@ Canary deployment uses a separate K8s Deployment ({app_slug}-canary).
 """
 
 import asyncio
+import contextlib
 import logging
 import uuid
 
@@ -258,10 +259,8 @@ async def configure_canary(
                 (k8s.apps_v1.delete_namespaced_deployment, f"{app.slug}-canary", tenant.namespace),
                 (k8s.core_v1.delete_namespaced_service, f"{app.slug}-canary", tenant.namespace),
             ]:
-                try:
+                with contextlib.suppress(Exception):
                     await asyncio.to_thread(cleanup[0], name=cleanup[1], namespace=cleanup[2])
-                except Exception:  # noqa: BLE001
-                    pass  # already gone
 
     return CanaryStatus(
         enabled=app.canary_enabled,
@@ -313,10 +312,8 @@ async def promote_canary(
             (k8s.apps_v1.delete_namespaced_deployment, f"{app.slug}-canary"),
             (k8s.core_v1.delete_namespaced_service, f"{app.slug}-canary"),
         ]:
-            try:
+            with contextlib.suppress(Exception):
                 await asyncio.to_thread(cleanup[0], name=cleanup[1], namespace=tenant.namespace)
-            except Exception:  # noqa: BLE001
-                pass
 
     return {"message": "Canary promoted to stable", "new_image": canary_image or app.image_tag}
 
@@ -345,9 +342,7 @@ async def rollback_canary(
             (k8s.apps_v1.delete_namespaced_deployment, f"{app.slug}-canary"),
             (k8s.core_v1.delete_namespaced_service, f"{app.slug}-canary"),
         ]:
-            try:
+            with contextlib.suppress(Exception):
                 await asyncio.to_thread(cleanup[0], name=cleanup[1], namespace=tenant.namespace)
-            except Exception:  # noqa: BLE001
-                pass
 
     return {"message": "Canary rolled back, all traffic on stable"}

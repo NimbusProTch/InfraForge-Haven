@@ -2,7 +2,7 @@
 
 import logging
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import httpx
 from sqlalchemy import select
@@ -75,12 +75,12 @@ class ClusterService:
 
         update_data = body.model_dump(exclude_unset=True)
         for field, value in update_data.items():
-            if value is not None or field in ("kubeconfig_data", "kubeconfig_secret", "failover_cluster_id"):
-                if hasattr(cluster, field):
-                    # Store enum value as string
-                    if field in ("provider", "status") and hasattr(value, "value"):
-                        value = value.value
-                    setattr(cluster, field, value)
+            nullable_fields = ("kubeconfig_data", "kubeconfig_secret", "failover_cluster_id")
+            if (value is not None or field in nullable_fields) and hasattr(cluster, field):
+                # Store enum value as string
+                if field in ("provider", "status") and hasattr(value, "value"):
+                    value = value.value
+                setattr(cluster, field, value)
 
         await db.commit()
         await db.refresh(cluster)
@@ -101,7 +101,7 @@ class ClusterService:
 
         cluster.status = status.value
         cluster.health_message = message
-        cluster.last_health_check = datetime.now(tz=timezone.utc)
+        cluster.last_health_check = datetime.now(tz=UTC)
         if node_count is not None:
             cluster.node_count = node_count
 
@@ -207,7 +207,7 @@ class ClusterService:
         cluster.status = ClusterStatus.inactive.value
         cluster.schedulable = False
         cluster.health_message = "Failover triggered — cluster marked inactive"
-        cluster.last_health_check = datetime.now(tz=timezone.utc)
+        cluster.last_health_check = datetime.now(tz=UTC)
         await db.commit()
         await db.refresh(cluster)
         logger.warning("Failover triggered for cluster '%s'", cluster.name)

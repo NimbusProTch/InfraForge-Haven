@@ -10,13 +10,11 @@ Tests cover:
 
 import uuid
 
-import pytest
 import pytest_asyncio
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.organization import Organization, OrganizationMember, OrgMemberRole, OrgPlan
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -114,7 +112,9 @@ async def test_invite_member(async_client: AsyncClient, sample_org: Organization
     assert data["role"] == "admin"
 
 
-async def test_invite_member_duplicate(async_client: AsyncClient, sample_org: Organization, db_session: AsyncSession) -> None:
+async def test_invite_member_duplicate(
+    async_client: AsyncClient, sample_org: Organization, db_session: AsyncSession
+) -> None:
     """Inviting the same user twice returns 409."""
     member = OrganizationMember(
         organization_id=sample_org.id,
@@ -132,7 +132,9 @@ async def test_invite_member_duplicate(async_client: AsyncClient, sample_org: Or
     assert resp.status_code == 409
 
 
-async def test_update_member_role(async_client: AsyncClient, sample_org: Organization, db_session: AsyncSession) -> None:
+async def test_update_member_role(
+    async_client: AsyncClient, sample_org: Organization, db_session: AsyncSession
+) -> None:
     """Updating a member's role persists the change."""
     member = OrganizationMember(
         organization_id=sample_org.id,

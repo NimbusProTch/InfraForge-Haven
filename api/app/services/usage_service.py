@@ -3,16 +3,21 @@
 from __future__ import annotations
 
 import logging
-import uuid
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
 from fastapi import HTTPException, status
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.k8s.client import K8sClient
-from app.models.tenant import Tenant
 from app.models.usage_record import UsageRecord
+
+if TYPE_CHECKING:
+    import uuid
+
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+    from app.k8s.client import K8sClient
+    from app.models.tenant import Tenant
 from app.schemas.billing import PLAN_LIMITS, PlanLimits
 
 logger = logging.getLogger(__name__)
@@ -184,8 +189,9 @@ async def enforce_app_quota(db: AsyncSession, tenant: Tenant) -> None:
         return  # unlimited
 
     # Count active apps
-    from app.models.application import Application
     from sqlalchemy import func as sqlfunc
+
+    from app.models.application import Application
 
     result = await db.execute(
         select(sqlfunc.count(Application.id)).where(Application.tenant_id == tenant.id)
