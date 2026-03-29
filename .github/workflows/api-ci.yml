@@ -10,6 +10,9 @@ on:
     paths:
       - "api/**"
 
+permissions:
+  contents: write
+
 env:
   REGISTRY: ${{ secrets.HARBOR_URL }}
   IMAGE_NAME: ${{ secrets.HARBOR_PROJECT }}/haven-api
