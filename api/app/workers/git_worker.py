@@ -95,7 +95,10 @@ class GitWorker:
         await self._queue_svc.update_job_status(job_id, JobStatus.PROCESSING, retries=retries)
         logger.info(
             "Processing job %s op=%s path=%s (attempt %d)",
-            job_id, operation.value, payload.get("path"), retries + 1,
+            job_id,
+            operation.value,
+            payload.get("path"),
+            retries + 1,
         )
 
         try:
@@ -122,9 +125,7 @@ class GitWorker:
                 job["retries"] = retries
                 job["error"] = error_msg
                 await self._redis.lpush(DEAD_LETTER_KEY, json.dumps(job))
-                await self._queue_svc.update_job_status(
-                    job_id, JobStatus.FAILED, error=error_msg, retries=retries
-                )
+                await self._queue_svc.update_job_status(job_id, JobStatus.FAILED, error=error_msg, retries=retries)
 
     async def _execute_operation(self, operation: GitOperation, payload: dict[str, Any]) -> None:
         """Dispatch a git operation to the GitOpsService."""

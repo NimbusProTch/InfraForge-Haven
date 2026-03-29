@@ -13,11 +13,11 @@ if TYPE_CHECKING:
 
 
 class ConsentType(StrEnum):
-    data_processing = "data_processing"       # GDPR Art. 6(1)(a) — lawful basis
-    marketing = "marketing"                   # opt-in marketing emails
-    analytics = "analytics"                   # usage analytics / telemetry
+    data_processing = "data_processing"  # GDPR Art. 6(1)(a) — lawful basis
+    marketing = "marketing"  # opt-in marketing emails
+    analytics = "analytics"  # usage analytics / telemetry
     third_party_sharing = "third_party_sharing"  # data shared with third parties
-    data_retention = "data_retention"         # extended retention beyond minimum
+    data_retention = "data_retention"  # extended retention beyond minimum
 
 
 class UserConsent(Base, TimestampMixin):

@@ -323,9 +323,7 @@ async def test_sync_endpoint_triggers_argocd(async_client, sample_tenant, db_ses
     fastapi_app.dependency_overrides[get_argocd] = lambda: mock_argocd
 
     try:
-        resp = await async_client.post(
-            f"/api/v1/tenants/{sample_tenant.slug}/apps/sync-app/sync"
-        )
+        resp = await async_client.post(f"/api/v1/tenants/{sample_tenant.slug}/apps/sync-app/sync")
         assert resp.status_code == 202
         body = resp.json()
         assert body["triggered"] is True
@@ -358,9 +356,7 @@ async def test_sync_status_endpoint(async_client, sample_tenant, db_session):
     fastapi_app.dependency_overrides[get_argocd] = lambda: mock_argocd
 
     try:
-        resp = await async_client.get(
-            f"/api/v1/tenants/{sample_tenant.slug}/apps/status-app/sync-status"
-        )
+        resp = await async_client.get(f"/api/v1/tenants/{sample_tenant.slug}/apps/status-app/sync-status")
         assert resp.status_code == 200
         body = resp.json()
         assert body["health"] == "Healthy"
@@ -393,9 +389,7 @@ async def test_deploy_history_endpoint(async_client, sample_tenant, db_session):
     fastapi_app.dependency_overrides[get_argocd] = lambda: mock_argocd
 
     try:
-        resp = await async_client.get(
-            f"/api/v1/tenants/{sample_tenant.slug}/apps/history-app/deploy-history"
-        )
+        resp = await async_client.get(f"/api/v1/tenants/{sample_tenant.slug}/apps/history-app/deploy-history")
         assert resp.status_code == 200
         body = resp.json()
         assert len(body) == 2
@@ -427,9 +421,7 @@ async def test_argocd_rollback_endpoint_success(async_client, sample_tenant, db_
     fastapi_app.dependency_overrides[get_argocd] = lambda: mock_argocd
 
     try:
-        resp = await async_client.post(
-            f"/api/v1/tenants/{sample_tenant.slug}/apps/rollback-app/rollback/3"
-        )
+        resp = await async_client.post(f"/api/v1/tenants/{sample_tenant.slug}/apps/rollback-app/rollback/3")
         assert resp.status_code == 202
         body = resp.json()
         assert body["triggered"] is True
@@ -462,9 +454,7 @@ async def test_argocd_rollback_endpoint_fails_when_argocd_returns_false(async_cl
     fastapi_app.dependency_overrides[get_argocd] = lambda: mock_argocd
 
     try:
-        resp = await async_client.post(
-            f"/api/v1/tenants/{sample_tenant.slug}/apps/rollback-fail/rollback/99"
-        )
+        resp = await async_client.post(f"/api/v1/tenants/{sample_tenant.slug}/apps/rollback-fail/rollback/99")
         assert resp.status_code == 502
     finally:
         fastapi_app.dependency_overrides.pop(get_argocd, None)

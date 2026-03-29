@@ -32,9 +32,7 @@ class Environment(Base, TimestampMixin):
     __tablename__ = "environments"
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
-    application_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("applications.id", ondelete="CASCADE"), index=True
-    )
+    application_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("applications.id", ondelete="CASCADE"), index=True)
     # Unique within an application: "production", "staging", "pr-42"
     name: Mapped[str] = mapped_column(String(63), index=True)
     env_type: Mapped[EnvironmentType] = mapped_column(
@@ -62,6 +60,4 @@ class Environment(Base, TimestampMixin):
     last_image_tag: Mapped[str | None] = mapped_column(String(512), nullable=True)
 
     application: Mapped["Application"] = relationship(back_populates="environments")
-    deployments: Mapped[list["Deployment"]] = relationship(
-        back_populates="environment", cascade="all, delete-orphan"
-    )
+    deployments: Mapped[list["Deployment"]] = relationship(back_populates="environment", cascade="all, delete-orphan")

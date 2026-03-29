@@ -75,9 +75,7 @@ class DnsRoutingService:
             total_clusters=len(clusters),
         )
 
-    async def get_best_cluster_for_region(
-        self, region: str, db: AsyncSession
-    ) -> Cluster | None:
+    async def get_best_cluster_for_region(self, region: str, db: AsyncSession) -> Cluster | None:
         """Return the healthiest schedulable cluster for the given region."""
         clusters = await cluster_service.get_clusters_by_region(region, db)
         # Prefer active primary, then active, then degraded
@@ -170,7 +168,7 @@ class DnsRoutingService:
         # Strip scheme and port — return hostname/IP only
         for scheme in ("https://", "http://"):
             if endpoint.startswith(scheme):
-                endpoint = endpoint[len(scheme):]
+                endpoint = endpoint[len(scheme) :]
         host = endpoint.split(":")[0]
         return host if host else None
 
@@ -178,7 +176,7 @@ class DnsRoutingService:
         """Extract the host portion of an API endpoint URL."""
         for scheme in ("https://", "http://"):
             if api_endpoint.startswith(scheme):
-                api_endpoint = api_endpoint[len(scheme):]
+                api_endpoint = api_endpoint[len(scheme) :]
         return api_endpoint.split(":")[0] or None
 
 

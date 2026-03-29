@@ -32,7 +32,13 @@ def upgrade() -> None:
         sa.Column(
             "provider",
             sa.Enum(
-                "hetzner", "cyso", "leafcloud", "aws", "azure", "gcp", "other",
+                "hetzner",
+                "cyso",
+                "leafcloud",
+                "aws",
+                "azure",
+                "gcp",
+                "other",
                 name="clusterprovider",
             ),
             nullable=False,

@@ -59,11 +59,11 @@ async def test_valid_token_returns_payload():
 
     fake_payload = {"sub": "user123", "email": "user@example.com", "realm_access": {"roles": []}}
 
-    with patch.object(jwt_module, "_fetch_jwks", new=AsyncMock(return_value={"keys": []})), \
-         patch("app.auth.jwt.jwt.decode", return_value=fake_payload):
-        creds = HTTPAuthorizationCredentials(
-            scheme="Bearer", credentials="valid.jwt.token"
-        )
+    with (
+        patch.object(jwt_module, "_fetch_jwks", new=AsyncMock(return_value={"keys": []})),
+        patch("app.auth.jwt.jwt.decode", return_value=fake_payload),
+    ):
+        creds = HTTPAuthorizationCredentials(scheme="Bearer", credentials="valid.jwt.token")
         result = await verify_token(credentials=creds)
 
     assert result["sub"] == "user123"
@@ -82,8 +82,10 @@ async def test_jwks_cache_cleared_on_decode_failure():
 
     jwt_module._jwks_cache = {"keys": [{"kid": "stale"}]}
 
-    with patch.object(jwt_module, "_fetch_jwks", new=AsyncMock(return_value={"keys": []})), \
-         patch("app.auth.jwt.jwt.decode", side_effect=JWTError("expired")):
+    with (
+        patch.object(jwt_module, "_fetch_jwks", new=AsyncMock(return_value={"keys": []})),
+        patch("app.auth.jwt.jwt.decode", side_effect=JWTError("expired")),
+    ):
         creds = HTTPAuthorizationCredentials(scheme="Bearer", credentials="expired.jwt")
         with pytest.raises(HTTPException):
             await verify_token(credentials=creds)
@@ -108,8 +110,10 @@ async def test_jwks_cached_between_calls():
         fetch_count += 1
         return real_fetch_keys
 
-    with patch.object(jwt_module, "_fetch_jwks", side_effect=_mock_http_fetch), \
-         patch("app.auth.jwt.jwt.decode", return_value={"sub": "u2"}):
+    with (
+        patch.object(jwt_module, "_fetch_jwks", side_effect=_mock_http_fetch),
+        patch("app.auth.jwt.jwt.decode", return_value={"sub": "u2"}),
+    ):
         from fastapi.security import HTTPAuthorizationCredentials
 
         creds = HTTPAuthorizationCredentials(scheme="Bearer", credentials="a.b.c")

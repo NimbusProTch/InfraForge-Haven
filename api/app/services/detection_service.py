@@ -65,9 +65,7 @@ _NODE_QUEUE_PATTERNS = {
 }
 
 
-async def detect_dependencies(
-    owner: str, repo: str, branch: str = "main", github_token: str | None = None
-) -> dict:
+async def detect_dependencies(owner: str, repo: str, branch: str = "main", github_token: str | None = None) -> dict:
     """Analyze a GitHub repository and detect dependencies.
 
     Returns:
@@ -123,9 +121,7 @@ async def detect_dependencies(
                 result["language"] = "rust"
 
             # Check for Dockerfile
-            result["has_dockerfile"] = "Dockerfile" in filenames or any(
-                f.endswith("/Dockerfile") for f in filenames
-            )
+            result["has_dockerfile"] = "Dockerfile" in filenames or any(f.endswith("/Dockerfile") for f in filenames)
 
             # Analyze dependency files for services
             if result["language"] == "python":

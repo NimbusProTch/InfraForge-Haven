@@ -49,9 +49,7 @@ async def _get_tenant_or_404(tenant_slug: str, db: DBSession) -> Tenant:
 
 async def _get_app_or_404(tenant: Tenant, app_slug: str, db: DBSession) -> Application:
     result = await db.execute(
-        select(Application).where(
-            Application.tenant_id == tenant.id, Application.slug == app_slug
-        )
+        select(Application).where(Application.tenant_id == tenant.id, Application.slug == app_slug)
     )
     app = result.scalar_one_or_none()
     if app is None:
@@ -61,9 +59,7 @@ async def _get_app_or_404(tenant: Tenant, app_slug: str, db: DBSession) -> Appli
 
 async def _get_env_or_404(app: Application, env_name: str, db: DBSession) -> Environment:
     result = await db.execute(
-        select(Environment).where(
-            Environment.application_id == app.id, Environment.name == env_name
-        )
+        select(Environment).where(Environment.application_id == app.id, Environment.name == env_name)
     )
     env = result.scalar_one_or_none()
     if env is None:
@@ -78,9 +74,7 @@ async def list_environments(
     tenant = await _get_tenant_or_404(tenant_slug, db)
     app = await _get_app_or_404(tenant, app_slug, db)
     result = await db.execute(
-        select(Environment)
-        .where(Environment.application_id == app.id)
-        .order_by(Environment.created_at.asc())
+        select(Environment).where(Environment.application_id == app.id).order_by(Environment.created_at.asc())
     )
     return list(result.scalars().all())
 
@@ -94,9 +88,7 @@ async def create_environment(
 
     # Prevent duplicate names within an app
     existing = await db.execute(
-        select(Environment).where(
-            Environment.application_id == app.id, Environment.name == body.name
-        )
+        select(Environment).where(Environment.application_id == app.id, Environment.name == body.name)
     )
     if existing.scalar_one_or_none() is not None:
         raise HTTPException(status_code=409, detail=f"Environment '{body.name}' already exists")

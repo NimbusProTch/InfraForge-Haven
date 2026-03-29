@@ -49,6 +49,4 @@ async def verify_token(
         # Invalidate cache on decode failure — key may have rotated
         global _jwks_cache
         _jwks_cache = None
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail=f"Invalid token: {e}"
-        ) from e
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=f"Invalid token: {e}") from e

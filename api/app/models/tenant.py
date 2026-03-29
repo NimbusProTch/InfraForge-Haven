@@ -37,21 +37,9 @@ class Tenant(Base, TimestampMixin):
     # GitHub OAuth token for private repo access during builds
     github_token: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
-    applications: Mapped[list["Application"]] = relationship(
-        back_populates="tenant", cascade="all, delete-orphan"
-    )
-    services: Mapped[list["ManagedService"]] = relationship(
-        back_populates="tenant", cascade="all, delete-orphan"
-    )
-    members: Mapped[list["TenantMember"]] = relationship(
-        back_populates="tenant", cascade="all, delete-orphan"
-    )
-    audit_logs: Mapped[list["AuditLog"]] = relationship(
-        back_populates="tenant", cascade="all, delete-orphan"
-    )
-    usage_records: Mapped[list["UsageRecord"]] = relationship(
-        back_populates="tenant", cascade="all, delete-orphan"
-    )
-    consents: Mapped[list["UserConsent"]] = relationship(
-        back_populates="tenant", cascade="all, delete-orphan"
-    )
+    applications: Mapped[list["Application"]] = relationship(back_populates="tenant", cascade="all, delete-orphan")
+    services: Mapped[list["ManagedService"]] = relationship(back_populates="tenant", cascade="all, delete-orphan")
+    members: Mapped[list["TenantMember"]] = relationship(back_populates="tenant", cascade="all, delete-orphan")
+    audit_logs: Mapped[list["AuditLog"]] = relationship(back_populates="tenant", cascade="all, delete-orphan")
+    usage_records: Mapped[list["UsageRecord"]] = relationship(back_populates="tenant", cascade="all, delete-orphan")
+    consents: Mapped[list["UserConsent"]] = relationship(back_populates="tenant", cascade="all, delete-orphan")

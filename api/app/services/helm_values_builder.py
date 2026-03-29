@@ -88,11 +88,7 @@ def render_app_values(app: Application, tenant_slug: str) -> dict:
     Derives service secret names from app.env_from_secrets.
     Namespace is derived as tenant-{tenant_slug}.
     """
-    secret_names = [
-        e.get("secret_name", "")
-        for e in (app.env_from_secrets or [])
-        if e.get("secret_name")
-    ]
+    secret_names = [e.get("secret_name", "") for e in (app.env_from_secrets or []) if e.get("secret_name")]
     return build_app_values(
         tenant_slug=tenant_slug,
         app_slug=app.slug,

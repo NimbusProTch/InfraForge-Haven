@@ -51,9 +51,7 @@ class Organization(Base, TimestampMixin):
     members: Mapped[list["OrganizationMember"]] = relationship(
         back_populates="organization", cascade="all, delete-orphan"
     )
-    sso_configs: Mapped[list["SSOConfig"]] = relationship(
-        back_populates="organization", cascade="all, delete-orphan"
-    )
+    sso_configs: Mapped[list["SSOConfig"]] = relationship(back_populates="organization", cascade="all, delete-orphan")
     tenant_memberships: Mapped[list["OrgTenantMembership"]] = relationship(
         back_populates="organization", cascade="all, delete-orphan"
     )
@@ -65,9 +63,7 @@ class OrganizationMember(Base, TimestampMixin):
     __tablename__ = "organization_members"
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
-    organization_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("organizations.id", ondelete="CASCADE"), index=True
-    )
+    organization_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), index=True)
     # Keycloak user subject (sub claim from JWT)
     user_id: Mapped[str] = mapped_column(String(255), index=True)
     email: Mapped[str] = mapped_column(String(255))
@@ -90,12 +86,8 @@ class SSOConfig(Base, TimestampMixin):
     __tablename__ = "sso_configs"
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
-    organization_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("organizations.id", ondelete="CASCADE"), index=True
-    )
-    sso_type: Mapped[SSOType] = mapped_column(
-        Enum(SSOType, values_callable=lambda e: [x.value for x in e])
-    )
+    organization_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), index=True)
+    sso_type: Mapped[SSOType] = mapped_column(Enum(SSOType, values_callable=lambda e: [x.value for x in e]))
     # OIDC fields
     client_id: Mapped[str | None] = mapped_column(String(512), nullable=True)
     client_secret: Mapped[str | None] = mapped_column(String(512), nullable=True)
@@ -121,9 +113,7 @@ class OrgTenantMembership(Base, TimestampMixin):
     __tablename__ = "org_tenant_memberships"
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
-    organization_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("organizations.id", ondelete="CASCADE"), index=True
-    )
+    organization_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), index=True)
     tenant_id: Mapped[uuid.UUID] = mapped_column(String(36), index=True)
 
     organization: Mapped["Organization"] = relationship(back_populates="tenant_memberships")

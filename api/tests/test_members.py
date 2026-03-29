@@ -139,9 +139,7 @@ async def test_add_member_with_explicit_user_id(async_client: AsyncClient, membe
 
 
 @pytest.mark.asyncio
-async def test_add_member_duplicate_email(
-    async_client: AsyncClient, member_tenant: Tenant, owner_member: TenantMember
-):
+async def test_add_member_duplicate_email(async_client: AsyncClient, member_tenant: Tenant, owner_member: TenantMember):
     with patch("app.routers.members.keycloak_service") as mock_kc:
         mock_kc.create_user = AsyncMock(return_value="kc-dup")
         resp = await async_client.post(
@@ -167,9 +165,7 @@ async def test_add_member_tenant_not_found(async_client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_update_member_role(
-    async_client: AsyncClient, member_tenant: Tenant, dev_member: TenantMember
-):
+async def test_update_member_role(async_client: AsyncClient, member_tenant: Tenant, dev_member: TenantMember):
     resp = await async_client.patch(
         f"/api/v1/tenants/{member_tenant.slug}/members/{dev_member.user_id}",
         json={"role": "admin"},
@@ -228,12 +224,8 @@ async def test_update_member_not_found(async_client: AsyncClient, member_tenant:
 
 
 @pytest.mark.asyncio
-async def test_remove_member(
-    async_client: AsyncClient, member_tenant: Tenant, dev_member: TenantMember
-):
-    resp = await async_client.delete(
-        f"/api/v1/tenants/{member_tenant.slug}/members/{dev_member.user_id}"
-    )
+async def test_remove_member(async_client: AsyncClient, member_tenant: Tenant, dev_member: TenantMember):
+    resp = await async_client.delete(f"/api/v1/tenants/{member_tenant.slug}/members/{dev_member.user_id}")
     assert resp.status_code == 204
 
     # Verify member is gone
@@ -243,19 +235,13 @@ async def test_remove_member(
 
 
 @pytest.mark.asyncio
-async def test_cannot_remove_last_owner(
-    async_client: AsyncClient, member_tenant: Tenant, owner_member: TenantMember
-):
-    resp = await async_client.delete(
-        f"/api/v1/tenants/{member_tenant.slug}/members/{owner_member.user_id}"
-    )
+async def test_cannot_remove_last_owner(async_client: AsyncClient, member_tenant: Tenant, owner_member: TenantMember):
+    resp = await async_client.delete(f"/api/v1/tenants/{member_tenant.slug}/members/{owner_member.user_id}")
     assert resp.status_code == 409
     assert "last owner" in resp.json()["detail"]
 
 
 @pytest.mark.asyncio
 async def test_remove_member_not_found(async_client: AsyncClient, member_tenant: Tenant):
-    resp = await async_client.delete(
-        f"/api/v1/tenants/{member_tenant.slug}/members/nonexistent"
-    )
+    resp = await async_client.delete(f"/api/v1/tenants/{member_tenant.slug}/members/nonexistent")
     assert resp.status_code == 404

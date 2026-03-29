@@ -92,16 +92,12 @@ class TestRedisBody:
         body = _redis_body("my-redis", "tenant-acme", ServiceTier.DEV)
         assert body["kind"] == "Redis"
         assert body["apiVersion"] == "redis.redis.opstreelabs.in/v1beta2"
-        storage_size = (
-            body["spec"]["storage"]["volumeClaimTemplate"]["spec"]["resources"]["requests"]["storage"]
-        )
+        storage_size = body["spec"]["storage"]["volumeClaimTemplate"]["spec"]["resources"]["requests"]["storage"]
         assert storage_size == "1Gi"
 
     def test_prod_tier(self):
         body = _redis_body("my-redis", "tenant-acme", ServiceTier.PROD)
-        storage_size = (
-            body["spec"]["storage"]["volumeClaimTemplate"]["spec"]["resources"]["requests"]["storage"]
-        )
+        storage_size = body["spec"]["storage"]["volumeClaimTemplate"]["spec"]["resources"]["requests"]["storage"]
         assert storage_size == "5Gi"
 
     def test_tolerations_present(self):

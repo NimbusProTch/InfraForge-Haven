@@ -56,9 +56,7 @@ async def test_get_canary_status_disabled(async_client, db_session):
     """GET canary returns disabled status for a fresh app."""
     tenant, app_obj = await _make_tenant_and_app(db_session)
 
-    response = await async_client.get(
-        f"/api/v1/tenants/{tenant.slug}/apps/{app_obj.slug}/canary"
-    )
+    response = await async_client.get(f"/api/v1/tenants/{tenant.slug}/apps/{app_obj.slug}/canary")
     assert response.status_code == 200
     data = response.json()
     assert data["enabled"] is False
@@ -124,9 +122,7 @@ async def test_promote_canary(async_client, db_session):
         json={"enabled": True, "weight": 50, "canary_image": "myimage:v2"},
     )
 
-    response = await async_client.post(
-        f"/api/v1/tenants/{tenant.slug}/apps/{app_obj.slug}/canary/promote"
-    )
+    response = await async_client.post(f"/api/v1/tenants/{tenant.slug}/apps/{app_obj.slug}/canary/promote")
     assert response.status_code == 200
     data = response.json()
     assert "promoted" in str(data).lower() or data.get("status") is not None
@@ -142,9 +138,7 @@ async def test_rollback_canary(async_client, db_session):
         json={"enabled": True, "weight": 50, "canary_image": "myimage:v2"},
     )
 
-    response = await async_client.post(
-        f"/api/v1/tenants/{tenant.slug}/apps/{app_obj.slug}/canary/rollback"
-    )
+    response = await async_client.post(f"/api/v1/tenants/{tenant.slug}/apps/{app_obj.slug}/canary/rollback")
     assert response.status_code == 200
 
 
@@ -153,7 +147,5 @@ async def test_canary_404_for_unknown_app(async_client, db_session):
     """Canary endpoints return 404 for unknown app slug."""
     tenant, _app = await _make_tenant_and_app(db_session)
 
-    response = await async_client.get(
-        f"/api/v1/tenants/{tenant.slug}/apps/nonexistent/canary"
-    )
+    response = await async_client.get(f"/api/v1/tenants/{tenant.slug}/apps/nonexistent/canary")
     assert response.status_code == 404

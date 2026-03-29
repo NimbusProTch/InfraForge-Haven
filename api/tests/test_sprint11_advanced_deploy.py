@@ -53,9 +53,7 @@ async def test_rollback_requires_image_tag(async_client, db_session: AsyncSessio
     from app.models.application import Application
 
     app_data = await _create_app(async_client, sample_tenant.slug, "roll-app2")
-    result = await db_session.execute(
-        select(Application).where(Application.slug == app_data["slug"])
-    )
+    result = await db_session.execute(select(Application).where(Application.slug == app_data["slug"]))
     app_obj = result.scalar_one()
 
     # Create a deployment without image_tag
@@ -85,9 +83,7 @@ async def test_rollback_success(async_client, mock_k8s, db_session: AsyncSession
     mock_k8s.is_available.return_value = False  # Skip actual K8s ops
 
     app_data = await _create_app(async_client, sample_tenant.slug, "roll-app3")
-    result = await db_session.execute(
-        select(Application).where(Application.slug == app_data["slug"])
-    )
+    result = await db_session.execute(select(Application).where(Application.slug == app_data["slug"]))
     app_obj = result.scalar_one()
 
     # Create a past deployment with an image
@@ -173,9 +169,7 @@ async def test_get_cronjob(async_client, mock_k8s, sample_tenant):
     )
     cj_id = create_resp.json()["id"]
 
-    resp = await async_client.get(
-        f"/api/v1/tenants/{sample_tenant.slug}/apps/{app['slug']}/cronjobs/{cj_id}"
-    )
+    resp = await async_client.get(f"/api/v1/tenants/{sample_tenant.slug}/apps/{app['slug']}/cronjobs/{cj_id}")
     assert resp.status_code == 200
     assert resp.json()["id"] == cj_id
 
@@ -214,24 +208,18 @@ async def test_delete_cronjob(async_client, mock_k8s, sample_tenant):
     )
     cj_id = create_resp.json()["id"]
 
-    del_resp = await async_client.delete(
-        f"/api/v1/tenants/{sample_tenant.slug}/apps/{app['slug']}/cronjobs/{cj_id}"
-    )
+    del_resp = await async_client.delete(f"/api/v1/tenants/{sample_tenant.slug}/apps/{app['slug']}/cronjobs/{cj_id}")
     assert del_resp.status_code == 204
 
     # Verify gone
-    get_resp = await async_client.get(
-        f"/api/v1/tenants/{sample_tenant.slug}/apps/{app['slug']}/cronjobs/{cj_id}"
-    )
+    get_resp = await async_client.get(f"/api/v1/tenants/{sample_tenant.slug}/apps/{app['slug']}/cronjobs/{cj_id}")
     assert get_resp.status_code == 404
 
 
 @pytest.mark.asyncio
 async def test_cronjob_not_found_returns_404(async_client, sample_tenant):
     app = await _create_app(async_client, sample_tenant.slug, "cron-app7")
-    resp = await async_client.get(
-        f"/api/v1/tenants/{sample_tenant.slug}/apps/{app['slug']}/cronjobs/{uuid.uuid4()}"
-    )
+    resp = await async_client.get(f"/api/v1/tenants/{sample_tenant.slug}/apps/{app['slug']}/cronjobs/{uuid.uuid4()}")
     assert resp.status_code == 404
 
 
@@ -316,9 +304,7 @@ async def test_delete_volume(async_client, mock_k8s, sample_tenant):
         json={"name": "tmp-vol", "mount_path": "/tmp-data", "size_gi": 3},
     )
 
-    del_resp = await async_client.delete(
-        f"/api/v1/tenants/{sample_tenant.slug}/apps/{app['slug']}/volumes/tmp-vol"
-    )
+    del_resp = await async_client.delete(f"/api/v1/tenants/{sample_tenant.slug}/apps/{app['slug']}/volumes/tmp-vol")
     assert del_resp.status_code == 204
 
 
@@ -326,9 +312,7 @@ async def test_delete_volume(async_client, mock_k8s, sample_tenant):
 async def test_delete_volume_not_found(async_client, sample_tenant):
     """Deleting non-existent volume returns 404."""
     app = await _create_app(async_client, sample_tenant.slug, "pvc-app6")
-    resp = await async_client.delete(
-        f"/api/v1/tenants/{sample_tenant.slug}/apps/{app['slug']}/volumes/ghost-vol"
-    )
+    resp = await async_client.delete(f"/api/v1/tenants/{sample_tenant.slug}/apps/{app['slug']}/volumes/ghost-vol")
     assert resp.status_code == 404
 
 
@@ -341,9 +325,7 @@ async def test_delete_volume_not_found(async_client, sample_tenant):
 async def test_canary_status_disabled_by_default(async_client, mock_k8s, sample_tenant):
     """Canary is disabled by default for a new application."""
     app = await _create_app(async_client, sample_tenant.slug, "canary-app1")
-    resp = await async_client.get(
-        f"/api/v1/tenants/{sample_tenant.slug}/apps/{app['slug']}/canary"
-    )
+    resp = await async_client.get(f"/api/v1/tenants/{sample_tenant.slug}/apps/{app['slug']}/canary")
     assert resp.status_code == 200
     data = resp.json()
     assert data["enabled"] is False
@@ -404,9 +386,7 @@ async def test_canary_rollback_requires_active_canary(async_client, mock_k8s, sa
     mock_k8s.is_available.return_value = False
 
     app = await _create_app(async_client, sample_tenant.slug, "canary-app5")
-    resp = await async_client.post(
-        f"/api/v1/tenants/{sample_tenant.slug}/apps/{app['slug']}/canary/rollback"
-    )
+    resp = await async_client.post(f"/api/v1/tenants/{sample_tenant.slug}/apps/{app['slug']}/canary/rollback")
     assert resp.status_code == 409
 
 
@@ -422,8 +402,6 @@ async def test_canary_rollback_success(async_client, mock_k8s, sample_tenant):
         json={"enabled": True, "weight": 10, "canary_image": "harbor.example.com/haven/canary-app6:v2"},
     )
     # Rollback
-    resp = await async_client.post(
-        f"/api/v1/tenants/{sample_tenant.slug}/apps/{app['slug']}/canary/rollback"
-    )
+    resp = await async_client.post(f"/api/v1/tenants/{sample_tenant.slug}/apps/{app['slug']}/canary/rollback")
     assert resp.status_code == 200
     assert "rolled back" in resp.json()["message"].lower()

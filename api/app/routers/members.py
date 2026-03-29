@@ -42,9 +42,7 @@ async def _get_member_or_404(tenant_id: uuid.UUID, user_id: str, db: DBSession) 
 async def list_members(tenant_slug: str, db: DBSession, current_user: CurrentUser) -> list[TenantMember]:
     tenant = await _get_tenant_or_404(tenant_slug, db)
     result = await db.execute(
-        select(TenantMember)
-        .where(TenantMember.tenant_id == tenant.id)
-        .order_by(TenantMember.created_at)
+        select(TenantMember).where(TenantMember.tenant_id == tenant.id).order_by(TenantMember.created_at)
     )
     return list(result.scalars().all())
 

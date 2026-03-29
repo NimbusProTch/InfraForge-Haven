@@ -216,9 +216,7 @@ async def test_worker_processes_job_successfully():
 
     await worker._process_job(job)
 
-    gitops.write_app_values.assert_awaited_once_with(
-        "gem-a", "my-app", {"image": {"tag": "abc123"}}
-    )
+    gitops.write_app_values.assert_awaited_once_with("gem-a", "my-app", {"image": {"tag": "abc123"}})
     # Final status update should be COMPLETED
     status_calls = [c for c in redis.hset.call_args_list if "completed" in str(c)]
     assert status_calls, "Expected a COMPLETED status update"

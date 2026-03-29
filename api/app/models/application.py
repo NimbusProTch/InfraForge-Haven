@@ -41,9 +41,7 @@ class Application(Base, TimestampMixin):
     replicas: Mapped[int] = mapped_column(default=1)
     port: Mapped[int] = mapped_column(default=8000)
     # Unique token used to route GitHub webhooks to this application
-    webhook_token: Mapped[str] = mapped_column(
-        String(64), unique=True, index=True, default=_generate_webhook_token
-    )
+    webhook_token: Mapped[str] = mapped_column(String(64), unique=True, index=True, default=_generate_webhook_token)
 
     # Sprint 3: Monorepo support
     dockerfile_path: Mapped[str | None] = mapped_column(String(512), nullable=True)
@@ -77,26 +75,16 @@ class Application(Base, TimestampMixin):
     volumes: Mapped[list | None] = mapped_column(JSON, nullable=True, default=None)
 
     # Sprint 12: target cluster for region-aware deployment
-    cluster_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("clusters.id"), nullable=True, index=True
-    )
+    cluster_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("clusters.id"), nullable=True, index=True)
 
     # Managed service connections: [{service_name, secret_name, namespace}]
     env_from_secrets: Mapped[list | None] = mapped_column(JSON, nullable=True, default=None)
 
     tenant: Mapped["Tenant"] = relationship(back_populates="applications")
-    deployments: Mapped[list["Deployment"]] = relationship(
-        back_populates="application", cascade="all, delete-orphan"
-    )
-    environments: Mapped[list["Environment"]] = relationship(
-        back_populates="application", cascade="all, delete-orphan"
-    )
+    deployments: Mapped[list["Deployment"]] = relationship(back_populates="application", cascade="all, delete-orphan")
+    environments: Mapped[list["Environment"]] = relationship(back_populates="application", cascade="all, delete-orphan")
     domains: Mapped[list["DomainVerification"]] = relationship(
         back_populates="application", cascade="all, delete-orphan"
     )
-    cronjobs: Mapped[list["CronJob"]] = relationship(
-        back_populates="application", cascade="all, delete-orphan"
-    )
-    cluster: Mapped["Cluster | None"] = relationship(
-        back_populates="applications", foreign_keys=[cluster_id]
-    )
+    cronjobs: Mapped[list["CronJob"]] = relationship(back_populates="application", cascade="all, delete-orphan")
+    cluster: Mapped["Cluster | None"] = relationship(back_populates="applications", foreign_keys=[cluster_id])

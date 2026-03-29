@@ -185,8 +185,8 @@ class TestSseLogBuffer:
     @pytest.mark.asyncio
     async def test_stream_reconnect_skips_seen_events(self):
         buf = SseLogBuffer(job_id="j7")
-        buf.append("old line")   # event_id=1
-        buf.append("new line")   # event_id=2
+        buf.append("old line")  # event_id=1
+        buf.append("new line")  # event_id=2
         buf.mark_done()
 
         events = []
@@ -326,6 +326,7 @@ class TestPipelineStateMachine:
         evt = sm.transition(PipelineState.BUILDING, "starting")
         data = evt.to_sse_data()
         import json
+
         parsed = json.loads(data)
         assert parsed["state"] == "building"
         assert parsed["deployment_id"] == "dep-12"

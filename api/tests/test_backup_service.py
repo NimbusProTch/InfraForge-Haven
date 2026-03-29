@@ -28,9 +28,7 @@ def _make_k8s(available: bool = True, list_items: list | None = None) -> MagicMo
     k8s = MagicMock()
     k8s.is_available.return_value = available
     k8s.custom_objects = MagicMock()
-    k8s.custom_objects.list_namespaced_custom_object.return_value = {
-        "items": list_items or []
-    }
+    k8s.custom_objects.list_namespaced_custom_object.return_value = {"items": list_items or []}
     k8s.custom_objects.create_namespaced_custom_object.return_value = {}
     return k8s
 

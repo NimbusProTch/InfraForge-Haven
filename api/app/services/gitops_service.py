@@ -60,9 +60,7 @@ class GitOpsService:
         """Build environment for git commands with optional deploy key."""
         env = os.environ.copy()
         if self._deploy_key_path and Path(self._deploy_key_path).exists():
-            env["GIT_SSH_COMMAND"] = (
-                f"ssh -i {self._deploy_key_path} -o StrictHostKeyChecking=no"
-            )
+            env["GIT_SSH_COMMAND"] = f"ssh -i {self._deploy_key_path} -o StrictHostKeyChecking=no"
         return env
 
     async def _run_git(self, *args: str, cwd: Path | None = None) -> str:
@@ -118,8 +116,12 @@ class GitOpsService:
         self._clone_dir.mkdir(parents=True, exist_ok=True)
         clone_url = self._authenticated_url()
         await self._run_git(
-            "clone", "--depth=1", "--branch", self._branch,
-            clone_url, str(self._clone_dir),
+            "clone",
+            "--depth=1",
+            "--branch",
+            self._branch,
+            clone_url,
+            str(self._clone_dir),
             cwd=Path("/tmp"),
         )
         # Configure git identity for commits
@@ -143,8 +145,11 @@ class GitOpsService:
             pass  # There are staged changes
 
         await self._run_git(
-            "commit", "-m", message,
-            "--author", "Haven Platform <haven@haven.dev>",
+            "commit",
+            "-m",
+            message,
+            "--author",
+            "Haven Platform <haven@haven.dev>",
         )
         sha = await self._run_git("rev-parse", "HEAD")
 
@@ -167,9 +172,7 @@ class GitOpsService:
     def _service_dir(self, tenant_slug: str, service_name: str) -> Path:
         return self._clone_dir / GITOPS_PREFIX / "tenants" / tenant_slug / "services" / service_name
 
-    async def write_app_values(
-        self, tenant_slug: str, app_slug: str, values: dict
-    ) -> str:
+    async def write_app_values(self, tenant_slug: str, app_slug: str, values: dict) -> str:
         """Write values.yaml for a tenant app, commit, and push. Returns commit SHA."""
         async with self._lock:
             await self._ensure_repo()
@@ -184,9 +187,7 @@ class GitOpsService:
                 f"[haven] deploy {tenant_slug}/{app_slug} image={values.get('image', {}).get('tag', 'unknown')}"
             )
 
-    async def write_service_values(
-        self, tenant_slug: str, service_name: str, values: dict
-    ) -> str:
+    async def write_service_values(self, tenant_slug: str, service_name: str, values: dict) -> str:
         """Write values.yaml for a managed service, commit, and push."""
         async with self._lock:
             await self._ensure_repo()
@@ -209,11 +210,10 @@ class GitOpsService:
             app_dir = self._app_dir(tenant_slug, app_slug)
             if app_dir.exists():
                 import shutil
+
                 shutil.rmtree(app_dir)
 
-            return await self._commit_and_push(
-                f"[haven] delete {tenant_slug}/{app_slug}"
-            )
+            return await self._commit_and_push(f"[haven] delete {tenant_slug}/{app_slug}")
 
     async def delete_service(self, tenant_slug: str, service_name: str) -> str:
         """Remove service directory, commit, push."""
@@ -223,11 +223,10 @@ class GitOpsService:
             svc_dir = self._service_dir(tenant_slug, service_name)
             if svc_dir.exists():
                 import shutil
+
                 shutil.rmtree(svc_dir)
 
-            return await self._commit_and_push(
-                f"[haven] deprovision {tenant_slug}/services/{service_name}"
-            )
+            return await self._commit_and_push(f"[haven] deprovision {tenant_slug}/services/{service_name}")
 
     async def delete_tenant(self, tenant_slug: str) -> str:
         """Remove entire tenant directory, commit, push."""
@@ -237,8 +236,7 @@ class GitOpsService:
             tenant_dir = self._clone_dir / GITOPS_PREFIX / "tenants" / tenant_slug
             if tenant_dir.exists():
                 import shutil
+
                 shutil.rmtree(tenant_dir)
 
-            return await self._commit_and_push(
-                f"[haven] delete tenant {tenant_slug}"
-            )
+            return await self._commit_and_push(f"[haven] delete tenant {tenant_slug}")

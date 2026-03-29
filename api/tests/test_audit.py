@@ -120,9 +120,7 @@ async def test_audit_logs_filter_by_action(async_client, db_session, sample_tena
         await audit_service.audit(db_session, tenant_id=sample_tenant.id, action=action)
     await db_session.commit()
 
-    resp = await async_client.get(
-        f"/api/v1/tenants/{sample_tenant.slug}/audit-logs?action=app.create"
-    )
+    resp = await async_client.get(f"/api/v1/tenants/{sample_tenant.slug}/audit-logs?action=app.create")
     assert resp.status_code == 200
     data = resp.json()
     assert data["total"] == 2
@@ -135,9 +133,7 @@ async def test_audit_logs_filter_by_user_id(async_client, db_session, sample_ten
     await audit_service.audit(db_session, tenant_id=sample_tenant.id, action="app.delete", user_id="bob")
     await db_session.commit()
 
-    resp = await async_client.get(
-        f"/api/v1/tenants/{sample_tenant.slug}/audit-logs?user_id=alice"
-    )
+    resp = await async_client.get(f"/api/v1/tenants/{sample_tenant.slug}/audit-logs?user_id=alice")
     assert resp.status_code == 200
     data = resp.json()
     assert data["total"] == 1
@@ -148,15 +144,11 @@ async def test_audit_logs_filter_by_user_id(async_client, db_session, sample_ten
 async def test_audit_logs_pagination(async_client, db_session, sample_tenant):
     """Pagination returns correct slice."""
     for i in range(15):
-        await audit_service.audit(
-            db_session, tenant_id=sample_tenant.id, action="app.update", resource_id=f"app-{i}"
-        )
+        await audit_service.audit(db_session, tenant_id=sample_tenant.id, action="app.update", resource_id=f"app-{i}")
     await db_session.commit()
 
     # First page of 10
-    resp = await async_client.get(
-        f"/api/v1/tenants/{sample_tenant.slug}/audit-logs?page=1&page_size=10"
-    )
+    resp = await async_client.get(f"/api/v1/tenants/{sample_tenant.slug}/audit-logs?page=1&page_size=10")
     assert resp.status_code == 200
     data = resp.json()
     assert data["total"] == 15
@@ -164,9 +156,7 @@ async def test_audit_logs_pagination(async_client, db_session, sample_tenant):
     assert data["page"] == 1
 
     # Second page (remaining 5)
-    resp2 = await async_client.get(
-        f"/api/v1/tenants/{sample_tenant.slug}/audit-logs?page=2&page_size=10"
-    )
+    resp2 = await async_client.get(f"/api/v1/tenants/{sample_tenant.slug}/audit-logs?page=2&page_size=10")
     assert resp2.status_code == 200
     data2 = resp2.json()
     assert len(data2["items"]) == 5
@@ -174,17 +164,11 @@ async def test_audit_logs_pagination(async_client, db_session, sample_tenant):
 
 @pytest.mark.asyncio
 async def test_audit_logs_filter_by_resource_type(async_client, db_session, sample_tenant):
-    await audit_service.audit(
-        db_session, tenant_id=sample_tenant.id, action="app.create", resource_type="app"
-    )
-    await audit_service.audit(
-        db_session, tenant_id=sample_tenant.id, action="service.create", resource_type="service"
-    )
+    await audit_service.audit(db_session, tenant_id=sample_tenant.id, action="app.create", resource_type="app")
+    await audit_service.audit(db_session, tenant_id=sample_tenant.id, action="service.create", resource_type="service")
     await db_session.commit()
 
-    resp = await async_client.get(
-        f"/api/v1/tenants/{sample_tenant.slug}/audit-logs?resource_type=service"
-    )
+    resp = await async_client.get(f"/api/v1/tenants/{sample_tenant.slug}/audit-logs?resource_type=service")
     assert resp.status_code == 200
     data = resp.json()
     assert data["total"] == 1

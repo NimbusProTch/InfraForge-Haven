@@ -59,13 +59,13 @@ _ALLOWED: dict[PipelineState, frozenset[PipelineState]] = {
     PipelineState.PUSHING: frozenset({PipelineState.SYNCING, PipelineState.FAILED}),
     PipelineState.SYNCING: frozenset({PipelineState.DEPLOYING, PipelineState.FAILED}),
     PipelineState.DEPLOYING: frozenset({PipelineState.HEALTHY, PipelineState.FAILED}),
-    PipelineState.HEALTHY: frozenset(),    # terminal
-    PipelineState.FAILED: frozenset(),     # terminal
+    PipelineState.HEALTHY: frozenset(),  # terminal
+    PipelineState.FAILED: frozenset(),  # terminal
 }
 
 # Build timeout defaults (seconds)
-DEFAULT_BUILD_TIMEOUT = 15 * 60   # 15 minutes
-MAX_BUILD_TIMEOUT = 30 * 60       # 30 minutes
+DEFAULT_BUILD_TIMEOUT = 15 * 60  # 15 minutes
+MAX_BUILD_TIMEOUT = 30 * 60  # 30 minutes
 
 
 # ---------------------------------------------------------------------------
@@ -87,6 +87,7 @@ class PipelineEvent:
     def to_sse_data(self) -> str:
         """JSON-serializable representation for SSE ``event: pipeline`` data."""
         import json
+
         return json.dumps(
             {
                 "deployment_id": self.deployment_id,
@@ -109,8 +110,7 @@ class InvalidTransitionError(ValueError):
 
     def __init__(self, from_state: PipelineState, to_state: PipelineState) -> None:
         super().__init__(
-            f"Invalid transition: {from_state} → {to_state}. "
-            f"Allowed from {from_state}: {sorted(_ALLOWED[from_state])}"
+            f"Invalid transition: {from_state} → {to_state}. Allowed from {from_state}: {sorted(_ALLOWED[from_state])}"
         )
         self.from_state = from_state
         self.to_state = to_state
@@ -120,10 +120,7 @@ class BuildTimeoutError(RuntimeError):
     """Raised when the build exceeds the configured maximum timeout."""
 
     def __init__(self, timeout_seconds: int) -> None:
-        super().__init__(
-            f"Build timed out after {timeout_seconds}s "
-            f"(max={MAX_BUILD_TIMEOUT}s)"
-        )
+        super().__init__(f"Build timed out after {timeout_seconds}s (max={MAX_BUILD_TIMEOUT}s)")
         self.timeout_seconds = timeout_seconds
 
 

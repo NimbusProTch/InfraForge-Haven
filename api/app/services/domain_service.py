@@ -2,6 +2,7 @@
 
 Handles DNS ownership verification (TXT record) and cert-manager Certificate CRD lifecycle.
 """
+
 import asyncio
 import logging
 import re
@@ -104,10 +105,7 @@ async def verify_dns_ownership(domain: DomainVerification) -> DnsVerificationRes
     return DnsVerificationResult(
         verified=False,
         message=(
-            f"TXT record not found. Please add:\n"
-            f"  Record type: TXT\n"
-            f"  Name: {txt_name}\n"
-            f"  Value: {expected_value}"
+            f"TXT record not found. Please add:\n  Record type: TXT\n  Name: {txt_name}\n  Value: {expected_value}"
         ),
     )
 

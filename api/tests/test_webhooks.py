@@ -67,8 +67,10 @@ async def test_webhook_push_queues_deployment(async_client, db_session):
     payload = {"ref": "refs/heads/main", "after": "abc123def456"}
     body = json.dumps(payload).encode()
 
-    with patch("app.routers.webhooks.settings") as mock_settings, \
-         patch("app.routers.webhooks.asyncio.create_task", MagicMock()):
+    with (
+        patch("app.routers.webhooks.settings") as mock_settings,
+        patch("app.routers.webhooks.asyncio.create_task", MagicMock()),
+    ):
         mock_settings.webhook_secret = ""  # skip signature check
         response = await async_client.post(
             f"/api/v1/webhooks/github/{app_obj.webhook_token}",
@@ -93,8 +95,10 @@ async def test_webhook_push_wrong_branch_ignored(async_client, db_session):
     payload = {"ref": "refs/heads/feature/other", "after": "deadbeef"}
     body = json.dumps(payload).encode()
 
-    with patch("app.routers.webhooks.settings") as mock_settings, \
-         patch("app.routers.webhooks.asyncio.create_task", MagicMock()):
+    with (
+        patch("app.routers.webhooks.settings") as mock_settings,
+        patch("app.routers.webhooks.asyncio.create_task", MagicMock()),
+    ):
         mock_settings.webhook_secret = ""
         response = await async_client.post(
             f"/api/v1/webhooks/github/{app_obj.webhook_token}",
@@ -133,8 +137,10 @@ async def test_webhook_unsupported_event_ignored(async_client, db_session):
     payload = {"action": "opened"}
     body = json.dumps(payload).encode()
 
-    with patch("app.routers.webhooks.settings") as mock_settings, \
-         patch("app.routers.webhooks.asyncio.create_task", MagicMock()):
+    with (
+        patch("app.routers.webhooks.settings") as mock_settings,
+        patch("app.routers.webhooks.asyncio.create_task", MagicMock()),
+    ):
         mock_settings.webhook_secret = ""
         response = await async_client.post(
             f"/api/v1/webhooks/github/{app_obj.webhook_token}",
@@ -161,8 +167,10 @@ async def test_webhook_pr_opened_creates_preview(async_client, db_session):
     }
     body = json.dumps(payload).encode()
 
-    with patch("app.routers.webhooks.settings") as mock_settings, \
-         patch("app.routers.webhooks.asyncio.create_task", MagicMock()):
+    with (
+        patch("app.routers.webhooks.settings") as mock_settings,
+        patch("app.routers.webhooks.asyncio.create_task", MagicMock()),
+    ):
         mock_settings.webhook_secret = ""
         response = await async_client.post(
             f"/api/v1/webhooks/github/{app_obj.webhook_token}",
@@ -184,8 +192,10 @@ async def test_webhook_signature_rejected_when_secret_set(async_client, db_sessi
     payload = {"ref": "refs/heads/main", "after": "abc"}
     body = json.dumps(payload).encode()
 
-    with patch("app.routers.webhooks.settings") as mock_settings, \
-         patch("app.routers.webhooks.asyncio.create_task", MagicMock()):
+    with (
+        patch("app.routers.webhooks.settings") as mock_settings,
+        patch("app.routers.webhooks.asyncio.create_task", MagicMock()),
+    ):
         mock_settings.webhook_secret = "my-secret"
         response = await async_client.post(
             f"/api/v1/webhooks/github/{app_obj.webhook_token}",

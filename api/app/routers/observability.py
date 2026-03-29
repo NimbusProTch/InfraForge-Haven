@@ -107,7 +107,7 @@ def _parse_memory_bytes(mem_str: str | None) -> int | None:
 
 
 def _bytes_to_mib(n: int) -> str:
-    return f"{round(n / (1024 ** 2))}Mi"
+    return f"{round(n / (1024**2))}Mi"
 
 
 async def _get_tenant_or_404(tenant_slug: str, db: DBSession) -> Tenant:
@@ -186,12 +186,8 @@ async def get_pods(
             containers = item.get("containers", [])
             if containers:
                 # Sum across all containers in the pod
-                total_cpu_mc = sum(
-                    (_parse_cpu_millicores(c["usage"].get("cpu")) or 0) for c in containers
-                )
-                total_mem_b = sum(
-                    (_parse_memory_bytes(c["usage"].get("memory")) or 0) for c in containers
-                )
+                total_cpu_mc = sum((_parse_cpu_millicores(c["usage"].get("cpu")) or 0) for c in containers)
+                total_mem_b = sum((_parse_memory_bytes(c["usage"].get("memory")) or 0) for c in containers)
                 metrics_by_pod[pod_name] = {
                     "cpu_mc": total_cpu_mc,
                     "mem_bytes": total_mem_b,

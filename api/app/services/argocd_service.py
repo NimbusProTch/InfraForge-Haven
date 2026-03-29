@@ -63,9 +63,7 @@ class ArgoCDService:
             logger.warning("ArgoCD API unreachable: %s", exc)
             return {}
 
-    async def wait_for_healthy(
-        self, app_name: str, timeout: int = 180
-    ) -> tuple[bool, str]:
+    async def wait_for_healthy(self, app_name: str, timeout: int = 180) -> tuple[bool, str]:
         """Poll ArgoCD Application until Healthy+Synced or timeout.
 
         Returns (success, message).
@@ -185,7 +183,9 @@ class ArgoCDService:
                 return True
             logger.warning(
                 "ArgoCD rollback failed: %d for app %s revision %d",
-                response.status_code, app_name, revision,
+                response.status_code,
+                app_name,
+                revision,
             )
             return False
         except Exception as exc:  # noqa: BLE001

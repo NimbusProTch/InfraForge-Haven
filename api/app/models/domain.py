@@ -35,23 +35,17 @@ class DomainVerification(Base, TimestampMixin):
 
     # TXT record token for DNS ownership verification
     # User must add: _haven-verify.{domain} TXT {verification_token}
-    verification_token: Mapped[str] = mapped_column(
-        String(64), default=_generate_verification_token
-    )
+    verification_token: Mapped[str] = mapped_column(String(64), default=_generate_verification_token)
 
     # When the domain was verified via DNS TXT check
-    verified_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # cert-manager Certificate resource status
     certificate_status: Mapped[CertificateStatus] = mapped_column(
         Enum(CertificateStatus, values_callable=lambda e: [x.value for x in e]),
         default=CertificateStatus.pending,
     )
-    certificate_expires_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    certificate_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     certificate_error: Mapped[str | None] = mapped_column(String(1024), nullable=True)
 
     application: Mapped["Application"] = relationship(back_populates="domains")

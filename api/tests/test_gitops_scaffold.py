@@ -114,9 +114,7 @@ async def test_gitea_client_create_file() -> None:
     client = _make_client()
     with patch.object(client, "_request", new_callable=AsyncMock) as mock_req:
         mock_req.return_value = {"commit": {"sha": "deadbeef"}}
-        sha = await client.create_file(
-            "haven", "haven-gitops", "tenants/t1/ns.yaml", "content", "msg"
-        )
+        sha = await client.create_file("haven", "haven-gitops", "tenants/t1/ns.yaml", "content", "msg")
 
     assert sha == "deadbeef"
     call_kwargs = mock_req.call_args
@@ -155,9 +153,7 @@ async def test_gitea_client_delete_file() -> None:
     client = _make_client()
     with patch.object(client, "_request", new_callable=AsyncMock) as mock_req:
         mock_req.return_value = {"commit": {"sha": "delsha"}}
-        sha = await client.delete_file(
-            "haven", "haven-gitops", "path/file.yaml", "filsha", "delete msg"
-        )
+        sha = await client.delete_file("haven", "haven-gitops", "path/file.yaml", "filsha", "delete msg")
 
     assert sha == "delsha"
     call_kwargs = mock_req.call_args
@@ -271,7 +267,8 @@ async def test_scaffold_delete_app() -> None:
         await scaffold.delete_app("my-tenant", "my-app")
 
     mock_del.assert_called_once_with(
-        "haven", "haven-gitops",
+        "haven",
+        "haven-gitops",
         "tenants/my-tenant/apps/my-app",
         "Haven API: delete app my-app for tenant my-tenant",
         "main",
@@ -292,7 +289,8 @@ async def test_scaffold_delete_tenant() -> None:
         await scaffold.delete_tenant("my-tenant")
 
     mock_del.assert_called_once_with(
-        "haven", "haven-gitops",
+        "haven",
+        "haven-gitops",
         "tenants/my-tenant",
         "Haven API: delete tenant my-tenant",
         "main",

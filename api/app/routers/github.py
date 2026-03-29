@@ -196,7 +196,12 @@ async def list_repos(
             response = await client.get(
                 f"{GITHUB_API}/user/repos",
                 headers=headers,
-                params={"per_page": 100, "sort": "updated", "affiliation": "owner,collaborator,organization_member", "page": page},  # noqa: E501
+                params={
+                    "per_page": 100,
+                    "sort": "updated",
+                    "affiliation": "owner,collaborator,organization_member",
+                    "page": page,
+                },  # noqa: E501
                 timeout=15.0,
             )
             if response.status_code == 401:
@@ -234,7 +239,9 @@ async def list_repos(
                         timeout=15.0,
                     )
                     if not org_repos_response.is_success:
-                        logger.warning("Failed to fetch repos for org %s: %d", org_login, org_repos_response.status_code)  # noqa: E501
+                        logger.warning(
+                            "Failed to fetch repos for org %s: %d", org_login, org_repos_response.status_code
+                        )  # noqa: E501
                         break
                     org_repos = org_repos_response.json()
                     if not org_repos:

@@ -104,8 +104,7 @@ async def test_oauth_callback_exchanges_code(async_client):
     mock_response.is_success = True
     mock_response.json.return_value = {"access_token": "gho_exchanged_token"}
 
-    with patch("app.routers.github.settings") as mock_settings, \
-         patch("httpx.AsyncClient") as mock_httpx:
+    with patch("app.routers.github.settings") as mock_settings, patch("httpx.AsyncClient") as mock_httpx:
         mock_settings.github_client_id = "cid"
         mock_settings.github_client_secret = "secret"
         mock_settings.github_redirect_uri = "http://localhost/callback"

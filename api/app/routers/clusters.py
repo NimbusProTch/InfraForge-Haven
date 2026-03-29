@@ -78,9 +78,7 @@ async def delete_cluster(cluster_id: uuid.UUID, db: DBSession, current_user: Cur
 
     from app.models.application import Application
 
-    result = await db.execute(
-        select(func.count()).select_from(Application).where(Application.cluster_id == cluster_id)
-    )
+    result = await db.execute(select(func.count()).select_from(Application).where(Application.cluster_id == cluster_id))
     app_count = result.scalar_one()
     if app_count > 0:
         raise HTTPException(

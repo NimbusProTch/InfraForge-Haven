@@ -10,6 +10,7 @@ Covers:
 - Wildcard cert endpoint
 - Domain schema validation
 """
+
 from unittest.mock import AsyncMock, patch
 
 import pytest

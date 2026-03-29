@@ -55,35 +55,25 @@ _CILIUM_NETPOL_TEMPLATE: dict = {
         "ingress": [
             {
                 # Intra-tenant: pods within the same namespace can reach each other
-                "fromEndpoints": [
-                    {"matchLabels": {"io.kubernetes.pod.namespace": "__NAMESPACE__"}}
-                ]
+                "fromEndpoints": [{"matchLabels": {"io.kubernetes.pod.namespace": "__NAMESPACE__"}}]
             },
             {
                 # Haven API (haven-system) → tenant pods (deployment, health checks)
-                "fromEndpoints": [
-                    {"matchLabels": {"io.kubernetes.pod.namespace": "haven-system"}}
-                ]
+                "fromEndpoints": [{"matchLabels": {"io.kubernetes.pod.namespace": "haven-system"}}]
             },
             {
                 # Prometheus (monitoring namespace) → tenant pod /metrics scraping
-                "fromEndpoints": [
-                    {"matchLabels": {"io.kubernetes.pod.namespace": "monitoring"}}
-                ]
+                "fromEndpoints": [{"matchLabels": {"io.kubernetes.pod.namespace": "monitoring"}}]
             },
         ],
         "egress": [
             {
                 # Intra-tenant: pods can talk to each other within same namespace
-                "toEndpoints": [
-                    {"matchLabels": {"io.kubernetes.pod.namespace": "__NAMESPACE__"}}
-                ]
+                "toEndpoints": [{"matchLabels": {"io.kubernetes.pod.namespace": "__NAMESPACE__"}}]
             },
             {
                 # DNS resolution via kube-dns in kube-system
-                "toEndpoints": [
-                    {"matchLabels": {"io.kubernetes.pod.namespace": "kube-system"}}
-                ],
+                "toEndpoints": [{"matchLabels": {"io.kubernetes.pod.namespace": "kube-system"}}],
                 "toPorts": [
                     {
                         "ports": [
@@ -188,9 +178,7 @@ class TenantService:
             if e.status != 409:  # 409 = already exists
                 raise
 
-    async def _create_resource_quota(
-        self, namespace: str, cpu: str, memory: str, storage: str, tier: str
-    ) -> None:
+    async def _create_resource_quota(self, namespace: str, cpu: str, memory: str, storage: str, tier: str) -> None:
         assert self.k8s.core_v1 is not None
         tier_defaults = _TIER_QUOTAS.get(tier, _TIER_QUOTAS[_DEFAULT_TIER])
         quota = k8s_lib.V1ResourceQuota(
@@ -281,9 +269,7 @@ class TenantService:
         harbor_host = urlparse(harbor_url).netloc or harbor_url
         docker_config = {
             "auths": {
-                harbor_host: {
-                    "auth": base64.b64encode(f"admin:{settings.harbor_admin_password}".encode()).decode()
-                }
+                harbor_host: {"auth": base64.b64encode(f"admin:{settings.harbor_admin_password}".encode()).decode()}
             }
         }
         secret = k8s_lib.V1Secret(
@@ -318,11 +304,21 @@ class TenantService:
                         k8s_lib.V1PolicyRule(
                             api_groups=["", "apps", "batch", "autoscaling"],
                             resources=[
-                                "pods", "pods/log", "pods/exec", "pods/portforward",
-                                "deployments", "statefulsets", "replicasets",
-                                "jobs", "cronjobs", "horizontalpodautoscalers",
-                                "services", "endpoints", "configmaps",
-                                "persistentvolumeclaims", "events",
+                                "pods",
+                                "pods/log",
+                                "pods/exec",
+                                "pods/portforward",
+                                "deployments",
+                                "statefulsets",
+                                "replicasets",
+                                "jobs",
+                                "cronjobs",
+                                "horizontalpodautoscalers",
+                                "services",
+                                "endpoints",
+                                "configmaps",
+                                "persistentvolumeclaims",
+                                "events",
                             ],
                             verbs=manage_verbs,
                         ),
@@ -364,10 +360,18 @@ class TenantService:
                         k8s_lib.V1PolicyRule(
                             api_groups=["", "apps", "batch", "autoscaling"],
                             resources=[
-                                "pods", "pods/log", "deployments", "statefulsets",
-                                "replicasets", "jobs", "cronjobs",
-                                "horizontalpodautoscalers", "services",
-                                "endpoints", "configmaps", "events",
+                                "pods",
+                                "pods/log",
+                                "deployments",
+                                "statefulsets",
+                                "replicasets",
+                                "jobs",
+                                "cronjobs",
+                                "horizontalpodautoscalers",
+                                "services",
+                                "endpoints",
+                                "configmaps",
+                                "events",
                                 "persistentvolumeclaims",
                             ],
                             verbs=read_verbs,
@@ -413,10 +417,18 @@ class TenantService:
                         k8s_lib.V1PolicyRule(
                             api_groups=["", "apps", "batch", "autoscaling"],
                             resources=[
-                                "pods", "pods/log", "deployments", "statefulsets",
-                                "replicasets", "jobs", "cronjobs",
-                                "horizontalpodautoscalers", "services",
-                                "endpoints", "configmaps", "events",
+                                "pods",
+                                "pods/log",
+                                "deployments",
+                                "statefulsets",
+                                "replicasets",
+                                "jobs",
+                                "cronjobs",
+                                "horizontalpodautoscalers",
+                                "services",
+                                "endpoints",
+                                "configmaps",
+                                "events",
                                 "persistentvolumeclaims",
                             ],
                             verbs=read_verbs,

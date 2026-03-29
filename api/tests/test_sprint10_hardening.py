@@ -9,7 +9,6 @@ Covers:
 - Application new fields (app_type, canary_enabled, canary_weight, volumes)
 """
 
-
 import pytest
 
 # ---------------------------------------------------------------------------

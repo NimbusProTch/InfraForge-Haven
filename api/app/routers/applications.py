@@ -61,9 +61,7 @@ async def _get_tenant_or_404(tenant_slug: str, db: DBSession) -> Tenant:
 async def list_applications(tenant_slug: str, db: DBSession, current_user: CurrentUser) -> list[Application]:
     tenant = await _get_tenant_or_404(tenant_slug, db)
     result = await db.execute(
-        select(Application)
-        .where(Application.tenant_id == tenant.id)
-        .order_by(Application.created_at.desc())
+        select(Application).where(Application.tenant_id == tenant.id).order_by(Application.created_at.desc())
     )
     return list(result.scalars().all())
 
@@ -76,9 +74,7 @@ async def create_application(
 
     # Check slug uniqueness within tenant
     existing = await db.execute(
-        select(Application).where(
-            Application.tenant_id == tenant.id, Application.slug == body.slug
-        )
+        select(Application).where(Application.tenant_id == tenant.id, Application.slug == body.slug)
     )
     if existing.scalar_one_or_none() is not None:
         raise HTTPException(status_code=409, detail=f"Application '{body.slug}' already exists")
@@ -117,9 +113,7 @@ async def create_application(
 async def get_application(tenant_slug: str, app_slug: str, db: DBSession, current_user: CurrentUser) -> Application:
     tenant = await _get_tenant_or_404(tenant_slug, db)
     result = await db.execute(
-        select(Application).where(
-            Application.tenant_id == tenant.id, Application.slug == app_slug
-        )
+        select(Application).where(Application.tenant_id == tenant.id, Application.slug == app_slug)
     )
     app = result.scalar_one_or_none()
     if app is None:
@@ -138,9 +132,7 @@ async def update_application(
 ) -> Application:
     tenant = await _get_tenant_or_404(tenant_slug, db)
     result = await db.execute(
-        select(Application).where(
-            Application.tenant_id == tenant.id, Application.slug == app_slug
-        )
+        select(Application).where(Application.tenant_id == tenant.id, Application.slug == app_slug)
     )
     app = result.scalar_one_or_none()
     if app is None:
@@ -155,10 +147,21 @@ async def update_application(
 
     # Enqueue values.yaml update for any config change
     if queue is not None and updated_fields:
-        gitops_fields = {"env_vars", "replicas", "port", "resources", "custom_domain",
-                         "health_check_path", "resource_cpu_request", "resource_cpu_limit",
-                         "resource_memory_request", "resource_memory_limit",
-                         "min_replicas", "max_replicas", "cpu_threshold"}
+        gitops_fields = {
+            "env_vars",
+            "replicas",
+            "port",
+            "resources",
+            "custom_domain",
+            "health_check_path",
+            "resource_cpu_request",
+            "resource_cpu_limit",
+            "resource_memory_request",
+            "resource_memory_limit",
+            "min_replicas",
+            "max_replicas",
+            "cpu_threshold",
+        }
         if updated_fields.keys() & gitops_fields:
             await _enqueue_app_values_update(queue, tenant_slug, app, "config update")
 
@@ -171,9 +174,7 @@ async def delete_application(
 ) -> None:
     tenant = await _get_tenant_or_404(tenant_slug, db)
     result = await db.execute(
-        select(Application).where(
-            Application.tenant_id == tenant.id, Application.slug == app_slug
-        )
+        select(Application).where(Application.tenant_id == tenant.id, Application.slug == app_slug)
     )
     app = result.scalar_one_or_none()
     if app is None:
@@ -238,9 +239,7 @@ async def connect_service(
     if svc is None:
         raise HTTPException(status_code=404, detail="Service not found")
     if svc.status != ServiceStatus.READY:
-        raise HTTPException(
-            status_code=409, detail=f"Service '{svc.name}' is not ready (status: {svc.status})"
-        )
+        raise HTTPException(status_code=409, detail=f"Service '{svc.name}' is not ready (status: {svc.status})")
     if not svc.secret_name or not svc.service_namespace:
         raise HTTPException(status_code=409, detail="Service has no credentials yet")
 

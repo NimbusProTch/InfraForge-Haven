@@ -9,6 +9,7 @@ Routes:
 
   POST   /domains/wildcard — issue wildcard cert for platform (admin)
 """
+
 import logging
 
 from fastapi import APIRouter, HTTPException, status
@@ -101,9 +102,7 @@ async def add_domain(
     app = await _get_app_or_404(tenant.id, app_slug, db)
 
     # Check for duplicates across all applications (domain must be globally unique)
-    existing = await db.execute(
-        select(DomainVerification).where(DomainVerification.domain == body.domain)
-    )
+    existing = await db.execute(select(DomainVerification).where(DomainVerification.domain == body.domain))
     if existing.scalar_one_or_none() is not None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -300,10 +299,7 @@ async def issue_wildcard_cert(
         "platform_domain": body.platform_domain,
         "wildcard_domain": f"*.apps.{body.platform_domain}",
         "tls_secret_name": secret_name,
-        "message": (
-            "Wildcard certificate issuance started. "
-            "Check cert-manager logs for DNS-01 challenge progress."
-        ),
+        "message": ("Wildcard certificate issuance started. Check cert-manager logs for DNS-01 challenge progress."),
     }
 
 

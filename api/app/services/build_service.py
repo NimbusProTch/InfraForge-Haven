@@ -167,9 +167,7 @@ class BuildService:
         _is_real_sha = len(commit_sha) >= 7 and all(c in "0123456789abcdef" for c in commit_sha)
         if _is_real_sha:
             git_clone_cmd = (
-                f"git clone --depth=50 '{clone_url}' /workspace "
-                f"&& cd /workspace "
-                f"&& git checkout '{commit_sha}'"
+                f"git clone --depth=50 '{clone_url}' /workspace && cd /workspace && git checkout '{commit_sha}'"
             )
         else:
             git_clone_cmd = f"git clone --depth=1 --branch '{branch}' '{clone_url}' /workspace"
@@ -182,7 +180,7 @@ class BuildService:
             "if [ ! -f /workspace/Dockerfile ]; then "
             "  apk add --no-cache curl tar grep && "
             "  NIXPACKS_VERSION=1.41.0 && "
-            '  ARCH=$(uname -m) && '
+            "  ARCH=$(uname -m) && "
             '  case "$ARCH" in aarch64|arm64) NIXARCH="aarch64" ;; *) NIXARCH="x86_64" ;; esac && '
             "  curl -fsSL -o /tmp/nixpacks.tar.gz "
             "    https://github.com/railwayapp/nixpacks/releases/download/v${NIXPACKS_VERSION}/"
@@ -222,7 +220,7 @@ class BuildService:
             "      fi; "
             # Node.js detection (use sh-compatible parsing with sed)
             "    elif [ -f /workspace/package.json ]; then "
-            "      START_CMD=$(sed -n 's/.*\"start\" *: *\"\\(.*\\)\".*/\\1/p' /workspace/package.json | head -1) && "
+            '      START_CMD=$(sed -n \'s/.*"start" *: *"\\(.*\\)".*/\\1/p\' /workspace/package.json | head -1) && '
             '      if [ -z "$START_CMD" ]; then '
             "        if [ -f /workspace/index.js ]; then "
             '          START_CMD="node index.js"; '
@@ -237,7 +235,7 @@ class BuildService:
             "      if [ -f /workspace/main.go ]; then "
             '        START_CMD="go run main.go"; '
             "      elif [ -d /workspace/cmd ]; then "
-            '        FIRST_CMD=$(ls /workspace/cmd/ 2>/dev/null | head -1) && '
+            "        FIRST_CMD=$(ls /workspace/cmd/ 2>/dev/null | head -1) && "
             '        if [ -n "$FIRST_CMD" ]; then '
             '          START_CMD="go run ./cmd/${FIRST_CMD}"; '
             "        fi; "
@@ -272,7 +270,7 @@ class BuildService:
             "        elif [ -f /workspace/package.json ]; then "
             '          printf "FROM node:20-slim\\nWORKDIR /app\\nCOPY package*.json ./\\nRUN npm ci --production\\nCOPY . .\\nEXPOSE 8000\\nCMD %s\\n" "$START_CMD" > $FALLBACK_DOCKERFILE; '  # noqa: E501
             "        elif [ -f /workspace/go.mod ]; then "
-            '          printf "FROM golang:1.22-alpine\\nWORKDIR /app\\nCOPY go.* ./\\nRUN go mod download\\nCOPY . .\\nRUN go build -o /app/server .\\nEXPOSE 8000\\nCMD [\\\"/app/server\\\"]\\n" > $FALLBACK_DOCKERFILE; '  # noqa: E501
+            '          printf "FROM golang:1.22-alpine\\nWORKDIR /app\\nCOPY go.* ./\\nRUN go mod download\\nCOPY . .\\nRUN go build -o /app/server .\\nEXPOSE 8000\\nCMD [\\"/app/server\\"]\\n" > $FALLBACK_DOCKERFILE; '  # noqa: E501
             "        fi; "
             "      fi; "
             "    else "
@@ -290,7 +288,7 @@ class BuildService:
             "      elif [ -f /workspace/package.json ]; then "
             '        printf "FROM node:20-slim\\nWORKDIR /app\\nCOPY package*.json ./\\nRUN npm ci --production\\nCOPY . .\\nEXPOSE 8000\\nCMD [\\"node\\", \\"index.js\\"]\\n" > $FALLBACK_DOCKERFILE; '  # noqa: E501
             "      elif [ -f /workspace/go.mod ]; then "
-            '        printf "FROM golang:1.22-alpine\\nWORKDIR /app\\nCOPY go.* ./\\nRUN go mod download\\nCOPY . .\\nRUN go build -o /app/server .\\nEXPOSE 8000\\nCMD [\\\"/app/server\\\"]\\n" > $FALLBACK_DOCKERFILE; '  # noqa: E501
+            '        printf "FROM golang:1.22-alpine\\nWORKDIR /app\\nCOPY go.* ./\\nRUN go mod download\\nCOPY . .\\nRUN go build -o /app/server .\\nEXPOSE 8000\\nCMD [\\"/app/server\\"]\\n" > $FALLBACK_DOCKERFILE; '  # noqa: E501
             "      else "
             '        echo "ERROR: Unable to detect language or start command" && exit 1; '
             "      fi; "
@@ -310,18 +308,14 @@ class BuildService:
                     k8s_client_lib.V1EnvVar(name="GIT_CONFIG_NOSYSTEM", value="1"),
                     k8s_client_lib.V1EnvVar(name="HOME", value="/tmp"),
                 ],
-                volume_mounts=[
-                    k8s_client_lib.V1VolumeMount(name="workspace", mount_path="/workspace")
-                ],
+                volume_mounts=[k8s_client_lib.V1VolumeMount(name="workspace", mount_path="/workspace")],
             ),
             k8s_client_lib.V1Container(
                 name="nixpacks",
                 image="alpine:3.20",
                 command=["/bin/sh", "-c"],
                 args=[nixpacks_cmd],
-                volume_mounts=[
-                    k8s_client_lib.V1VolumeMount(name="workspace", mount_path="/workspace")
-                ],
+                volume_mounts=[k8s_client_lib.V1VolumeMount(name="workspace", mount_path="/workspace")],
             ),
         ]
 
@@ -330,25 +324,26 @@ class BuildService:
             image="moby/buildkit:latest",
             command=["buildctl"],
             args=[
-                "--addr", "tcp://buildkitd.haven-builds.svc.cluster.local:1234",
+                "--addr",
+                "tcp://buildkitd.haven-builds.svc.cluster.local:1234",
                 "build",
-                "--frontend", "dockerfile.v0",
-                "--local", "context=/workspace",
-                "--local", "dockerfile=/workspace",
-                "--output", f"type=image,name={image_name},push=true,registry.insecure=true",
+                "--frontend",
+                "dockerfile.v0",
+                "--local",
+                "context=/workspace",
+                "--local",
+                "dockerfile=/workspace",
+                "--output",
+                f"type=image,name={image_name},push=true,registry.insecure=true",
             ],
             volume_mounts=[
                 k8s_client_lib.V1VolumeMount(name="workspace", mount_path="/workspace"),
-                k8s_client_lib.V1VolumeMount(
-                    name="docker-config", mount_path="/root/.docker", read_only=True
-                ),
+                k8s_client_lib.V1VolumeMount(name="docker-config", mount_path="/root/.docker", read_only=True),
             ],
         )
 
         volumes = [
-            k8s_client_lib.V1Volume(
-                name="workspace", empty_dir=k8s_client_lib.V1EmptyDirVolumeSource()
-            ),
+            k8s_client_lib.V1Volume(name="workspace", empty_dir=k8s_client_lib.V1EmptyDirVolumeSource()),
             k8s_client_lib.V1Volume(
                 name="docker-config",
                 secret=k8s_client_lib.V1SecretVolumeSource(
@@ -369,9 +364,7 @@ class BuildService:
             ttl_seconds_after_finished=3600,
             backoff_limit=1,
             template=k8s_client_lib.V1PodTemplateSpec(
-                metadata=k8s_client_lib.V1ObjectMeta(
-                    labels={"app": "haven-build", "job-name": job_name}
-                ),
+                metadata=k8s_client_lib.V1ObjectMeta(labels={"app": "haven-build", "job-name": job_name}),
                 spec=pod_spec,
             ),
         )

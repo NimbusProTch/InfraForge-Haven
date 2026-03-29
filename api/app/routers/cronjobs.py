@@ -47,9 +47,7 @@ async def _get_app_or_404(tenant_id: uuid.UUID, app_slug: str, db: DBSession) ->
 
 
 async def _get_cronjob_or_404(app_id: uuid.UUID, cronjob_id: uuid.UUID, db: DBSession) -> CronJob:
-    result = await db.execute(
-        select(CronJob).where(CronJob.id == cronjob_id, CronJob.application_id == app_id)
-    )
+    result = await db.execute(select(CronJob).where(CronJob.id == cronjob_id, CronJob.application_id == app_id))
     cj = result.scalar_one_or_none()
     if cj is None:
         raise HTTPException(status_code=404, detail="CronJob not found")

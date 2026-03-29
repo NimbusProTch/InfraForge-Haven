@@ -122,9 +122,7 @@ class SseLogBuffer:
     def events_since(self, last_event_id: int = 0) -> list[SseEvent]:
         """Return buffered events with event_id > last_event_id."""
         return [
-            SseEvent(event_id=item.event_id, data=item.text)
-            for item in self._buffer
-            if item.event_id > last_event_id
+            SseEvent(event_id=item.event_id, data=item.text) for item in self._buffer if item.event_id > last_event_id
         ]
 
     def is_done(self) -> bool:

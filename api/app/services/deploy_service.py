@@ -96,7 +96,7 @@ class DeployService:
                     label_selector=f"app={app_slug}",
                 )
                 for pod in pods.items:
-                    for cs in (pod.status.container_statuses or []):
+                    for cs in pod.status.container_statuses or []:
                         if cs.state.waiting and cs.state.waiting.reason in (
                             "CrashLoopBackOff",
                             "ErrImagePull",
@@ -190,9 +190,7 @@ class DeployService:
         env_list += [k8s_client_lib.V1EnvVar(name=k, value=v) for k, v in env_vars.items()]
 
         env_from = [
-            k8s_client_lib.V1EnvFromSource(
-                secret_ref=k8s_client_lib.V1SecretEnvSource(name=sn, optional=True)
-            )
+            k8s_client_lib.V1EnvFromSource(secret_ref=k8s_client_lib.V1SecretEnvSource(name=sn, optional=True))
             for sn in (service_secret_names or [])
         ]
 
@@ -215,9 +213,7 @@ class DeployService:
                                 name=app_slug,
                                 image=image,
                                 image_pull_policy="Always",
-                                ports=[
-                                    k8s_client_lib.V1ContainerPort(container_port=port)
-                                ],
+                                ports=[k8s_client_lib.V1ContainerPort(container_port=port)],
                                 env=env_list,
                                 env_from=env_from,
                                 resources=k8s_client_lib.V1ResourceRequirements(
@@ -225,9 +221,7 @@ class DeployService:
                                     limits={"cpu": "500m", "memory": "512Mi"},
                                 ),
                                 liveness_probe=k8s_client_lib.V1Probe(
-                                    tcp_socket=k8s_client_lib.V1TCPSocketAction(
-                                        port=port
-                                    ),
+                                    tcp_socket=k8s_client_lib.V1TCPSocketAction(port=port),
                                     initial_delay_seconds=10,
                                     period_seconds=10,
                                 ),
@@ -236,17 +230,13 @@ class DeployService:
                                     run_as_non_root=True,
                                     run_as_user=1000,
                                     capabilities=k8s_client_lib.V1Capabilities(drop=["ALL"]),
-                                    seccomp_profile=k8s_client_lib.V1SeccompProfile(
-                                        type="RuntimeDefault"
-                                    ),
+                                    seccomp_profile=k8s_client_lib.V1SeccompProfile(type="RuntimeDefault"),
                                 ),
                             )
                         ],
                         tolerations=[k8s_client_lib.V1Toleration(operator="Exists")],
                         image_pull_secrets=[
-                            k8s_client_lib.V1LocalObjectReference(
-                                name=settings.harbor_registry_secret
-                            )
+                            k8s_client_lib.V1LocalObjectReference(name=settings.harbor_registry_secret)
                         ],
                     ),
                 ),

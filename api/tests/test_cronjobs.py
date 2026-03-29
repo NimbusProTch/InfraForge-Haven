@@ -81,9 +81,7 @@ async def test_list_cronjobs_empty(async_client, db_session):
     """List cronjobs returns empty list for a new app."""
     tenant, app_obj = await _make_tenant_and_app(db_session)
 
-    response = await async_client.get(
-        f"/api/v1/tenants/{tenant.slug}/apps/{app_obj.slug}/cronjobs"
-    )
+    response = await async_client.get(f"/api/v1/tenants/{tenant.slug}/apps/{app_obj.slug}/cronjobs")
     assert response.status_code == 200
     assert response.json() == []
 
@@ -119,9 +117,7 @@ async def test_get_cronjob_by_id(async_client, db_session):
     )
     cj_id = create_resp.json()["id"]
 
-    response = await async_client.get(
-        f"/api/v1/tenants/{tenant.slug}/apps/{app_obj.slug}/cronjobs/{cj_id}"
-    )
+    response = await async_client.get(f"/api/v1/tenants/{tenant.slug}/apps/{app_obj.slug}/cronjobs/{cj_id}")
     assert response.status_code == 200
     assert response.json()["id"] == cj_id
 
@@ -156,15 +152,11 @@ async def test_delete_cronjob(async_client, db_session):
     )
     cj_id = create_resp.json()["id"]
 
-    del_resp = await async_client.delete(
-        f"/api/v1/tenants/{tenant.slug}/apps/{app_obj.slug}/cronjobs/{cj_id}"
-    )
+    del_resp = await async_client.delete(f"/api/v1/tenants/{tenant.slug}/apps/{app_obj.slug}/cronjobs/{cj_id}")
     assert del_resp.status_code == 204
 
     # Confirm gone
-    get_resp = await async_client.get(
-        f"/api/v1/tenants/{tenant.slug}/apps/{app_obj.slug}/cronjobs/{cj_id}"
-    )
+    get_resp = await async_client.get(f"/api/v1/tenants/{tenant.slug}/apps/{app_obj.slug}/cronjobs/{cj_id}")
     assert get_resp.status_code == 404
 
 
@@ -180,9 +172,7 @@ async def test_run_cronjob_now(k8s_client, db_session):
     assert create_resp.status_code == 201
     cj_id = create_resp.json()["id"]
 
-    run_resp = await k8s_client.post(
-        f"/api/v1/tenants/{tenant.slug}/apps/{app_obj.slug}/cronjobs/{cj_id}/run"
-    )
+    run_resp = await k8s_client.post(f"/api/v1/tenants/{tenant.slug}/apps/{app_obj.slug}/cronjobs/{cj_id}/run")
     assert run_resp.status_code == 202
 
 

@@ -168,9 +168,7 @@ async def test_delete_cluster_with_apps_blocked(async_client, db_session, tenant
 @pytest.mark.asyncio
 async def test_health_check_marks_active(async_client, db_session):
     """POST /clusters/{id}/health-check marks cluster active when API reachable."""
-    cluster = await _make_cluster(
-        db_session, name="healthy-cluster", status=ClusterStatus.unknown.value
-    )
+    cluster = await _make_cluster(db_session, name="healthy-cluster", status=ClusterStatus.unknown.value)
 
     with patch(
         "app.services.cluster_service.ClusterService._probe_cluster",
@@ -274,9 +272,7 @@ async def test_routing_table_with_clusters(async_client, db_session):
 @pytest.mark.asyncio
 async def test_best_cluster_for_region(async_client, db_session):
     """GET /clusters/routing/region/{region} returns active cluster in region."""
-    await _make_cluster(
-        db_session, name="ams-cluster", region="eu-west-nl", status=ClusterStatus.active.value
-    )
+    await _make_cluster(db_session, name="ams-cluster", region="eu-west-nl", status=ClusterStatus.active.value)
     resp = await async_client.get("/api/v1/clusters/routing/region/eu-west-nl")
     assert resp.status_code == 200
     assert resp.json()["name"] == "ams-cluster"
@@ -313,9 +309,7 @@ async def test_resolve_deployment_cluster_falls_back_to_failover(db_session):
     from app.services.cluster_service import ClusterService
 
     svc = ClusterService()
-    failover = await _make_cluster(
-        db_session, name="failover-cluster", status=ClusterStatus.active.value
-    )
+    failover = await _make_cluster(db_session, name="failover-cluster", status=ClusterStatus.active.value)
     degraded = await _make_cluster(
         db_session,
         name="degraded-cluster",
@@ -334,12 +328,8 @@ async def test_resolve_deployment_cluster_falls_back_to_primary(db_session):
     from app.services.cluster_service import ClusterService
 
     svc = ClusterService()
-    primary = await _make_cluster(
-        db_session, name="primary", is_primary=True, status=ClusterStatus.active.value
-    )
-    unknown_cluster = await _make_cluster(
-        db_session, name="unknown-cluster", status=ClusterStatus.unknown.value
-    )
+    primary = await _make_cluster(db_session, name="primary", is_primary=True, status=ClusterStatus.active.value)
+    unknown_cluster = await _make_cluster(db_session, name="unknown-cluster", status=ClusterStatus.unknown.value)
 
     result = await svc.resolve_deployment_cluster(unknown_cluster.id, db_session)
     assert result is not None

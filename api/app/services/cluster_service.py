@@ -39,9 +39,7 @@ class ClusterService:
         return result.scalar_one_or_none()
 
     async def get_clusters_by_region(self, region: str, db: AsyncSession) -> list[Cluster]:
-        result = await db.execute(
-            select(Cluster).where(Cluster.region == region).order_by(Cluster.is_primary.desc())
-        )
+        result = await db.execute(select(Cluster).where(Cluster.region == region).order_by(Cluster.is_primary.desc()))
         return list(result.scalars().all())
 
     async def create_cluster(self, body: ClusterCreate, db: AsyncSession) -> Cluster:
@@ -123,9 +121,7 @@ class ClusterService:
             results.append(await self.check_cluster_health(cluster, db))
         return results
 
-    async def _probe_cluster(
-        self, cluster: Cluster
-    ) -> tuple[ClusterStatus, str, int | None]:
+    async def _probe_cluster(self, cluster: Cluster) -> tuple[ClusterStatus, str, int | None]:
         """Make an HTTP probe to the cluster API endpoint.
 
         Returns (status, message, node_count).
@@ -196,9 +192,7 @@ class ClusterService:
 
         # Any active schedulable cluster
         result = await db.execute(
-            select(Cluster)
-            .where(Cluster.status == ClusterStatus.active.value, Cluster.schedulable.is_(True))
-            .limit(1)
+            select(Cluster).where(Cluster.status == ClusterStatus.active.value, Cluster.schedulable.is_(True)).limit(1)
         )
         return result.scalar_one_or_none()
 

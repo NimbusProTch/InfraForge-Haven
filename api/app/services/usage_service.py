@@ -131,9 +131,7 @@ async def collect_k8s_usage(db: AsyncSession, k8s: K8sClient, tenant: Tenant) ->
 # ---------------------------------------------------------------------------
 
 
-async def get_usage_history(
-    db: AsyncSession, tenant_id: uuid.UUID, limit: int = 12
-) -> list[UsageRecord]:
+async def get_usage_history(db: AsyncSession, tenant_id: uuid.UUID, limit: int = 12) -> list[UsageRecord]:
     """Return up to *limit* most recent closed + open records (newest first)."""
     result = await db.execute(
         select(UsageRecord)
@@ -193,9 +191,7 @@ async def enforce_app_quota(db: AsyncSession, tenant: Tenant) -> None:
 
     from app.models.application import Application
 
-    result = await db.execute(
-        select(sqlfunc.count(Application.id)).where(Application.tenant_id == tenant.id)
-    )
+    result = await db.execute(select(sqlfunc.count(Application.id)).where(Application.tenant_id == tenant.id))
     current_count = result.scalar_one()
 
     if current_count >= int(max_apps):

@@ -66,9 +66,7 @@ async def test_create_staging_environment(async_client: AsyncClient, tenant_and_
 
 async def test_list_environments_empty(async_client: AsyncClient, tenant_and_app):
     tenant, app_obj = tenant_and_app
-    response = await async_client.get(
-        f"/api/v1/tenants/{tenant.slug}/apps/{app_obj.slug}/environments"
-    )
+    response = await async_client.get(f"/api/v1/tenants/{tenant.slug}/apps/{app_obj.slug}/environments")
     assert response.status_code == 200
     assert response.json() == []
 
@@ -84,9 +82,7 @@ async def test_list_environments_returns_all(async_client: AsyncClient, tenant_a
         f"/api/v1/tenants/{tenant.slug}/apps/{app_obj.slug}/environments",
         json={"name": "pr-1", "env_type": "preview", "branch": "feature/foo"},
     )
-    response = await async_client.get(
-        f"/api/v1/tenants/{tenant.slug}/apps/{app_obj.slug}/environments"
-    )
+    response = await async_client.get(f"/api/v1/tenants/{tenant.slug}/apps/{app_obj.slug}/environments")
     assert response.status_code == 200
     names = [e["name"] for e in response.json()]
     assert "staging" in names
@@ -95,9 +91,7 @@ async def test_list_environments_returns_all(async_client: AsyncClient, tenant_a
 
 async def test_get_environment_not_found(async_client: AsyncClient, tenant_and_app):
     tenant, app_obj = tenant_and_app
-    response = await async_client.get(
-        f"/api/v1/tenants/{tenant.slug}/apps/{app_obj.slug}/environments/nonexistent"
-    )
+    response = await async_client.get(f"/api/v1/tenants/{tenant.slug}/apps/{app_obj.slug}/environments/nonexistent")
     assert response.status_code == 404
 
 
@@ -107,9 +101,7 @@ async def test_get_environment_ok(async_client: AsyncClient, tenant_and_app):
         f"/api/v1/tenants/{tenant.slug}/apps/{app_obj.slug}/environments",
         json={"name": "staging", "env_type": "staging", "branch": "staging"},
     )
-    response = await async_client.get(
-        f"/api/v1/tenants/{tenant.slug}/apps/{app_obj.slug}/environments/staging"
-    )
+    response = await async_client.get(f"/api/v1/tenants/{tenant.slug}/apps/{app_obj.slug}/environments/staging")
     assert response.status_code == 200
     assert response.json()["name"] == "staging"
 
@@ -117,13 +109,9 @@ async def test_get_environment_ok(async_client: AsyncClient, tenant_and_app):
 async def test_duplicate_environment_name_rejected(async_client: AsyncClient, tenant_and_app):
     tenant, app_obj = tenant_and_app
     payload = {"name": "staging", "env_type": "staging", "branch": "staging"}
-    r1 = await async_client.post(
-        f"/api/v1/tenants/{tenant.slug}/apps/{app_obj.slug}/environments", json=payload
-    )
+    r1 = await async_client.post(f"/api/v1/tenants/{tenant.slug}/apps/{app_obj.slug}/environments", json=payload)
     assert r1.status_code == 201
-    r2 = await async_client.post(
-        f"/api/v1/tenants/{tenant.slug}/apps/{app_obj.slug}/environments", json=payload
-    )
+    r2 = await async_client.post(f"/api/v1/tenants/{tenant.slug}/apps/{app_obj.slug}/environments", json=payload)
     assert r2.status_code == 409
 
 
@@ -147,14 +135,10 @@ async def test_delete_environment(async_client: AsyncClient, tenant_and_app):
         f"/api/v1/tenants/{tenant.slug}/apps/{app_obj.slug}/environments",
         json={"name": "staging", "env_type": "staging", "branch": "staging"},
     )
-    response = await async_client.delete(
-        f"/api/v1/tenants/{tenant.slug}/apps/{app_obj.slug}/environments/staging"
-    )
+    response = await async_client.delete(f"/api/v1/tenants/{tenant.slug}/apps/{app_obj.slug}/environments/staging")
     assert response.status_code == 204
     # Verify it's gone
-    get_response = await async_client.get(
-        f"/api/v1/tenants/{tenant.slug}/apps/{app_obj.slug}/environments/staging"
-    )
+    get_response = await async_client.get(f"/api/v1/tenants/{tenant.slug}/apps/{app_obj.slug}/environments/staging")
     assert get_response.status_code == 404
 
 
@@ -164,9 +148,7 @@ async def test_cannot_delete_production_environment(async_client: AsyncClient, t
         f"/api/v1/tenants/{tenant.slug}/apps/{app_obj.slug}/environments",
         json={"name": "production", "env_type": "production", "branch": "main"},
     )
-    response = await async_client.delete(
-        f"/api/v1/tenants/{tenant.slug}/apps/{app_obj.slug}/environments/production"
-    )
+    response = await async_client.delete(f"/api/v1/tenants/{tenant.slug}/apps/{app_obj.slug}/environments/production")
     assert response.status_code == 400
 
 
@@ -217,9 +199,7 @@ async def test_production_environment_domain(async_client: AsyncClient, tenant_a
 # ---------------------------------------------------------------------------
 
 
-async def test_webhook_pr_opened_creates_preview(
-    async_client: AsyncClient, tenant_and_app, db_session: AsyncSession
-):
+async def test_webhook_pr_opened_creates_preview(async_client: AsyncClient, tenant_and_app, db_session: AsyncSession):
     tenant, app_obj = tenant_and_app
 
     pr_payload = {
@@ -246,6 +226,7 @@ async def test_webhook_pr_opened_creates_preview(
 
     # Verify environment was created in DB
     from sqlalchemy import select
+
     result = await db_session.execute(
         select(Environment).where(
             Environment.application_id == app_obj.id,
@@ -284,9 +265,7 @@ async def test_webhook_pr_synchronize_updates_preview(
     assert response.json()["environment"] == "pr-7"
 
 
-async def test_webhook_pr_closed_deletes_preview(
-    async_client: AsyncClient, tenant_and_app, db_session: AsyncSession
-):
+async def test_webhook_pr_closed_deletes_preview(async_client: AsyncClient, tenant_and_app, db_session: AsyncSession):
     tenant, app_obj = tenant_and_app
 
     pr_99 = {"number": 99, "head": {"ref": "feat/x", "sha": "ccc"}}
@@ -311,6 +290,7 @@ async def test_webhook_pr_closed_deletes_preview(
 
     # Verify environment is gone from DB
     from sqlalchemy import select
+
     result = await db_session.execute(
         select(Environment).where(
             Environment.application_id == app_obj.id,
@@ -320,9 +300,7 @@ async def test_webhook_pr_closed_deletes_preview(
     assert result.scalar_one_or_none() is None
 
 
-async def test_webhook_pr_closed_no_environment_is_ignored(
-    async_client: AsyncClient, tenant_and_app
-):
+async def test_webhook_pr_closed_no_environment_is_ignored(async_client: AsyncClient, tenant_and_app):
     tenant, app_obj = tenant_and_app
     with patch("app.routers.webhooks.asyncio.create_task"):
         response = await async_client.post(
@@ -370,7 +348,5 @@ async def test_environments_tenant_not_found(async_client: AsyncClient):
 
 async def test_environments_app_not_found(async_client: AsyncClient, tenant_and_app):
     tenant, _ = tenant_and_app
-    response = await async_client.get(
-        f"/api/v1/tenants/{tenant.slug}/apps/no-such-app/environments"
-    )
+    response = await async_client.get(f"/api/v1/tenants/{tenant.slug}/apps/no-such-app/environments")
     assert response.status_code == 404

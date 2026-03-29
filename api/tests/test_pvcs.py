@@ -47,9 +47,7 @@ async def test_list_volumes_empty_without_k8s(async_client, db_session):
     """List volumes returns empty list when K8s is unavailable."""
     tenant, app_obj = await _make_tenant_and_app(db_session)
 
-    response = await async_client.get(
-        f"/api/v1/tenants/{tenant.slug}/apps/{app_obj.slug}/volumes"
-    )
+    response = await async_client.get(f"/api/v1/tenants/{tenant.slug}/apps/{app_obj.slug}/volumes")
     assert response.status_code == 200
     data = response.json()
     assert data["k8s_available"] is False
@@ -107,9 +105,7 @@ async def test_delete_volume(async_client, db_session):
         json={"name": "tmp-vol", "mount_path": "/tmp/data", "size_gi": 2},
     )
 
-    del_resp = await async_client.delete(
-        f"/api/v1/tenants/{tenant.slug}/apps/{app_obj.slug}/volumes/tmp-vol"
-    )
+    del_resp = await async_client.delete(f"/api/v1/tenants/{tenant.slug}/apps/{app_obj.slug}/volumes/tmp-vol")
     assert del_resp.status_code == 204
 
 
@@ -118,16 +114,12 @@ async def test_delete_nonexistent_volume_returns_404(async_client, db_session):
     """DELETE a volume name that doesn't exist returns 404."""
     tenant, app_obj = await _make_tenant_and_app(db_session)
 
-    response = await async_client.delete(
-        f"/api/v1/tenants/{tenant.slug}/apps/{app_obj.slug}/volumes/nonexistent"
-    )
+    response = await async_client.delete(f"/api/v1/tenants/{tenant.slug}/apps/{app_obj.slug}/volumes/nonexistent")
     assert response.status_code == 404
 
 
 @pytest.mark.asyncio
 async def test_volume_tenant_404(async_client, db_session):
     """Volume endpoints return 404 for unknown tenant."""
-    response = await async_client.get(
-        "/api/v1/tenants/ghost-tenant/apps/ghost-app/volumes"
-    )
+    response = await async_client.get("/api/v1/tenants/ghost-tenant/apps/ghost-app/volumes")
     assert response.status_code == 404

@@ -75,5 +75,6 @@ class DomainVerifyResponse(BaseModel):
 
 class WildcardCertRequest(BaseModel):
     """Request to issue a wildcard certificate for *.apps.{platform_domain}."""
+
     platform_domain: str
     cloudflare_api_token: str | None = None

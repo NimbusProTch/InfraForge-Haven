@@ -69,9 +69,7 @@ async def run_pipeline(
 ) -> None:
     """Run full build → deploy pipeline, persisting status to DB at each step."""
     harbor_host = settings.harbor_url.removeprefix("https://").removeprefix("http://")
-    image_name = (
-        f"{harbor_host}/{settings.harbor_project}/{namespace}/{app_slug}:{commit_sha[:8]}"
-    )
+    image_name = f"{harbor_host}/{settings.harbor_project}/{namespace}/{app_slug}:{commit_sha[:8]}"
     build_svc = BuildService(k8s)
     deploy_svc = DeployService(k8s)
 

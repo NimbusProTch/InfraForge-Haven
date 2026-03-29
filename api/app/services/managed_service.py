@@ -86,10 +86,10 @@ def _rabbitmq_body(name: str, namespace: str, tier: ServiceTier) -> dict:
 # ---------------------------------------------------------------------------
 
 _SECRET_NAME_MAP = {
-    ServiceType.POSTGRES: lambda name: f"{name}-app",           # CNPG/Percona app user secret
-    ServiceType.MYSQL: lambda name: f"{name}-pxc-secrets",      # Percona XtraDB secret
+    ServiceType.POSTGRES: lambda name: f"{name}-app",  # CNPG/Percona app user secret
+    ServiceType.MYSQL: lambda name: f"{name}-pxc-secrets",  # Percona XtraDB secret
     ServiceType.MONGODB: lambda name: f"{name}-psmdb-secrets",  # Percona MongoDB secret
-    ServiceType.REDIS: lambda name: f"{name}-redis",            # OpsTree Redis secret
+    ServiceType.REDIS: lambda name: f"{name}-redis",  # OpsTree Redis secret
     ServiceType.RABBITMQ: lambda name: f"{name}-default-user",  # RabbitMQ Operator default user
 }
 
@@ -100,6 +100,7 @@ _CONNECTION_HINT_MAP = {
     ServiceType.REDIS: lambda name, ns: f"redis://{name}-redis.{ns}.svc:6379",
     ServiceType.RABBITMQ: lambda name, ns: f"amqp://{name}-default-user@{name}.{ns}.svc:5672",
 }
+
 
 def _mysql_body(name: str, namespace: str, tier: ServiceTier) -> dict:
     """Build a Percona XtraDB Cluster manifest."""
@@ -146,18 +147,20 @@ def _mongodb_body(name: str, namespace: str, tier: ServiceTier) -> dict:
             "crVersion": "1.17.0",
             "image": "percona/percona-server-mongodb:7.0",
             "allowUnsafeConfigurations": tier == ServiceTier.DEV,
-            "replsets": [{
-                "name": "rs0",
-                "size": instances,
-                "resources": {"requests": {"cpu": "100m", "memory": "256Mi"}, "limits": {"memory": "1Gi"}},
-                "volumeSpec": {
-                    "persistentVolumeClaim": {
-                        "storageClassName": "longhorn",
-                        "resources": {"requests": {"storage": storage}},
-                    }
-                },
-                "affinity": {"advanced": {"tolerations": [{"operator": "Exists"}]}},
-            }],
+            "replsets": [
+                {
+                    "name": "rs0",
+                    "size": instances,
+                    "resources": {"requests": {"cpu": "100m", "memory": "256Mi"}, "limits": {"memory": "1Gi"}},
+                    "volumeSpec": {
+                        "persistentVolumeClaim": {
+                            "storageClassName": "longhorn",
+                            "resources": {"requests": {"storage": storage}},
+                        }
+                    },
+                    "affinity": {"advanced": {"tolerations": [{"operator": "Exists"}]}},
+                }
+            ],
             "sharding": {"enabled": False},
         },
     }
@@ -280,9 +283,7 @@ class ManagedServiceProvisioner:
 
         service.secret_name = _SECRET_NAME_MAP[service.service_type](service.name)
         service.service_namespace = tenant_namespace
-        service.connection_hint = _CONNECTION_HINT_MAP[service.service_type](
-            service.name, tenant_namespace
-        )
+        service.connection_hint = _CONNECTION_HINT_MAP[service.service_type](service.name, tenant_namespace)
         service.status = ServiceStatus.PROVISIONING  # operator will flip to READY eventually
         logger.info(
             "Service %s (%s) CRD created in %s",

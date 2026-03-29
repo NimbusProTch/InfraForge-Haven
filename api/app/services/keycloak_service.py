@@ -155,9 +155,7 @@ class KeycloakService:
                     "email": email,
                     "enabled": True,
                     "emailVerified": True,
-                    "credentials": [
-                        {"type": "password", "value": password, "temporary": False}
-                    ],
+                    "credentials": [{"type": "password", "value": password, "temporary": False}],
                 },
                 headers={"Authorization": f"Bearer {token}"},
             )

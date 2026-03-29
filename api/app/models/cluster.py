@@ -63,9 +63,7 @@ class Cluster(Base, TimestampMixin):
     node_count: Mapped[int] = mapped_column(default=0)
 
     # Failover config: if this cluster fails, route to failover_cluster_id
-    failover_cluster_id: Mapped[uuid.UUID | None] = mapped_column(
-        String(36), nullable=True
-    )
+    failover_cluster_id: Mapped[uuid.UUID | None] = mapped_column(String(36), nullable=True)
 
     applications: Mapped[list["Application"]] = relationship(
         back_populates="cluster", foreign_keys="Application.cluster_id"

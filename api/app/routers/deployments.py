@@ -349,10 +349,7 @@ async def stream_logs(
 
     # Preload latest deployment to check for active builds
     result = await db.execute(
-        select(Deployment)
-        .where(Deployment.application_id == app.id)
-        .order_by(Deployment.created_at.desc())
-        .limit(1)
+        select(Deployment).where(Deployment.application_id == app.id).order_by(Deployment.created_at.desc()).limit(1)
     )
     latest_deployment = result.scalar_one_or_none()
 

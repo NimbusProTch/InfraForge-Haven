@@ -54,19 +54,23 @@ class TestEnvVarSchema:
         assert v.key == "_MY_VAR"
 
     def test_env_var_list_plaintext(self):
-        lst = EnvVarList(vars=[
-            EnvVar(key="PORT", value="8000"),
-            EnvVar(key="SECRET", value="s3cr3t", sensitive=True),
-        ])
+        lst = EnvVarList(
+            vars=[
+                EnvVar(key="PORT", value="8000"),
+                EnvVar(key="SECRET", value="s3cr3t", sensitive=True),
+            ]
+        )
         plain = lst.plaintext()
         assert plain == {"PORT": "8000"}
 
     def test_env_var_list_sensitive(self):
-        lst = EnvVarList(vars=[
-            EnvVar(key="PORT", value="8000"),
-            EnvVar(key="SECRET", value="s3cr3t", sensitive=True),
-            EnvVar(key="TOKEN", value="tok", sensitive=True),
-        ])
+        lst = EnvVarList(
+            vars=[
+                EnvVar(key="PORT", value="8000"),
+                EnvVar(key="SECRET", value="s3cr3t", sensitive=True),
+                EnvVar(key="TOKEN", value="tok", sensitive=True),
+            ]
+        )
         sens = lst.sensitive()
         assert sens == {"SECRET": "s3cr3t", "TOKEN": "tok"}
 

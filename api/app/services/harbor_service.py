@@ -21,8 +21,8 @@ from app.config import settings
 logger = logging.getLogger(__name__)
 
 # Storage quota per tier in bytes (Harbor API expects bytes)
-_GiB = 1024 ** 3
-_TiB = 1024 ** 4
+_GiB = 1024**3
+_TiB = 1024**4
 
 _TIER_STORAGE_QUOTA: dict[str, int] = {
     "free": 5 * _GiB,
@@ -39,8 +39,8 @@ _DEFAULT_TIER = "free"
 
 @dataclass
 class RobotCredentials:
-    robot_name: str   # full robot name as returned by Harbor (e.g. "robot$tenant-acme+haven")
-    secret: str       # robot account secret / password
+    robot_name: str  # full robot name as returned by Harbor (e.g. "robot$tenant-acme+haven")
+    secret: str  # robot account secret / password
 
 
 class HarborService:
@@ -164,11 +164,7 @@ class HarborService:
 
         harbor_host = urlparse(settings.harbor_url).netloc or settings.harbor_url.rstrip("/")
         auth_str = base64.b64encode(f"{creds.robot_name}:{creds.secret}".encode()).decode()
-        docker_config = {
-            "auths": {
-                harbor_host: {"auth": auth_str}
-            }
-        }
+        docker_config = {"auths": {harbor_host: {"auth": auth_str}}}
         return {
             "apiVersion": "v1",
             "kind": "Secret",
@@ -176,9 +172,7 @@ class HarborService:
                 "name": f"harbor-{tenant_slug}-pull-secret",
             },
             "type": "kubernetes.io/dockerconfigjson",
-            "data": {
-                ".dockerconfigjson": base64.b64encode(json.dumps(docker_config).encode()).decode()
-            },
+            "data": {".dockerconfigjson": base64.b64encode(json.dumps(docker_config).encode()).decode()},
         }
 
     # ------------------------------------------------------------------

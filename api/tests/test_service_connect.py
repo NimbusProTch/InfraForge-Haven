@@ -111,9 +111,7 @@ async def tenant_app_service(db_session: AsyncSession):
 # ---------------------------------------------------------------------------
 
 
-async def test_connect_service_adds_env_from_secrets(
-    async_client: AsyncClient, tenant_app_service
-):
+async def test_connect_service_adds_env_from_secrets(async_client: AsyncClient, tenant_app_service):
     tenant, app_obj, svc = tenant_app_service
     resp = await async_client.post(
         f"/api/v1/tenants/{tenant.slug}/apps/{app_obj.slug}/connect-service",
@@ -197,9 +195,7 @@ async def test_disconnect_service_noop_if_not_connected(async_client: AsyncClien
 # ---------------------------------------------------------------------------
 
 
-async def test_get_credentials_returns_decoded_secret(
-    async_client_with_secret: AsyncClient, tenant_app_service
-):
+async def test_get_credentials_returns_decoded_secret(async_client_with_secret: AsyncClient, tenant_app_service):
     tenant, _, svc = tenant_app_service
     resp = await async_client_with_secret.get(
         f"/api/v1/tenants/{tenant.slug}/services/{svc.name}/credentials",
@@ -214,9 +210,7 @@ async def test_get_credentials_returns_decoded_secret(
     assert data["credentials"]["host"] == "my-pg-rw.tenant-test.svc"
 
 
-async def test_get_credentials_503_when_k8s_unavailable(
-    async_client: AsyncClient, tenant_app_service
-):
+async def test_get_credentials_503_when_k8s_unavailable(async_client: AsyncClient, tenant_app_service):
     """async_client uses mock_k8s which is unavailable — should return 503."""
     tenant, _, svc = tenant_app_service
     resp = await async_client.get(
@@ -225,9 +219,7 @@ async def test_get_credentials_503_when_k8s_unavailable(
     assert resp.status_code == 503
 
 
-async def test_get_credentials_service_not_found(
-    async_client_with_secret: AsyncClient, tenant_app_service
-):
+async def test_get_credentials_service_not_found(async_client_with_secret: AsyncClient, tenant_app_service):
     tenant, _, _ = tenant_app_service
     resp = await async_client_with_secret.get(
         f"/api/v1/tenants/{tenant.slug}/services/nonexistent/credentials",

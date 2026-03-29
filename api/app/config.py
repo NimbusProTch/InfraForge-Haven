@@ -57,7 +57,6 @@ class Settings(BaseSettings):
     # Redis (git queue, session cache)
     redis_url: str = "redis://localhost:6379/0"
 
-
     # Gitea self-hosted git server
     # Set GITEA_URL to the in-cluster service URL (e.g. http://gitea-http.gitea-system.svc.cluster.local:3000)
     gitea_url: str = ""
@@ -68,7 +67,9 @@ class Settings(BaseSettings):
     gitea_gitops_branch: str = "main"
 
     # CORS allowed origins (comma-separated list)
-    cors_origins: str = "http://localhost:3000,http://localhost:3001,http://localhost:3002,http://127.0.0.1:3000,http://127.0.0.1:3001"
+    cors_origins: str = (
+        "http://localhost:3000,http://localhost:3001,http://localhost:3002,http://127.0.0.1:3000,http://127.0.0.1:3001"
+    )
 
     # App
     debug: bool = False

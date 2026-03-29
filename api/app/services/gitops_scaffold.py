@@ -76,14 +76,16 @@ class GitOpsScaffold:
 
             prefix = f"Haven API: scaffold tenant {tenant_slug}"
             await self._client.upsert_file(
-                self._org, self._repo,
+                self._org,
+                self._repo,
                 f"tenants/{tenant_slug}/namespace.yaml",
                 ns_content,
                 f"{prefix} — namespace",
                 self._branch,
             )
             await self._client.upsert_file(
-                self._org, self._repo,
+                self._org,
+                self._repo,
                 f"tenants/{tenant_slug}/kustomization.yaml",
                 kust_content,
                 f"{prefix} — kustomization",
@@ -100,7 +102,8 @@ class GitOpsScaffold:
             return
         try:
             await self._client.delete_directory(
-                self._org, self._repo,
+                self._org,
+                self._repo,
                 f"tenants/{tenant_slug}",
                 f"Haven API: delete tenant {tenant_slug}",
                 self._branch,
@@ -148,7 +151,8 @@ class GitOpsScaffold:
                 memory_limit=memory_limit,
             )
             await self._client.upsert_file(
-                self._org, self._repo,
+                self._org,
+                self._repo,
                 f"tenants/{tenant_slug}/apps/{app_slug}/values.yaml",
                 content,
                 f"Haven API: create app {app_slug} for tenant {tenant_slug}",
@@ -165,7 +169,8 @@ class GitOpsScaffold:
             return
         try:
             await self._client.delete_directory(
-                self._org, self._repo,
+                self._org,
+                self._repo,
                 f"tenants/{tenant_slug}/apps/{app_slug}",
                 f"Haven API: delete app {app_slug} for tenant {tenant_slug}",
                 self._branch,
@@ -193,7 +198,8 @@ class GitOpsScaffold:
 
             content = yaml.dump(service_values, default_flow_style=False, sort_keys=False)
             await self._client.upsert_file(
-                self._org, self._repo,
+                self._org,
+                self._repo,
                 f"tenants/{tenant_slug}/services/{service_name}.yaml",
                 content,
                 f"Haven API: provision service {service_name} for tenant {tenant_slug}",
@@ -210,13 +216,15 @@ class GitOpsScaffold:
             return
         try:
             file_info = await self._client.get_file(
-                self._org, self._repo,
+                self._org,
+                self._repo,
                 f"tenants/{tenant_slug}/services/{service_name}.yaml",
                 self._branch,
             )
             if file_info:
                 await self._client.delete_file(
-                    self._org, self._repo,
+                    self._org,
+                    self._repo,
                     f"tenants/{tenant_slug}/services/{service_name}.yaml",
                     file_info.get("sha", ""),
                     f"Haven API: deprovision service {service_name} for tenant {tenant_slug}",

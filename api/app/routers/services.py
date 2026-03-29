@@ -27,9 +27,7 @@ async def _get_tenant_or_404(tenant_slug: str, db: DBSession) -> Tenant:
 async def list_services(tenant_slug: str, db: DBSession, current_user: CurrentUser) -> list[ManagedService]:
     tenant = await _get_tenant_or_404(tenant_slug, db)
     result = await db.execute(
-        select(ManagedService)
-        .where(ManagedService.tenant_id == tenant.id)
-        .order_by(ManagedService.created_at.desc())
+        select(ManagedService).where(ManagedService.tenant_id == tenant.id).order_by(ManagedService.created_at.desc())
     )
     return list(result.scalars().all())
 

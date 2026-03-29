@@ -111,9 +111,7 @@ async def revoke_consent(
 async def get_retention_policy(tenant_slug: str, db: DBSession, current_user: CurrentUser) -> DataRetentionPolicy:
     """Get the data retention policy for this tenant."""
     tenant = await _get_tenant_or_404(tenant_slug, db)
-    result = await db.execute(
-        select(DataRetentionPolicy).where(DataRetentionPolicy.tenant_id == str(tenant.id))
-    )
+    result = await db.execute(select(DataRetentionPolicy).where(DataRetentionPolicy.tenant_id == str(tenant.id)))
     policy = result.scalar_one_or_none()
     if policy is None:
         # Create default policy on first access
@@ -130,9 +128,7 @@ async def update_retention_policy(
 ) -> DataRetentionPolicy:
     """Update the data retention policy for this tenant."""
     tenant = await _get_tenant_or_404(tenant_slug, db)
-    result = await db.execute(
-        select(DataRetentionPolicy).where(DataRetentionPolicy.tenant_id == str(tenant.id))
-    )
+    result = await db.execute(select(DataRetentionPolicy).where(DataRetentionPolicy.tenant_id == str(tenant.id)))
     policy = result.scalar_one_or_none()
     if policy is None:
         policy = DataRetentionPolicy(tenant_id=str(tenant.id))
@@ -267,9 +263,7 @@ async def erase_data(
     await db.execute(delete(Application).where(Application.tenant_id == tenant_id))
     con_result = await db.execute(delete(UserConsent).where(UserConsent.tenant_id == tenant_id))
     mem_result = await db.execute(delete(TenantMember).where(TenantMember.tenant_id == tenant_id))
-    ret_result = await db.execute(
-        delete(DataRetentionPolicy).where(DataRetentionPolicy.tenant_id == str(tenant_id))
-    )
+    ret_result = await db.execute(delete(DataRetentionPolicy).where(DataRetentionPolicy.tenant_id == str(tenant_id)))
 
     await db.delete(tenant)
     await db.commit()

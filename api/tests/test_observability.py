@@ -192,10 +192,7 @@ async def test_events_respects_limit(async_client, mock_k8s, tenant_with_app):
     mock_k8s.is_available.return_value = True
 
     event_list = MagicMock()
-    event_list.items = [
-        _make_mock_event("my-app-pod", reason=f"Reason{i}", ev_type="Warning")
-        for i in range(30)
-    ]
+    event_list.items = [_make_mock_event("my-app-pod", reason=f"Reason{i}", ev_type="Warning") for i in range(30)]
     mock_k8s.core_v1.list_namespaced_event.return_value = event_list
 
     tenant, _ = tenant_with_app

@@ -217,9 +217,7 @@ async def test_usage_pct_computed_correctly(async_client, db_session, free_tenan
 
 @pytest.mark.asyncio
 async def test_update_tier_valid(async_client, free_tenant):
-    resp = await async_client.patch(
-        f"/api/v1/tenants/{free_tenant.slug}/tier?tier=starter"
-    )
+    resp = await async_client.patch(f"/api/v1/tenants/{free_tenant.slug}/tier?tier=starter")
     assert resp.status_code == 200
     data = resp.json()
     assert data["tier"] == "starter"
@@ -227,9 +225,7 @@ async def test_update_tier_valid(async_client, free_tenant):
 
 @pytest.mark.asyncio
 async def test_update_tier_invalid(async_client, free_tenant):
-    resp = await async_client.patch(
-        f"/api/v1/tenants/{free_tenant.slug}/tier?tier=diamond"
-    )
+    resp = await async_client.patch(f"/api/v1/tenants/{free_tenant.slug}/tier?tier=diamond")
     assert resp.status_code == 400
 
 

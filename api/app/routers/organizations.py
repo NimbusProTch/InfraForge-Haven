@@ -186,9 +186,7 @@ async def remove_member(org_slug: str, user_id: str, db: DBSession, current_user
 async def list_sso_configs(org_slug: str, db: DBSession, current_user: CurrentUser) -> list[SSOConfig]:
     org = await _get_org_or_404(org_slug, db)
     result = await db.execute(
-        select(SSOConfig)
-        .where(SSOConfig.organization_id == org.id)
-        .order_by(SSOConfig.created_at.desc())
+        select(SSOConfig).where(SSOConfig.organization_id == org.id).order_by(SSOConfig.created_at.desc())
     )
     return list(result.scalars().all())
 
@@ -225,9 +223,7 @@ async def update_sso_config(
     org_slug: str, sso_id: str, body: SSOConfigUpdate, db: DBSession, current_user: CurrentUser
 ) -> SSOConfig:
     org = await _get_org_or_404(org_slug, db)
-    result = await db.execute(
-        select(SSOConfig).where(SSOConfig.organization_id == org.id, SSOConfig.id == sso_id)
-    )
+    result = await db.execute(select(SSOConfig).where(SSOConfig.organization_id == org.id, SSOConfig.id == sso_id))
     sso = result.scalar_one_or_none()
     if sso is None:
         raise HTTPException(status_code=404, detail="SSO config not found")
@@ -241,9 +237,7 @@ async def update_sso_config(
 @router.delete("/{org_slug}/sso/{sso_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_sso_config(org_slug: str, sso_id: str, db: DBSession, current_user: CurrentUser) -> None:
     org = await _get_org_or_404(org_slug, db)
-    result = await db.execute(
-        select(SSOConfig).where(SSOConfig.organization_id == org.id, SSOConfig.id == sso_id)
-    )
+    result = await db.execute(select(SSOConfig).where(SSOConfig.organization_id == org.id, SSOConfig.id == sso_id))
     sso = result.scalar_one_or_none()
     if sso is None:
         raise HTTPException(status_code=404, detail="SSO config not found")
@@ -259,9 +253,7 @@ async def delete_sso_config(org_slug: str, sso_id: str, db: DBSession, current_u
 @router.get("/{org_slug}/tenants", response_model=list[OrgTenantResponse])
 async def list_org_tenants(org_slug: str, db: DBSession, current_user: CurrentUser) -> list[OrgTenantMembership]:
     org = await _get_org_or_404(org_slug, db)
-    result = await db.execute(
-        select(OrgTenantMembership).where(OrgTenantMembership.organization_id == org.id)
-    )
+    result = await db.execute(select(OrgTenantMembership).where(OrgTenantMembership.organization_id == org.id))
     return list(result.scalars().all())
 
 

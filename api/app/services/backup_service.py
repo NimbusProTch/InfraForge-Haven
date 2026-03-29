@@ -287,9 +287,7 @@ class BackupService:
         for obj in result.get("items", []):
             meta = obj.get("metadata", {})
             status = obj.get("status", {})
-            s3_path = (
-                f"s3://{_BUCKET_NAME}/{tenant_slug}/{service_type.value}/{service_name}"
-            )
+            s3_path = f"s3://{_BUCKET_NAME}/{tenant_slug}/{service_type.value}/{service_name}"
             items.append(
                 BackupItem(
                     backup_id=meta.get("name", ""),

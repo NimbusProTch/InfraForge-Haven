@@ -79,12 +79,9 @@ async def github_webhook(
 # Push handler (existing behaviour)
 # ---------------------------------------------------------------------------
 
-async def _handle_push(
-    webhook_token: str, request: Request, db: DBSession, k8s: K8sDep
-) -> dict[str, str]:
-    result = await db.execute(
-        select(Application).where(Application.webhook_token == webhook_token)
-    )
+
+async def _handle_push(webhook_token: str, request: Request, db: DBSession, k8s: K8sDep) -> dict[str, str]:
+    result = await db.execute(select(Application).where(Application.webhook_token == webhook_token))
     app = result.scalar_one_or_none()
     if app is None:
         raise HTTPException(status_code=404, detail="No application found for this webhook token")
@@ -113,7 +110,11 @@ async def _handle_push(
 
     logger.info(
         "Push deployment queued: app=%s tenant=%s branch=%s commit=%s deployment_id=%s",
-        app.slug, tenant.slug, branch, commit_sha, deployment.id,
+        app.slug,
+        tenant.slug,
+        branch,
+        commit_sha,
+        deployment.id,
     )
 
     asyncio.create_task(
@@ -144,12 +145,9 @@ async def _handle_push(
 # Pull Request handler (preview environments)
 # ---------------------------------------------------------------------------
 
-async def _handle_pull_request(
-    webhook_token: str, request: Request, db: DBSession, k8s: K8sDep
-) -> dict[str, str]:
-    result = await db.execute(
-        select(Application).where(Application.webhook_token == webhook_token)
-    )
+
+async def _handle_pull_request(webhook_token: str, request: Request, db: DBSession, k8s: K8sDep) -> dict[str, str]:
+    result = await db.execute(select(Application).where(Application.webhook_token == webhook_token))
     app = result.scalar_one_or_none()
     if app is None:
         raise HTTPException(status_code=404, detail="No application found for this webhook token")
@@ -206,9 +204,7 @@ async def _upsert_preview(
     """Create or update a preview environment, then queue a build+deploy."""
     # Find or create the Environment record
     result = await db.execute(
-        select(Environment).where(
-            Environment.application_id == app.id, Environment.name == env_name
-        )
+        select(Environment).where(Environment.application_id == app.id, Environment.name == env_name)
     )
     env = result.scalar_one_or_none()
 
@@ -247,7 +243,11 @@ async def _upsert_preview(
 
     logger.info(
         "Preview deployment queued: app=%s env=%s pr=%d branch=%s commit=%s",
-        app.slug, env_name, pr_number, branch, commit_sha,
+        app.slug,
+        env_name,
+        pr_number,
+        branch,
+        commit_sha,
     )
 
     asyncio.create_task(
@@ -290,9 +290,7 @@ async def _delete_preview(
 ) -> dict[str, str]:
     """Delete a preview environment when PR is closed."""
     result = await db.execute(
-        select(Environment).where(
-            Environment.application_id == app.id, Environment.name == env_name
-        )
+        select(Environment).where(Environment.application_id == app.id, Environment.name == env_name)
     )
     env = result.scalar_one_or_none()
     if env is None:
