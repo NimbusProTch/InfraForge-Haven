@@ -8,7 +8,6 @@ Covers:
 
 from __future__ import annotations
 
-import asyncio
 import json
 import uuid
 from typing import Any
@@ -18,7 +17,6 @@ import pytest
 
 from app.services.git_queue_service import (
     DEAD_LETTER_KEY,
-    DEAD_LETTER_KEY as DLQ_KEY,
     JOB_KEY_PREFIX,
     QUEUE_KEY,
     GitOperation,
@@ -26,7 +24,6 @@ from app.services.git_queue_service import (
     JobStatus,
 )
 from app.workers.git_worker import MAX_RETRIES, GitWorker
-
 
 # ---------------------------------------------------------------------------
 # Helpers
