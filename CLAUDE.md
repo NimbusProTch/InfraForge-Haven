@@ -390,49 +390,105 @@ haven-platform/
 - Plan dosyası güncel tutulmalı
 - Yeni gotcha'lar eklenmeli
 
-## Mevcut Durum (2026-03-29)
+## Mevcut Durum (2026-03-30)
 
-### Cluster
+### Cluster Erişimi
+- **Kubeconfig**: `infrastructure/environments/dev/kubeconfig`
+- **Cluster API**: `https://46.225.42.2:6443` (Hetzner, Rancher-managed RKE2)
+- **Kullanım**: `export KUBECONFIG=/path/to/InfraForge-Haven/infrastructure/environments/dev/kubeconfig`
+- **API lokal başlatma**:
+  ```bash
+  cd api
+  K8S_KUBECONFIG=../infrastructure/environments/dev/kubeconfig \
+  EVEREST_URL=http://localhost:8888 \
+  HARBOR_URL=http://harbor.46.225.42.2.sslip.io \
+  HARBOR_ADMIN_PASSWORD='HavenHarbor2026!' \
+    .venv/bin/python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
+  ```
+- **Everest port-forward**: `kubectl port-forward -n everest-system svc/everest 8888:8080`
+- **Keycloak lokal**: `http://localhost:8080` (haven realm, haven-api client, testdev/Test1234!)
+- **Gitea port-forward**: `kubectl port-forward -n gitea-system svc/gitea-http 3030:3000`
+- **Harbor external**: `http://harbor.46.225.42.2.sslip.io` (admin/HavenHarbor2026!)
+
+### Cluster Bileşenleri
 - 6 node RKE2 cluster (3 master, 3 worker) — Hetzner dev
-- ArgoCD: main branch izliyor, Synced+Healthy
-- Gitea: haven/haven-gitops repo, tenants/ dizini hazır
-- Harbor: çalışıyor, CI image push başarılı
-- Keycloak: haven realm, haven-api + haven-ui client'lar
-- Redis: git queue için çalışıyor
-- CNPG: platform DB çalışıyor
-- Percona Everest v1.13.0: 3 DB engine (PG, MySQL, MongoDB) operational
-- BuildKit: çalışıyor (haven-builds namespace)
+- **ArgoCD**: haven-platform, haven-api, haven-ui → Synced+Healthy
+- **Gitea**: gitea-system ns, haven/haven-gitops repo (tenant manifests için hazır ama şu an kullanılmıyor)
+- **Harbor**: harbor-system ns, `haven` project, tenant image'ları `haven/tenant-{slug}/{app}:{tag}` altında
+- **Keycloak**: keycloak ns, haven realm, haven-api + haven-ui client'lar
+- **BuildKit**: haven-builds ns, `buildkitd` Deployment (dockerfile build + harbor push)
+- **Redis Operator**: OpsTree, redis-system ns (tenant Redis instance'ları tenant ns'de oluşur)
+- **RabbitMQ Operator**: rabbitmq-system ns (tenant RabbitMQ instance'ları tenant ns'de oluşur)
+- **CNPG**: cnpg-system ns (platform DB: haven_platform)
+- **Percona Everest v1.13.0**: everest-system ns, 3 DB engine (PG, MySQL, MongoDB) operational
 
-### GitOps Akışı
+### Namespace Yapısı (Deploy Sonrası)
 ```
-GitHub (InfraForge-Haven) → Platform kodu + Helm charts + ApplicationSets
-Gitea (haven-gitops)      → Tenant values.yaml (API oluşturur, git-worker push eder)
-
-ApplicationSets (GLOBAL, GitHub'da):
-  tenant-apps.yaml    → tenants/*/apps/*/values.yaml tarar (Gitea)
-  tenant-services.yaml → tenants/*/services/*/values.yaml tarar (Gitea)
-
-App-of-apps (ArgoCD):
-  haven-platform → apps/ (haven-api, haven-ui) + applicationsets/ (tenant discovery)
+everest                  → Everest-managed DB pod'ları (PG, MySQL, MongoDB)
+                           testing-app-pg-instance1-*     (PostgreSQL 17.7)
+                           testing-app-pg-pgbouncer-*     (PgBouncer proxy)
+tenant-testing           → Tenant app'leri + CRD-based servisler
+                           rotterdam-api-*                (sample FastAPI app)
+                           app-redis-0                    (Redis standalone)
+harbor-system            → Image registry (haven/tenant-testing/rotterdam-api:manual)
+haven-builds             → BuildKit daemon + build job pod'ları
 ```
 
-### Everest Entegrasyonu
-- Everest URL: http://everest.everest-system.svc.cluster.local:8080
-- Admin: admin / HavenEverest2026
-- PostgreSQL, MySQL, MongoDB → Everest API ile oluşturulacak
-- Redis, RabbitMQ → Direct K8s CRD (OpsTree, RabbitMQ Operator)
-- `api/app/services/everest_client.py` yazıldı AMA `managed_service.py`'ye entegre EDİLMEDİ
+### App Deploy Akışı (E2E DOĞRULANDI)
+```
+1. POST /tenants/{slug}/apps          → App kaydı oluştur (DB)
+2. POST /apps/{slug}/build            → Build trigger (background task)
+3. BuildKit: git clone → Dockerfile build → Harbor push
+4. Deploy: Direct K8s API (Deployment + Service + HPA oluştur)
+5. Pod Running → App erişilebilir
+```
+- **Deploy mode**: `direct` (K8s API ile), ArgoCD şu an tenant app'lerini yönetmiyor
+- **Gitea GitOps**: Scaffold kodu var ama aktif değil — app deploy direkt K8s API
+- **Harbor image format**: `harbor.46.225.42.2.sslip.io/haven/tenant-{slug}/{app}:{commit[:8]}`
+- **Scaling**: `PATCH /apps/{slug}` ile `replicas` güncellenebilir, redeploy gerekli
+
+### Managed Services (Sprint B+C TAMAMLANDI)
+- **5 DB tipi gerçek cluster'da E2E doğrulandı** (Playwright + curl):
+  - PostgreSQL (Everest) — ~50s ready, credentials: user/pass/host/pgbouncer-host/port
+  - MySQL (Everest) — ~3.5dk ready, 2Gi RAM + 5Gi storage override (OOMKilled fix)
+  - MongoDB (Everest) — ~1.5dk ready
+  - Redis (CRD, OpsTree) — ~22s ready, passwordless, fsGroup:1000 + podSecurityContext gerekli
+  - RabbitMQ (CRD) — ~1.5dk ready, credentials: username/password/host/port/connection_string
+- **Tenant prefix izolasyonu**: Everest DB adı `{tenant_slug}-{service_name}` (ör: `testing-app-pg`)
+- **Health check**: Everest API (PG/MySQL/MongoDB), Pod readiness fallback (Redis), CRD conditions (RabbitMQ)
+- **DEGRADED status**: OOMKilled, CrashLoopBackOff, ImagePullBackOff otomatik detect + error_message
+- **Credentials endpoint**: `/services/{name}/credentials` → tüm K8s secret key'lerini base64 decode edip döner
+- **Backup**: PITR disabled (default), backup_service.py CRD-based var, Everest backup API henüz entegre değil
+
+### Full E2E Doğrulama (rotterdam-api)
+Sample app: `https://github.com/NimbusProTch/rotterdam-api` (FastAPI + PG + Redis + RabbitMQ test)
+```
+✅ App create → build → Harbor push → deploy → Pod Running
+✅ PG create → ready → credentials → app env vars PATCH → /health → "postgres: connected"
+✅ Redis create → ready → app env vars PATCH → /health → "redis: connected"
+✅ /db-test → "PostgreSQL 17.7 - Percona Server for PostgreSQL 17.7.1"
+✅ /redis-test → set/get working ("rotterdam")
+```
+
+### GitHub OAuth
+- Backend: `api/app/routers/github.py` — OAuth flow var (authorize → callback → token DB'ye kayıt)
+- Tenant'a `github_token` PATCH ile de set edilebilir
+- Build pipeline: tenant'ın `github_token`'ını kullanarak private repo clone yapabiliyor
 
 ### Test Durumu
-- Backend unit testleri: 492 (yeni feature testleri EKSİK)
-- Playwright E2E: 48 test (UI smoke + API CRUD + auth + navigation)
-- Everest entegrasyon testi: YOK
-- Git worker E2E testi: YOK (git binary fix deploy bekleniyor)
-- Build pipeline E2E testi: YOK
-- DB provisioning E2E testi: YOK
+- Backend unit testleri: **588** (provisioner, connect, disconnect, health check, degraded, prefix)
+- Playwright E2E: **36 test** (5 DB lifecycle + credentials flow + env vars)
+- Full E2E: rotterdam-api deploy + PG connected + Redis connected (manual doğrulama)
 
-### Bilinen Sorunlar
-- Git worker: yeni image (906e6c8) deploy edildi ama ArgoCD manifest'i henüz sync olmadı
-- GitHub OAuth: auth endpoint'ler public yapıldı ama UI'da test edilmedi
-- Everest client yazıldı ama managed_service.py'ye entegre değil
-- UI tema: CSS variables güncellendi ama hardcoded hex renkler var (refactor lazım)
+### Bilinen Sorunlar / Gotcha'lar
+- **Redis connection_hint**: OpsTree operator service adı `{name}` (NOT `{name}-redis`) → fix edildi
+- **PG password URL-encoding**: Everest random password'lerde özel karakterler var (`:?()=|{}@`), kullanıcı `urllib.parse.quote` ile encode etmeli
+- **Everest PG default DB**: `postgres` (custom DB adı oluşturmuyor, connection_hint'teki DB adı yanlış olabilir)
+- **Harbor URL**: Build pipeline'da `HARBOR_URL` env var set edilmeli, docker config secret'taki host ile match etmeli
+- **apptype enum**: DB'de yoksa manual oluştur: `CREATE TYPE apptype AS ENUM ('web', 'worker', 'cron')`
+- **MySQL memory**: PXC 8.4 + Galera minimum 2Gi RAM, 5Gi storage gerekli (default 512Mi OOMKill eder)
+- **Redis fsGroup**: OpsTree Redis volume'a yazamıyor → `podSecurityContext.fsGroup: 1000` gerekli
+- **ArgoCD tenant app**: Tenant app'leri şu an ArgoCD ile yönetilmiyor (mode=direct)
+- **Backup**: DB oluşturulurken backup config default disabled (`pitr.enabled: false`)
+- **Redis passwordless**: OpsTree Redis şifresiz çalışıyor — prod'da güvenlik riski
+- **Gitea tenant manifest**: scaffold_service/delete_service kaldırıldı — DB'ler GitOps ile değil direkt API ile yönetiliyor

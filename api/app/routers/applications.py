@@ -297,8 +297,23 @@ async def disconnect_service(
     app = await _get_app_or_404(tenant.id, app_slug, db)
 
     existing: list[dict] = list(app.env_from_secrets or [])
+    # Find the entry being removed so we can clean up injected env_vars
+    removed = [e for e in existing if e.get("service_name") == service_name]
     updated = [e for e in existing if e.get("service_name") != service_name]
     app.env_from_secrets = updated or None
+
+    # Remove env_vars that were injected by connect-service
+    if removed and app.env_vars:
+        env_vars = dict(app.env_vars)
+        for entry in removed:
+            db_url_key = entry.get("database_url_key")
+            if db_url_key and db_url_key in env_vars:
+                del env_vars[db_url_key]
+            # Also remove generic DATABASE_URL if it was added as alias
+            if db_url_key and db_url_key != "DATABASE_URL" and "DATABASE_URL" in env_vars:
+                del env_vars["DATABASE_URL"]
+        app.env_vars = env_vars if env_vars else {}
+
     await db.commit()
     await db.refresh(app)
 

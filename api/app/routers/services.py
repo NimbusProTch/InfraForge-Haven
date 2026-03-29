@@ -77,7 +77,7 @@ async def create_service(
     await db.flush()
 
     provisioner = ManagedServiceProvisioner(k8s)
-    await provisioner.provision(svc, tenant.namespace)
+    await provisioner.provision(svc, tenant.namespace, tenant_slug=tenant.slug)
 
     await db.commit()
     await db.refresh(svc)

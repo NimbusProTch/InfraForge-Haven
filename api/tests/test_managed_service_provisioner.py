@@ -165,7 +165,7 @@ class TestConnectionHintMap:
 
     def test_redis(self):
         hint = _CONNECTION_HINT_MAP[ServiceType.REDIS]("my-db", "tenant-acme")
-        assert "my-db-redis.tenant-acme.svc:6379" in hint
+        assert "my-db.tenant-acme.svc:6379" in hint
         assert hint.startswith("redis://")
 
     def test_rabbitmq(self):
@@ -455,64 +455,64 @@ class TestEverestProvision:
     async def test_provision_postgres_via_everest(self, mock_k8s_available):
         everest = AsyncMock(spec=EverestClient)
         everest.is_configured.return_value = True
-        everest.create_database.return_value = {"metadata": {"name": "test-db"}}
+        everest.create_database.return_value = {"metadata": {"name": "acme-test-db"}}
 
         svc = _make_service(stype=ServiceType.POSTGRES)
         p = ManagedServiceProvisioner(mock_k8s_available, everest=everest)
-        await p.provision(svc, "tenant-acme")
+        await p.provision(svc, "tenant-acme", tenant_slug="acme")
 
         everest.create_database.assert_called_once_with(
-            name="test-db", engine_type="postgres", tier="dev"
+            name="acme-test-db", engine_type="postgres", tier="dev"
         )
         assert svc.status == ServiceStatus.PROVISIONING
-        # Everest creates resources in its own namespace
+        assert svc.everest_name == "acme-test-db"
         assert svc.service_namespace == "everest"
-        assert svc.secret_name == "everest-secrets-test-db"
+        assert svc.secret_name == "everest-secrets-acme-test-db"
         assert svc.connection_hint is not None
-        # K8s CRD should NOT be called
         mock_k8s_available.custom_objects.create_namespaced_custom_object.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_provision_mysql_via_everest(self, mock_k8s_available):
         everest = AsyncMock(spec=EverestClient)
         everest.is_configured.return_value = True
-        everest.create_database.return_value = {"metadata": {"name": "test-db"}}
+        everest.create_database.return_value = {"metadata": {"name": "acme-test-db"}}
 
         svc = _make_service(stype=ServiceType.MYSQL)
         p = ManagedServiceProvisioner(mock_k8s_available, everest=everest)
-        await p.provision(svc, "tenant-acme")
+        await p.provision(svc, "tenant-acme", tenant_slug="acme")
 
         everest.create_database.assert_called_once_with(
-            name="test-db", engine_type="mysql", tier="dev"
+            name="acme-test-db", engine_type="mysql", tier="dev"
         )
         assert svc.status == ServiceStatus.PROVISIONING
+        assert svc.everest_name == "acme-test-db"
 
     @pytest.mark.asyncio
     async def test_provision_mongodb_via_everest(self, mock_k8s_available):
         everest = AsyncMock(spec=EverestClient)
         everest.is_configured.return_value = True
-        everest.create_database.return_value = {"metadata": {"name": "test-db"}}
+        everest.create_database.return_value = {"metadata": {"name": "acme-test-db"}}
 
         svc = _make_service(stype=ServiceType.MONGODB)
         p = ManagedServiceProvisioner(mock_k8s_available, everest=everest)
-        await p.provision(svc, "tenant-acme")
+        await p.provision(svc, "tenant-acme", tenant_slug="acme")
 
         everest.create_database.assert_called_once_with(
-            name="test-db", engine_type="mongodb", tier="dev"
+            name="acme-test-db", engine_type="mongodb", tier="dev"
         )
 
     @pytest.mark.asyncio
     async def test_provision_prod_tier_via_everest(self, mock_k8s_available):
         everest = AsyncMock(spec=EverestClient)
         everest.is_configured.return_value = True
-        everest.create_database.return_value = {"metadata": {"name": "prod-db"}}
+        everest.create_database.return_value = {"metadata": {"name": "acme-prod-db"}}
 
         svc = _make_service(name="prod-db", stype=ServiceType.POSTGRES, tier=ServiceTier.PROD)
         p = ManagedServiceProvisioner(mock_k8s_available, everest=everest)
-        await p.provision(svc, "tenant-acme")
+        await p.provision(svc, "tenant-acme", tenant_slug="acme")
 
         everest.create_database.assert_called_once_with(
-            name="prod-db", engine_type="postgres", tier="prod"
+            name="acme-prod-db", engine_type="postgres", tier="prod"
         )
 
     @pytest.mark.asyncio
@@ -523,12 +523,12 @@ class TestEverestProvision:
 
         svc = _make_service(stype=ServiceType.POSTGRES)
         p = ManagedServiceProvisioner(mock_k8s_available, everest=everest)
-        await p.provision(svc, "tenant-acme")
+        await p.provision(svc, "tenant-acme", tenant_slug="acme")
 
-        # Should have fallen back to CRD
         mock_k8s_available.custom_objects.create_namespaced_custom_object.assert_called_once()
         assert svc.status == ServiceStatus.PROVISIONING
         assert svc.service_namespace == "tenant-acme"
+        assert svc.everest_name is None  # CRD fallback, no everest_name
 
     @pytest.mark.asyncio
     async def test_redis_always_uses_crd_even_with_everest(self, mock_k8s_available):
@@ -537,11 +537,9 @@ class TestEverestProvision:
 
         svc = _make_service(stype=ServiceType.REDIS)
         p = ManagedServiceProvisioner(mock_k8s_available, everest=everest)
-        await p.provision(svc, "tenant-acme")
+        await p.provision(svc, "tenant-acme", tenant_slug="acme")
 
-        # Everest should NOT be called for Redis
         everest.create_database.assert_not_called()
-        # CRD should be called
         mock_k8s_available.custom_objects.create_namespaced_custom_object.assert_called_once()
 
 
@@ -681,3 +679,239 @@ class TestEverestDeprovision:
 
         everest.delete_database.assert_not_called()
         mock_k8s_available.custom_objects.delete_namespaced_custom_object.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# Sprint B: PostgreSQL connection_hint and namespace verification
+# ---------------------------------------------------------------------------
+
+
+class TestEverestPostgresConnectionDetails:
+    """Verify that Everest provisioning sets correct connection_hint, namespace, and secret_name."""
+
+    @pytest.mark.asyncio
+    async def test_everest_pg_connection_hint_has_prefixed_name(self, mock_k8s_available):
+        """connection_hint must use tenant-prefixed DB name in Everest namespace."""
+        everest = AsyncMock(spec=EverestClient)
+        everest.is_configured.return_value = True
+        everest.create_database.return_value = {"metadata": {"name": "acme-my-pg"}}
+
+        svc = _make_service(name="my-pg", stype=ServiceType.POSTGRES)
+        p = ManagedServiceProvisioner(mock_k8s_available, everest=everest)
+        await p.provision(svc, "tenant-acme", tenant_slug="acme")
+
+        assert svc.connection_hint is not None
+        assert svc.connection_hint.startswith("postgresql://")
+        assert ".everest.svc:" in svc.connection_hint
+        # Must contain the prefixed name (tenant-service)
+        assert "acme-my-pg" in svc.connection_hint
+        # Everest was called with prefixed name
+        everest.create_database.assert_called_once_with(
+            name="acme-my-pg", engine_type="postgres", tier="dev"
+        )
+
+    @pytest.mark.asyncio
+    async def test_everest_pg_sets_everest_name_field(self, mock_k8s_available):
+        """Provision must store everest_name = '{tenant_slug}-{service_name}'."""
+        everest = AsyncMock(spec=EverestClient)
+        everest.is_configured.return_value = True
+        everest.create_database.return_value = {"metadata": {"name": "acme-pg-1"}}
+
+        svc = _make_service(name="pg-1", stype=ServiceType.POSTGRES)
+        p = ManagedServiceProvisioner(mock_k8s_available, everest=everest)
+        await p.provision(svc, "tenant-acme", tenant_slug="acme")
+
+        assert svc.everest_name == "acme-pg-1"
+        assert svc.service_namespace == "everest"
+        assert svc.secret_name == "everest-secrets-acme-pg-1"
+
+    @pytest.mark.asyncio
+    async def test_crd_fallback_uses_tenant_namespace(self, mock_k8s_available):
+        """When Everest fails, CRD fallback must use tenant namespace, not everest."""
+        everest = AsyncMock(spec=EverestClient)
+        everest.is_configured.return_value = True
+        everest.create_database.side_effect = Exception("Everest down")
+
+        svc = _make_service(name="pg-fallback", stype=ServiceType.POSTGRES)
+        p = ManagedServiceProvisioner(mock_k8s_available, everest=everest)
+        await p.provision(svc, "tenant-fallback", tenant_slug="fallback")
+
+        # CRD fallback: namespace = tenant, secret = CNPG convention, no everest_name
+        assert svc.service_namespace == "tenant-fallback"
+        assert svc.secret_name == "pg-fallback-app"
+        assert ".tenant-fallback.svc:" in svc.connection_hint
+        assert svc.everest_name is None
+
+    @pytest.mark.asyncio
+    async def test_everest_sync_uses_everest_name(self, mock_k8s_available):
+        """sync_details must use service.everest_name for Everest API calls."""
+        everest = AsyncMock(spec=EverestClient)
+        everest.is_configured.return_value = True
+        everest.get_database_details.return_value = {
+            "status": "ready",
+            "engine_version": "17.7",
+            "replicas": 1,
+            "ready_replicas": 1,
+            "storage": "1Gi",
+            "cpu": "600m",
+            "memory": "512Mi",
+            "hostname": "acme-pg-2-rw.everest.svc",
+            "port": 5432,
+        }
+
+        svc = _make_service(name="pg-2", stype=ServiceType.POSTGRES)
+        svc.everest_name = "acme-pg-2"
+        svc.status = ServiceStatus.PROVISIONING
+        p = ManagedServiceProvisioner(mock_k8s_available, everest=everest)
+        details = await p.sync_details(svc)
+
+        assert details is not None
+        assert svc.status == ServiceStatus.READY
+        # Must call Everest with the prefixed name
+        everest.get_database_details.assert_called_once_with("acme-pg-2")
+
+    @pytest.mark.asyncio
+    async def test_everest_deprovision_uses_everest_name(self, mock_k8s_available):
+        """deprovision must use service.everest_name for Everest API calls."""
+        everest = AsyncMock(spec=EverestClient)
+        everest.is_configured.return_value = True
+
+        svc = _make_service(stype=ServiceType.POSTGRES)
+        svc.everest_name = "acme-test-db"
+        p = ManagedServiceProvisioner(mock_k8s_available, everest=everest)
+        await p.deprovision(svc)
+
+        everest.delete_database.assert_called_once_with("acme-test-db")
+
+
+# ---------------------------------------------------------------------------
+# Pod-based health check (_sync_from_pod) + DEGRADED status (Sprint C1.5)
+# ---------------------------------------------------------------------------
+
+
+def _mock_pod(phase: str = "Running", ready: bool = True, restart_reason: str | None = None, waiting_reason: str | None = None):
+    """Build a mock K8s Pod object with configurable status."""
+    pod = MagicMock()
+    pod.status.phase = phase
+
+    container = MagicMock()
+    container.ready = ready
+
+    # Set up last_state.terminated
+    if restart_reason:
+        terminated = MagicMock()
+        terminated.reason = restart_reason
+        container.last_state.terminated = terminated
+    else:
+        container.last_state = MagicMock()
+        container.last_state.terminated = None
+
+    # Set up state.waiting
+    if waiting_reason:
+        waiting = MagicMock()
+        waiting.reason = waiting_reason
+        container.state.waiting = waiting
+    else:
+        container.state = MagicMock()
+        container.state.waiting = None
+
+    pod.status.container_statuses = [container]
+    return pod
+
+
+class TestSyncFromPod:
+    """Tests for _sync_from_pod fallback health check."""
+
+    @pytest.mark.asyncio
+    async def test_pod_running_and_ready_sets_ready(self, mock_k8s_available):
+        """Pod Running + all containers ready → service READY."""
+        mock_k8s_available.core_v1.read_namespaced_pod.return_value = _mock_pod(
+            phase="Running", ready=True
+        )
+
+        svc = _make_service(name="my-redis", stype=ServiceType.REDIS)
+        svc.service_namespace = "tenant-test"
+        p = ManagedServiceProvisioner(mock_k8s_available, everest=_no_everest())
+        p._sync_from_pod(svc, "my-redis-0")
+
+        assert svc.status == ServiceStatus.READY
+        assert svc.error_message is None
+
+    @pytest.mark.asyncio
+    async def test_pod_oomkilled_sets_degraded_from_ready(self, mock_k8s_available):
+        """Pod OOMKilled when service was READY → DEGRADED with error message."""
+        mock_k8s_available.core_v1.read_namespaced_pod.return_value = _mock_pod(
+            phase="Running", ready=False, restart_reason="OOMKilled"
+        )
+
+        svc = _make_service(name="my-redis", stype=ServiceType.REDIS)
+        svc.service_namespace = "tenant-test"
+        svc.status = ServiceStatus.READY  # was ready before
+        p = ManagedServiceProvisioner(mock_k8s_available, everest=_no_everest())
+        p._sync_from_pod(svc, "my-redis-0")
+
+        assert svc.status == ServiceStatus.DEGRADED
+        assert "memory" in svc.error_message.lower()
+
+    @pytest.mark.asyncio
+    async def test_pod_crashloop_sets_failed_from_provisioning(self, mock_k8s_available):
+        """Pod CrashLoopBackOff during provisioning → FAILED."""
+        mock_k8s_available.core_v1.read_namespaced_pod.return_value = _mock_pod(
+            phase="Running", ready=False, waiting_reason="CrashLoopBackOff"
+        )
+
+        svc = _make_service(name="my-redis", stype=ServiceType.REDIS)
+        svc.service_namespace = "tenant-test"
+        svc.status = ServiceStatus.PROVISIONING
+        p = ManagedServiceProvisioner(mock_k8s_available, everest=_no_everest())
+        p._sync_from_pod(svc, "my-redis-0")
+
+        assert svc.status == ServiceStatus.FAILED
+        assert "crashing" in svc.error_message.lower()
+
+    @pytest.mark.asyncio
+    async def test_pod_not_found_sets_degraded_from_ready(self, mock_k8s_available):
+        """Pod 404 when service was READY → DEGRADED."""
+        mock_k8s_available.core_v1.read_namespaced_pod.side_effect = ApiException(status=404)
+
+        svc = _make_service(name="my-redis", stype=ServiceType.REDIS)
+        svc.service_namespace = "tenant-test"
+        svc.status = ServiceStatus.READY
+        p = ManagedServiceProvisioner(mock_k8s_available, everest=_no_everest())
+        p._sync_from_pod(svc, "my-redis-0")
+
+        assert svc.status == ServiceStatus.DEGRADED
+        assert "not found" in svc.error_message.lower()
+
+    @pytest.mark.asyncio
+    async def test_pod_not_found_keeps_provisioning(self, mock_k8s_available):
+        """Pod 404 during provisioning → stay provisioning (pod not created yet)."""
+        mock_k8s_available.core_v1.read_namespaced_pod.side_effect = ApiException(status=404)
+
+        svc = _make_service(name="my-redis", stype=ServiceType.REDIS)
+        svc.service_namespace = "tenant-test"
+        svc.status = ServiceStatus.PROVISIONING
+        p = ManagedServiceProvisioner(mock_k8s_available, everest=_no_everest())
+        p._sync_from_pod(svc, "my-redis-0")
+
+        assert svc.status == ServiceStatus.PROVISIONING  # unchanged
+
+    @pytest.mark.asyncio
+    async def test_redis_sync_uses_pod_check(self, mock_k8s_available):
+        """Redis CRD sync with empty status falls back to pod check."""
+        # CRD returns empty status
+        mock_k8s_available.custom_objects.get_namespaced_custom_object.return_value = {
+            "status": {},
+            "spec": {},
+        }
+        # Pod is running and ready
+        mock_k8s_available.core_v1.read_namespaced_pod.return_value = _mock_pod(
+            phase="Running", ready=True
+        )
+
+        svc = _make_service(name="my-redis", stype=ServiceType.REDIS)
+        svc.service_namespace = "tenant-test"
+        p = ManagedServiceProvisioner(mock_k8s_available, everest=_no_everest())
+        await p.sync_status(svc)
+
+        assert svc.status == ServiceStatus.READY

@@ -30,6 +30,7 @@ class ServiceStatus(PyEnum):
     UPDATING = "updating"
     FAILED = "failed"
     DELETING = "deleting"
+    DEGRADED = "degraded"
 
 
 class ManagedService(Base, TimestampMixin):
@@ -57,5 +58,7 @@ class ManagedService(Base, TimestampMixin):
     connection_hint: Mapped[str | None] = mapped_column(String(512), nullable=True)
     # Error message from Everest/K8s when provisioning or update fails
     error_message: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    # Everest-managed DB name (prefixed with tenant slug for isolation)
+    everest_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
 
     tenant: Mapped["Tenant"] = relationship(back_populates="services")

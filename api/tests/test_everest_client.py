@@ -39,7 +39,7 @@ class TestTierConfig:
     def test_dev_tier(self):
         cfg = TIER_CONFIG["dev"]
         assert cfg["replicas"] == 1
-        assert cfg["storage"] == "1Gi"
+        assert cfg["storage"] == "2Gi"
         assert cfg["cpu"] == "600m"
         assert cfg["memory"] == "512Mi"
 
@@ -211,7 +211,7 @@ class TestCreateDatabase:
         body = call_kwargs.kwargs["json"]
         assert body["spec"]["engine"]["type"] == "postgresql"
         assert body["spec"]["engine"]["replicas"] == 1
-        assert body["spec"]["engine"]["storage"]["size"] == "1Gi"
+        assert body["spec"]["engine"]["storage"]["size"] == "2Gi"
 
     @pytest.mark.asyncio
     async def test_create_mysql_prod(self):

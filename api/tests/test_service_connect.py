@@ -238,3 +238,181 @@ async def test_get_credentials_service_not_ready(
         f"/api/v1/tenants/{tenant.slug}/services/{svc.name}/credentials",
     )
     assert resp.status_code == 409
+
+
+# ---------------------------------------------------------------------------
+# DATABASE_URL injection tests (Sprint B)
+# ---------------------------------------------------------------------------
+
+
+async def test_connect_service_injects_database_url_in_env_vars(async_client: AsyncClient, tenant_app_service):
+    """connect-service must inject DATABASE_URL into app.env_vars, not just env_from_secrets."""
+    tenant, app_obj, svc = tenant_app_service
+    resp = await async_client.post(
+        f"/api/v1/tenants/{tenant.slug}/apps/{app_obj.slug}/connect-service",
+        json={"service_name": svc.name},
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    # env_vars should contain DATABASE_URL with the connection hint
+    assert "env_vars" in data
+    assert data["env_vars"] is not None
+    assert "DATABASE_URL" in data["env_vars"]
+    assert data["env_vars"]["DATABASE_URL"] == svc.connection_hint
+
+
+async def test_connect_service_postgres_uses_database_url_key(async_client: AsyncClient, tenant_app_service):
+    """PostgreSQL connect should use DATABASE_URL as the key (not POSTGRES_URL)."""
+    tenant, app_obj, svc = tenant_app_service
+    assert svc.service_type == ServiceType.POSTGRES
+
+    resp = await async_client.post(
+        f"/api/v1/tenants/{tenant.slug}/apps/{app_obj.slug}/connect-service",
+        json={"service_name": svc.name},
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    # For PostgreSQL, the primary key is DATABASE_URL (not a type-specific alias)
+    assert "DATABASE_URL" in data["env_vars"]
+    # Since the key IS DATABASE_URL, there should be no duplicate alias
+    env_keys = list(data["env_vars"].keys())
+    assert env_keys.count("DATABASE_URL") == 1
+
+
+async def test_disconnect_service_removes_database_url_from_env_vars(
+    async_client: AsyncClient, tenant_app_service
+):
+    """disconnect-service should also remove DATABASE_URL from env_vars."""
+    tenant, app_obj, svc = tenant_app_service
+    # First connect
+    await async_client.post(
+        f"/api/v1/tenants/{tenant.slug}/apps/{app_obj.slug}/connect-service",
+        json={"service_name": svc.name},
+    )
+    # Then disconnect
+    resp = await async_client.delete(
+        f"/api/v1/tenants/{tenant.slug}/apps/{app_obj.slug}/connect-service/{svc.name}",
+    )
+    assert resp.status_code == 204
+
+    # Verify DATABASE_URL is removed from env_vars
+    get_resp = await async_client.get(f"/api/v1/tenants/{tenant.slug}/apps/{app_obj.slug}")
+    assert get_resp.status_code == 200
+    app_data = get_resp.json()
+    env_vars = app_data.get("env_vars") or {}
+    assert "DATABASE_URL" not in env_vars
+
+
+# ---------------------------------------------------------------------------
+# MySQL / MongoDB connect-service tests (Sprint B3)
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+async def mysql_service(db_session: AsyncSession, tenant_app_service):
+    """Add a ready MySQL service to the existing tenant."""
+    tenant, app_obj, _ = tenant_app_service
+    svc = ManagedService(
+        id=uuid.uuid4(),
+        tenant_id=tenant.id,
+        name="my-mysql",
+        service_type=ServiceType.MYSQL,
+        tier=ServiceTier.DEV,
+        status=ServiceStatus.READY,
+        secret_name="everest-secrets-connect-tenant-my-mysql",
+        service_namespace="everest",
+        connection_hint="mysql://connect-tenant-my-mysql-pxc@connect-tenant-my-mysql-haproxy.everest.svc:3306/connect_tenant_my_mysql",
+        everest_name="connect-tenant-my-mysql",
+    )
+    db_session.add(svc)
+    await db_session.commit()
+    await db_session.refresh(svc)
+    return tenant, app_obj, svc
+
+
+@pytest.fixture
+async def mongodb_service(db_session: AsyncSession, tenant_app_service):
+    """Add a ready MongoDB service to the existing tenant."""
+    tenant, app_obj, _ = tenant_app_service
+    svc = ManagedService(
+        id=uuid.uuid4(),
+        tenant_id=tenant.id,
+        name="my-mongo",
+        service_type=ServiceType.MONGODB,
+        tier=ServiceTier.DEV,
+        status=ServiceStatus.READY,
+        secret_name="everest-secrets-connect-tenant-my-mongo",
+        service_namespace="everest",
+        connection_hint="mongodb://connect-tenant-my-mongo-rs0@connect-tenant-my-mongo-mongos.everest.svc:27017/connect_tenant_my_mongo",
+        everest_name="connect-tenant-my-mongo",
+    )
+    db_session.add(svc)
+    await db_session.commit()
+    await db_session.refresh(svc)
+    return tenant, app_obj, svc
+
+
+async def test_connect_mysql_injects_mysql_url_and_database_url(async_client: AsyncClient, mysql_service):
+    """MySQL connect must inject both MYSQL_URL and DATABASE_URL."""
+    tenant, app_obj, svc = mysql_service
+    resp = await async_client.post(
+        f"/api/v1/tenants/{tenant.slug}/apps/{app_obj.slug}/connect-service",
+        json={"service_name": svc.name},
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    env_vars = data["env_vars"]
+    assert "MYSQL_URL" in env_vars
+    assert "DATABASE_URL" in env_vars
+    assert env_vars["MYSQL_URL"] == svc.connection_hint
+    assert env_vars["DATABASE_URL"] == svc.connection_hint
+
+
+async def test_connect_mongodb_injects_mongodb_url_and_database_url(async_client: AsyncClient, mongodb_service):
+    """MongoDB connect must inject both MONGODB_URL and DATABASE_URL."""
+    tenant, app_obj, svc = mongodb_service
+    resp = await async_client.post(
+        f"/api/v1/tenants/{tenant.slug}/apps/{app_obj.slug}/connect-service",
+        json={"service_name": svc.name},
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    env_vars = data["env_vars"]
+    assert "MONGODB_URL" in env_vars
+    assert "DATABASE_URL" in env_vars
+    assert env_vars["MONGODB_URL"] == svc.connection_hint
+    assert env_vars["DATABASE_URL"] == svc.connection_hint
+
+
+async def test_disconnect_mysql_removes_both_urls(async_client: AsyncClient, mysql_service):
+    """Disconnect MySQL must remove both MYSQL_URL and DATABASE_URL."""
+    tenant, app_obj, svc = mysql_service
+    await async_client.post(
+        f"/api/v1/tenants/{tenant.slug}/apps/{app_obj.slug}/connect-service",
+        json={"service_name": svc.name},
+    )
+    await async_client.delete(
+        f"/api/v1/tenants/{tenant.slug}/apps/{app_obj.slug}/connect-service/{svc.name}",
+    )
+    get_resp = await async_client.get(f"/api/v1/tenants/{tenant.slug}/apps/{app_obj.slug}")
+    assert get_resp.status_code == 200
+    env_vars = get_resp.json().get("env_vars") or {}
+    assert "MYSQL_URL" not in env_vars
+    assert "DATABASE_URL" not in env_vars
+
+
+async def test_disconnect_mongodb_removes_both_urls(async_client: AsyncClient, mongodb_service):
+    """Disconnect MongoDB must remove both MONGODB_URL and DATABASE_URL."""
+    tenant, app_obj, svc = mongodb_service
+    await async_client.post(
+        f"/api/v1/tenants/{tenant.slug}/apps/{app_obj.slug}/connect-service",
+        json={"service_name": svc.name},
+    )
+    await async_client.delete(
+        f"/api/v1/tenants/{tenant.slug}/apps/{app_obj.slug}/connect-service/{svc.name}",
+    )
+    get_resp = await async_client.get(f"/api/v1/tenants/{tenant.slug}/apps/{app_obj.slug}")
+    assert get_resp.status_code == 200
+    env_vars = get_resp.json().get("env_vars") or {}
+    assert "MONGODB_URL" not in env_vars
+    assert "DATABASE_URL" not in env_vars

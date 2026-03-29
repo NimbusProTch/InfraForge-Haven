@@ -30,11 +30,19 @@ ENGINE_MAP = {
     "psmdb": "psmdb",
 }
 
-# Tier → resource configuration
+# Tier → resource configuration (defaults, overridden per-engine below)
 # Everest enforces minimum CPU 600m for DB engines
 TIER_CONFIG = {
-    "dev": {"replicas": 1, "storage": "1Gi", "cpu": "600m", "memory": "512Mi"},
+    "dev": {"replicas": 1, "storage": "2Gi", "cpu": "600m", "memory": "512Mi"},
     "prod": {"replicas": 3, "storage": "20Gi", "cpu": "2", "memory": "4Gi"},
+}
+
+# Engine-specific overrides (MySQL XtraDB 8.4 needs more memory + storage than PG/MongoDB)
+_ENGINE_OVERRIDES: dict[str, dict[str, dict[str, str]]] = {
+    "pxc": {
+        "dev": {"memory": "2Gi", "storage": "5Gi"},     # MySQL 8.4 + Galera: 2Gi RAM, 5Gi disk minimum
+        "prod": {"memory": "4Gi", "storage": "20Gi"},
+    },
 }
 
 
@@ -107,6 +115,9 @@ class EverestClient:
             raise ValueError(f"Unsupported engine type: {engine_type}. Use: postgres, mysql, mongodb")
 
         cfg = TIER_CONFIG.get(tier, TIER_CONFIG["dev"])
+        overrides = _ENGINE_OVERRIDES.get(engine, {}).get(tier, {})
+        memory = overrides.get("memory", cfg["memory"])
+        storage = overrides.get("storage", cfg["storage"])
 
         body: dict[str, Any] = {
             "apiVersion": "everest.percona.com/v1alpha1",
@@ -116,10 +127,10 @@ class EverestClient:
                 "engine": {
                     "type": engine,
                     "replicas": cfg["replicas"],
-                    "storage": {"size": cfg["storage"]},
+                    "storage": {"size": storage},
                     "resources": {
                         "cpu": cfg["cpu"],
-                        "memory": cfg["memory"],
+                        "memory": memory,
                     },
                 },
                 "proxy": {
