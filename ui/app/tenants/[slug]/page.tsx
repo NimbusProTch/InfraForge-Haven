@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Breadcrumb } from "@/components/Breadcrumb";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { AddServiceModal } from "@/components/AddServiceModal";
+import MembersTab from "@/components/MembersTab";
 import { useToast } from "@/components/Toast";
 import { api, type Tenant, type Application, type ManagedService, type ServiceCredentials, type Deployment } from "@/lib/api";
 import {
@@ -32,6 +33,7 @@ import {
   Eye,
   EyeOff,
   X,
+  Users,
 } from "lucide-react";
 
 const LB_IP = process.env.NEXT_PUBLIC_LB_IP ?? "";
@@ -423,6 +425,10 @@ export default function TenantDetailPage() {
               Services
               <span className="ml-1.5 text-xs text-zinc-600">{services.length}</span>
             </TabsTrigger>
+            <TabsTrigger value="members">
+              <Users className="w-3.5 h-3.5 mr-1" />
+              Members
+            </TabsTrigger>
           </TabsList>
 
           {/* Applications tab */}
@@ -690,6 +696,11 @@ export default function TenantDetailPage() {
                 </div>
               </div>
             )}
+          </TabsContent>
+
+          {/* Members tab */}
+          <TabsContent value="members" className="pt-5">
+            <MembersTab tenantSlug={slug} accessToken={accessToken} />
           </TabsContent>
         </Tabs>
       </div>

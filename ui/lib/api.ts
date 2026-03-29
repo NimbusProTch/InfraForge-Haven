@@ -36,7 +36,8 @@ export interface TenantMember {
   tenant_id: string;
   user_id: string;
   email: string;
-  role: "admin" | "developer" | "viewer";
+  display_name: string | null;
+  role: "owner" | "admin" | "member" | "viewer";
   created_at: string;
   updated_at: string;
 }
@@ -621,7 +622,7 @@ export const api = {
   members: {
     list: (tenantSlug: string, token?: string) =>
       apiFetch<TenantMember[]>(`/tenants/${tenantSlug}/members`, {}, token),
-    add: (tenantSlug: string, body: { email: string; role: string }, token?: string) =>
+    add: (tenantSlug: string, body: { email: string; role: string; display_name?: string }, token?: string) =>
       apiFetch<TenantMember>(
         `/tenants/${tenantSlug}/members`,
         { method: "POST", body: JSON.stringify(body) },
