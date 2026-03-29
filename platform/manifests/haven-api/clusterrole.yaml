@@ -13,43 +13,53 @@ rules:
   - apiGroups: [""]
     resources: ["resourcequotas", "limitranges"]
     verbs: ["get", "list", "create", "patch", "delete"]
-  # Services and pods (for deploy service)
+  # Core resources (pods, services, secrets, configmaps, events, endpoints, PVCs)
   - apiGroups: [""]
-    resources: ["services", "pods", "pods/log", "secrets", "configmaps"]
-    verbs: ["get", "list", "create", "patch", "update", "delete"]
-  # Deployments
+    resources: ["services", "pods", "pods/log", "pods/exec", "pods/portforward",
+                "secrets", "configmaps", "events", "endpoints",
+                "persistentvolumeclaims", "serviceaccounts"]
+    verbs: ["get", "list", "watch", "create", "patch", "update", "delete"]
+  # Deployments, ReplicaSets, StatefulSets
   - apiGroups: ["apps"]
-    resources: ["deployments", "deployments/scale"]
-    verbs: ["get", "list", "create", "patch", "update", "delete"]
-  # Batch jobs (BuildKit builds) — jobs/status needed to poll build completion
+    resources: ["deployments", "deployments/scale", "replicasets", "statefulsets"]
+    verbs: ["get", "list", "watch", "create", "patch", "update", "delete"]
+  # Batch jobs (BuildKit builds + CronJobs)
   - apiGroups: ["batch"]
-    resources: ["jobs", "jobs/status"]
-    verbs: ["get", "list", "create", "delete", "watch"]
-  # RBAC for tenant provisioning
+    resources: ["jobs", "jobs/status", "cronjobs"]
+    verbs: ["get", "list", "watch", "create", "patch", "update", "delete"]
+  # HorizontalPodAutoscaler
+  - apiGroups: ["autoscaling"]
+    resources: ["horizontalpodautoscalers"]
+    verbs: ["get", "list", "watch", "create", "patch", "update", "delete"]
+  # RBAC for tenant provisioning — needs escalate to grant permissions
   - apiGroups: ["rbac.authorization.k8s.io"]
-    resources: ["roles", "rolebindings"]
-    verbs: ["get", "list", "create", "patch", "delete"]
+    resources: ["roles", "rolebindings", "clusterroles", "clusterrolebindings"]
+    verbs: ["get", "list", "create", "patch", "delete", "bind", "escalate"]
   # CiliumNetworkPolicy
   - apiGroups: ["cilium.io"]
     resources: ["ciliumnetworkpolicies"]
     verbs: ["get", "list", "create", "patch", "delete"]
   # CNPG Cluster CRD
   - apiGroups: ["postgresql.cnpg.io"]
-    resources: ["clusters"]
-    verbs: ["get", "list", "create", "patch", "delete"]
+    resources: ["clusters", "backups", "scheduledbackups"]
+    verbs: ["get", "list", "watch", "create", "patch", "delete"]
   # Redis CRD (OpsTree)
   - apiGroups: ["redis.redis.opstreelabs.in"]
     resources: ["redis"]
-    verbs: ["get", "list", "create", "patch", "delete"]
+    verbs: ["get", "list", "watch", "create", "patch", "delete"]
   # RabbitMQ Cluster CRD
   - apiGroups: ["rabbitmq.com"]
     resources: ["rabbitmqclusters"]
-    verbs: ["get", "list", "create", "patch", "delete"]
-  # HTTPRoute (Gateway API)
+    verbs: ["get", "list", "watch", "create", "patch", "delete"]
+  # HTTPRoute + GRPCRoute (Gateway API)
   - apiGroups: ["gateway.networking.k8s.io"]
-    resources: ["httproutes"]
-    verbs: ["get", "list", "create", "patch", "delete"]
-  # HorizontalPodAutoscaler
-  - apiGroups: ["autoscaling"]
-    resources: ["horizontalpodautoscalers"]
-    verbs: ["get", "list", "create", "patch", "update", "delete"]
+    resources: ["httproutes", "grpcroutes", "tcproutes"]
+    verbs: ["get", "list", "watch", "create", "patch", "update", "delete"]
+  # Cert-Manager certificates
+  - apiGroups: ["cert-manager.io"]
+    resources: ["certificates", "certificaterequests"]
+    verbs: ["get", "list", "watch", "create", "patch", "delete"]
+  # ArgoCD Applications (for sync status checks)
+  - apiGroups: ["argoproj.io"]
+    resources: ["applications"]
+    verbs: ["get", "list", "watch"]
