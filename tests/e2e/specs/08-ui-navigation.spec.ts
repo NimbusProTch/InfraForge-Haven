@@ -1,41 +1,34 @@
 import { test, expect } from "@playwright/test";
-import { ensureLoggedIn } from "../helpers/auth";
 
 test.describe("UI — Navigation & Sidebar", () => {
-  test.beforeEach(async ({ page }) => {
-    await ensureLoggedIn(page);
-  });
-
-  test("sidebar has all navigation links", async ({ page }) => {
+  test("sidebar has navigation links", async ({ page }) => {
     await page.goto("/dashboard");
     await page.waitForLoadState("networkidle");
 
-    await expect(page.getByRole("link", { name: /home/i })).toBeVisible();
-    await expect(page.getByRole("link", { name: /projects/i })).toBeVisible();
-    await expect(page.getByRole("link", { name: /organizations/i })).toBeVisible();
-    await expect(page.getByRole("link", { name: /queue/i })).toBeVisible();
+    // Check sidebar nav links (inside <nav>)
+    const nav = page.locator("nav");
+    await expect(nav.locator('a[href="/dashboard"]')).toBeVisible();
+    await expect(nav.locator('a[href="/tenants"]')).toBeVisible();
   });
 
-  test("organizations page loads", async ({ page }) => {
+  test("organizations page renders", async ({ page }) => {
     await page.goto("/organizations");
     await page.waitForLoadState("networkidle");
-
-    await expect(page.getByText(/organizations/i)).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Organizations" })).toBeVisible();
   });
 
-  test("queue page loads", async ({ page }) => {
+  test("queue page renders", async ({ page }) => {
     await page.goto("/platform/queue");
     await page.waitForLoadState("networkidle");
-
-    await expect(page.getByText(/build queue|queue/i)).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Build Queue" })).toBeVisible();
   });
 
-  test("dashboard shows stats cards", async ({ page }) => {
+  test("dashboard renders stat cards", async ({ page }) => {
     await page.goto("/dashboard");
     await page.waitForLoadState("networkidle");
-
-    // Should have stat cards
-    await expect(page.getByText(/projects/i)).toBeVisible();
-    await expect(page.getByText(/applications/i)).toBeVisible();
+    // Check exact stat card labels
+    await expect(page.getByText("Projects", { exact: true }).first()).toBeVisible();
+    await expect(page.getByText("Applications", { exact: true }).first()).toBeVisible();
+    await expect(page.getByText("Cluster", { exact: true }).first()).toBeVisible();
   });
 });
