@@ -356,3 +356,83 @@ haven-platform/
 | Runner VPS (Hetzner CX22) | €4.49 |
 | Anthropic Max | $200 |
 | **Toplam (dev)** | **~€182 + $200** |
+
+## ZORUNLU KURALLAR (ASLA İHLAL EDİLEMEZ)
+
+### Kural 1: Test Yazılmadan Hiçbir Şey "OK" Değildir
+- Her yeni feature/fix için YENİ test yazılmalı
+- Test sayısı HER sprint sonunda ARTMALI — aynı kalırsa test yazılmamış demektir
+- "492 test geçiyor" eski testlerin geçmesi demek, yeni kodun test edilmesi DEĞİL
+- Önce test yaz (FAIL etmeli) → sonra kodu yaz → test geçmeli
+- Integration kodu (ör: Everest client) entegre edilmeden task TAMAMLANMIŞ SAYILMAZ
+
+### Kural 2: Sprint Adım Sırası (Kesinlikle Bu Sırada)
+1. Backend kodu yaz + backend testi yaz + backend test ÇALIŞTIR
+2. DB/K8s/Gitea/Harbor entegrasyonu doğrula (gerçek cluster'da)
+3. UI kodu yaz + Playwright testi yaz + test ÇALIŞTIR
+4. Tüm test suite çalıştır (eski + yeni)
+5. Test count artmadıysa → ADIM 1'E DÖN
+6. PR oluştur → review → merge
+
+### Kural 3: PR ve Review
+- Her değişiklik feature branch'te yapılır
+- PR oluşturulmadan main'e merge yasak
+- Her PR'da: hangi testler eklendi, test count öncesi/sonrası belirtilmeli
+
+### Kural 4: Entegrasyon = Bağlama + Test
+- Client/service yazmak YETERLİ DEĞİL
+- Client'ı çağıran kodu da yazmak lazım (ör: managed_service.py → everest_client)
+- Entegrasyon testi lazım (ör: Everest'ten gerçek DB oluştur, status kontrol et)
+- "Client hazır" ≠ "Feature tamamlandı"
+
+### Kural 5: CLAUDE.md ve Plan Güncel Tutulmalı
+- Her sprint sonunda CLAUDE.md güncellenmeli (yeni mimari kararlar, tamamlanan fazlar)
+- Plan dosyası güncel tutulmalı
+- Yeni gotcha'lar eklenmeli
+
+## Mevcut Durum (2026-03-29)
+
+### Cluster
+- 6 node RKE2 cluster (3 master, 3 worker) — Hetzner dev
+- ArgoCD: main branch izliyor, Synced+Healthy
+- Gitea: haven/haven-gitops repo, tenants/ dizini hazır
+- Harbor: çalışıyor, CI image push başarılı
+- Keycloak: haven realm, haven-api + haven-ui client'lar
+- Redis: git queue için çalışıyor
+- CNPG: platform DB çalışıyor
+- Percona Everest v1.13.0: 3 DB engine (PG, MySQL, MongoDB) operational
+- BuildKit: çalışıyor (haven-builds namespace)
+
+### GitOps Akışı
+```
+GitHub (InfraForge-Haven) → Platform kodu + Helm charts + ApplicationSets
+Gitea (haven-gitops)      → Tenant values.yaml (API oluşturur, git-worker push eder)
+
+ApplicationSets (GLOBAL, GitHub'da):
+  tenant-apps.yaml    → tenants/*/apps/*/values.yaml tarar (Gitea)
+  tenant-services.yaml → tenants/*/services/*/values.yaml tarar (Gitea)
+
+App-of-apps (ArgoCD):
+  haven-platform → apps/ (haven-api, haven-ui) + applicationsets/ (tenant discovery)
+```
+
+### Everest Entegrasyonu
+- Everest URL: http://everest.everest-system.svc.cluster.local:8080
+- Admin: admin / HavenEverest2026
+- PostgreSQL, MySQL, MongoDB → Everest API ile oluşturulacak
+- Redis, RabbitMQ → Direct K8s CRD (OpsTree, RabbitMQ Operator)
+- `api/app/services/everest_client.py` yazıldı AMA `managed_service.py`'ye entegre EDİLMEDİ
+
+### Test Durumu
+- Backend unit testleri: 492 (yeni feature testleri EKSİK)
+- Playwright E2E: 48 test (UI smoke + API CRUD + auth + navigation)
+- Everest entegrasyon testi: YOK
+- Git worker E2E testi: YOK (git binary fix deploy bekleniyor)
+- Build pipeline E2E testi: YOK
+- DB provisioning E2E testi: YOK
+
+### Bilinen Sorunlar
+- Git worker: yeni image (906e6c8) deploy edildi ama ArgoCD manifest'i henüz sync olmadı
+- GitHub OAuth: auth endpoint'ler public yapıldı ama UI'da test edilmedi
+- Everest client yazıldı ama managed_service.py'ye entegre değil
+- UI tema: CSS variables güncellendi ama hardcoded hex renkler var (refactor lazım)
