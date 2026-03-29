@@ -27,6 +27,7 @@ class ServiceTier(PyEnum):
 class ServiceStatus(PyEnum):
     PROVISIONING = "provisioning"
     READY = "ready"
+    UPDATING = "updating"
     FAILED = "failed"
     DELETING = "deleting"
 
@@ -54,5 +55,7 @@ class ManagedService(Base, TimestampMixin):
     service_namespace: Mapped[str | None] = mapped_column(String(63), nullable=True)
     # Human-readable connection string (no password) for display
     connection_hint: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    # Error message from Everest/K8s when provisioning or update fails
+    error_message: Mapped[str | None] = mapped_column(String(1024), nullable=True)
 
     tenant: Mapped["Tenant"] = relationship(back_populates="services")

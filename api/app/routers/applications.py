@@ -8,7 +8,7 @@ from sqlalchemy import select
 from app.config import settings
 from app.deps import CurrentUser, DBSession, GitQueueDep, K8sDep
 from app.models.application import Application
-from app.models.managed_service import ManagedService, ServiceStatus
+from app.models.managed_service import ManagedService, ServiceStatus, ServiceType
 from app.models.tenant import Tenant
 from app.schemas.application import ApplicationCreate, ApplicationResponse, ApplicationUpdate
 from app.services.deploy_service import DeployService
@@ -202,6 +202,15 @@ async def delete_application(
 # ---------------------------------------------------------------------------
 
 
+def _database_url_key(service_type: ServiceType) -> str | None:
+    """Return the conventional env var name for a database URL, by type."""
+    return {
+        ServiceType.POSTGRES: "DATABASE_URL",
+        ServiceType.MYSQL: "MYSQL_URL",
+        ServiceType.MONGODB: "MONGODB_URL",
+    }.get(service_type)
+
+
 class _ConnectServiceBody(BaseModel):
     service_name: str
 
@@ -245,13 +254,25 @@ async def connect_service(
 
     existing: list[dict] = list(app.env_from_secrets or [])
     if not any(e.get("service_name") == svc.name for e in existing):
+        # Build DATABASE_URL template from service type + connection info
+        db_url_key = _database_url_key(svc.service_type)
         existing.append(
             {
                 "service_name": svc.name,
                 "secret_name": svc.secret_name,
                 "namespace": svc.service_namespace,
+                "connection_hint": svc.connection_hint,
+                "database_url_key": db_url_key,
             }
         )
+        # Also inject DATABASE_URL (and type-specific alias) into app env_vars
+        if svc.connection_hint and db_url_key:
+            env_vars = dict(app.env_vars or {})
+            env_vars[db_url_key] = svc.connection_hint
+            # Always set generic DATABASE_URL as well
+            if db_url_key != "DATABASE_URL":
+                env_vars["DATABASE_URL"] = svc.connection_hint
+            app.env_vars = env_vars
         app.env_from_secrets = existing
         await db.commit()
         await db.refresh(app)

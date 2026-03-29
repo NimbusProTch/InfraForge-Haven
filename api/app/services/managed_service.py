@@ -1,13 +1,18 @@
-"""Managed service provisioning: PostgreSQL (CNPG), Redis, RabbitMQ CRDs."""
+"""Managed service provisioning: PostgreSQL, MySQL, MongoDB via Everest; Redis, RabbitMQ via K8s CRDs."""
 
 import logging
 
 from kubernetes.client.exceptions import ApiException
 
+from app.config import settings
 from app.k8s.client import K8sClient
 from app.models.managed_service import ManagedService, ServiceStatus, ServiceTier, ServiceType
+from app.services.everest_client import EverestClient, everest_client
 
 logger = logging.getLogger(__name__)
+
+# Engine types that should be routed through Everest when available
+_EVEREST_ENGINES = {ServiceType.POSTGRES, ServiceType.MYSQL, ServiceType.MONGODB}
 
 # ---------------------------------------------------------------------------
 # CRD body builders
@@ -92,6 +97,11 @@ _SECRET_NAME_MAP = {
     ServiceType.REDIS: lambda name: f"{name}-redis",  # OpsTree Redis secret
     ServiceType.RABBITMQ: lambda name: f"{name}-default-user",  # RabbitMQ Operator default user
 }
+
+# Everest-managed DBs use a different secret naming convention
+_EVEREST_SECRET_NAME = lambda name: f"everest-secrets-{name}"  # noqa: E731
+# Everest creates secrets in its own namespace, not the tenant namespace
+EVEREST_NAMESPACE = getattr(settings, "everest_namespace", "") or "everest"
 
 _CONNECTION_HINT_MAP = {
     ServiceType.POSTGRES: lambda name, ns: f"postgresql://{name}-app@{name}-rw.{ns}.svc:5432/{name.replace('-', '_')}",
@@ -201,62 +211,122 @@ _CRD_CONFIG = {
 
 
 class ManagedServiceProvisioner:
-    """Creates and deletes managed service CRDs in tenant namespaces."""
+    """Creates and deletes managed service CRDs or Everest databases in tenant namespaces.
 
-    def __init__(self, k8s: K8sClient) -> None:
+    PostgreSQL, MySQL, and MongoDB are routed through Percona Everest API when available.
+    Redis and RabbitMQ always use direct K8s CRDs (OpsTree / RabbitMQ Operator).
+    Falls back to direct CRDs if Everest is not configured or unreachable.
+    """
+
+    def __init__(self, k8s: K8sClient, everest: EverestClient | None = None) -> None:
         self.k8s = k8s
+        self.everest = everest or everest_client
 
-    async def sync_status(self, service: ManagedService) -> None:
-        """Check the K8s CRD status and update service.status accordingly."""
-        if not self.k8s.is_available() or self.k8s.custom_objects is None:
-            return
-        if not service.service_namespace:
-            return
+    def _use_everest(self, service_type: ServiceType) -> bool:
+        """Return True if this service type should be provisioned via Everest."""
+        return service_type in _EVEREST_ENGINES and self.everest.is_configured()
 
-        cfg = _CRD_CONFIG[service.service_type]
+    # ------------------------------------------------------------------
+    # Everest-based provisioning (PostgreSQL, MySQL, MongoDB)
+    # ------------------------------------------------------------------
+
+    async def _everest_provision(self, service: ManagedService, tenant_namespace: str) -> None:
+        """Provision a database via Percona Everest REST API."""
+        engine_map = {ServiceType.POSTGRES: "postgres", ServiceType.MYSQL: "mysql", ServiceType.MONGODB: "mongodb"}
+        engine_type = engine_map[service.service_type]
+        tier = "dev" if service.tier == ServiceTier.DEV else "prod"
+
         try:
-            obj = self.k8s.custom_objects.get_namespaced_custom_object(
-                group=cfg["group"],
-                version=cfg["version"],
-                namespace=service.service_namespace,
-                plural=cfg["plural"],
+            result = await self.everest.create_database(
                 name=service.name,
+                engine_type=engine_type,
+                tier=tier,
             )
-        except ApiException as e:
-            if e.status == 404:
-                service.status = ServiceStatus.FAILED
+            logger.info("Everest DB created: %s (%s)", service.name, engine_type)
+        except Exception:
+            logger.exception("Everest provision failed for %s — falling back to CRD", service.name)
+            await self._crd_provision(service, tenant_namespace)
             return
 
-        # Determine ready state based on operator-specific status fields
-        svc_type = service.service_type
-        k8s_status = obj.get("status", {})
-        if svc_type == ServiceType.POSTGRES:
-            phase = k8s_status.get("phase", "")
-            ready_instances = k8s_status.get("readyInstances", 0)
-            instances = obj.get("spec", {}).get("instances", 1)
-            if phase == "Cluster in healthy state" or (ready_instances and ready_instances >= instances):
-                service.status = ServiceStatus.READY
-            elif phase in ("Failed", "Error"):
-                service.status = ServiceStatus.FAILED
-        elif svc_type == ServiceType.REDIS:
-            ready = k8s_status.get("readyReplicas", 0)
-            if ready and ready > 0:
-                service.status = ServiceStatus.READY
-        elif svc_type == ServiceType.MYSQL or svc_type == ServiceType.MONGODB:
-            state = k8s_status.get("state", "")
-            if state == "ready":
-                service.status = ServiceStatus.READY
-            elif state in ("error", "failed"):
-                service.status = ServiceStatus.FAILED
-        elif svc_type == ServiceType.RABBITMQ:
-            conditions = k8s_status.get("conditions", [])
-            for cond in conditions:
-                if cond.get("type") == "AllReplicasReady" and cond.get("status") == "True":
-                    service.status = ServiceStatus.READY
-                    break
+        # Everest creates secrets in its own namespace with a different naming convention
+        service.service_namespace = EVEREST_NAMESPACE
+        service.secret_name = _EVEREST_SECRET_NAME(service.name)
+        service.connection_hint = _CONNECTION_HINT_MAP[service.service_type](
+            service.name, EVEREST_NAMESPACE
+        )
+        service.status = ServiceStatus.PROVISIONING
 
-    async def provision(self, service: ManagedService, tenant_namespace: str) -> None:
-        """Create the operator CRD and populate secret_name + connection_hint."""
+    async def _everest_update(
+        self,
+        service: ManagedService,
+        *,
+        replicas: int | None = None,
+        storage: str | None = None,
+        cpu: str | None = None,
+        memory: str | None = None,
+    ) -> None:
+        """Update a database via Everest API."""
+        try:
+            await self.everest.update_database(
+                service.name,
+                replicas=replicas,
+                storage=storage,
+                cpu=cpu,
+                memory=memory,
+            )
+            service.status = ServiceStatus.UPDATING
+            service.error_message = None
+            logger.info("Everest DB updated: %s", service.name)
+        except Exception:
+            logger.exception("Everest update failed for %s", service.name)
+            service.error_message = "Update request failed"
+
+    async def _everest_sync_status(self, service: ManagedService) -> None:
+        """Sync status from Everest API."""
+        try:
+            status = await self.everest.get_database_status(service.name)
+        except Exception:
+            logger.exception("Everest status check failed for %s", service.name)
+            return
+
+        if status == "ready":
+            service.status = ServiceStatus.READY
+            service.error_message = None
+        elif status in ("error", "failed", "not_found"):
+            service.status = ServiceStatus.FAILED
+
+    async def _everest_sync_details(self, service: ManagedService) -> dict | None:
+        """Sync status and return runtime details for UI enrichment."""
+        try:
+            details = await self.everest.get_database_details(service.name)
+        except Exception:
+            logger.exception("Everest details fetch failed for %s", service.name)
+            return None
+
+        ev_status = details.get("status", "unknown")
+        if ev_status == "ready":
+            service.status = ServiceStatus.READY
+            service.error_message = None
+        elif ev_status in ("error", "failed", "not_found"):
+            service.status = ServiceStatus.FAILED
+            service.error_message = details.get("error_message")
+
+        return details
+
+    async def _everest_deprovision(self, service: ManagedService) -> None:
+        """Delete a database via Everest API."""
+        try:
+            await self.everest.delete_database(service.name)
+            logger.info("Everest DB deleted: %s", service.name)
+        except Exception:
+            logger.exception("Everest deprovision failed for %s", service.name)
+
+    # ------------------------------------------------------------------
+    # CRD-based provisioning (Redis, RabbitMQ, and fallback)
+    # ------------------------------------------------------------------
+
+    async def _crd_provision(self, service: ManagedService, tenant_namespace: str) -> None:
+        """Provision a service via direct K8s CRD."""
         if not self.k8s.is_available() or self.k8s.custom_objects is None:
             logger.warning("K8s unavailable — skipping provision for service %s", service.name)
             service.status = ServiceStatus.FAILED
@@ -284,16 +354,58 @@ class ManagedServiceProvisioner:
         service.secret_name = _SECRET_NAME_MAP[service.service_type](service.name)
         service.service_namespace = tenant_namespace
         service.connection_hint = _CONNECTION_HINT_MAP[service.service_type](service.name, tenant_namespace)
-        service.status = ServiceStatus.PROVISIONING  # operator will flip to READY eventually
-        logger.info(
-            "Service %s (%s) CRD created in %s",
-            service.name,
-            service.service_type,
-            tenant_namespace,
-        )
+        service.status = ServiceStatus.PROVISIONING
 
-    async def deprovision(self, service: ManagedService) -> None:
-        """Delete the operator CRD."""
+    async def _crd_sync_status(self, service: ManagedService) -> None:
+        """Sync status from K8s CRD."""
+        if not self.k8s.is_available() or self.k8s.custom_objects is None:
+            return
+        if not service.service_namespace:
+            return
+
+        cfg = _CRD_CONFIG[service.service_type]
+        try:
+            obj = self.k8s.custom_objects.get_namespaced_custom_object(
+                group=cfg["group"],
+                version=cfg["version"],
+                namespace=service.service_namespace,
+                plural=cfg["plural"],
+                name=service.name,
+            )
+        except ApiException as e:
+            if e.status == 404:
+                service.status = ServiceStatus.FAILED
+            return
+
+        svc_type = service.service_type
+        k8s_status = obj.get("status", {})
+        if svc_type == ServiceType.POSTGRES:
+            phase = k8s_status.get("phase", "")
+            ready_instances = k8s_status.get("readyInstances", 0)
+            instances = obj.get("spec", {}).get("instances", 1)
+            if phase == "Cluster in healthy state" or (ready_instances and ready_instances >= instances):
+                service.status = ServiceStatus.READY
+            elif phase in ("Failed", "Error"):
+                service.status = ServiceStatus.FAILED
+        elif svc_type == ServiceType.REDIS:
+            ready = k8s_status.get("readyReplicas", 0)
+            if ready and ready > 0:
+                service.status = ServiceStatus.READY
+        elif svc_type == ServiceType.MYSQL or svc_type == ServiceType.MONGODB:
+            state = k8s_status.get("state", "")
+            if state == "ready":
+                service.status = ServiceStatus.READY
+            elif state in ("error", "failed"):
+                service.status = ServiceStatus.FAILED
+        elif svc_type == ServiceType.RABBITMQ:
+            conditions = k8s_status.get("conditions", [])
+            for cond in conditions:
+                if cond.get("type") == "AllReplicasReady" and cond.get("status") == "True":
+                    service.status = ServiceStatus.READY
+                    break
+
+    async def _crd_deprovision(self, service: ManagedService) -> None:
+        """Delete a service CRD."""
         if not self.k8s.is_available() or self.k8s.custom_objects is None:
             return
         if not service.service_namespace:
@@ -312,3 +424,60 @@ class ManagedServiceProvisioner:
         except ApiException as e:
             if e.status != 404:
                 raise
+
+    # ------------------------------------------------------------------
+    # Public API — routes to Everest or CRD based on service type
+    # ------------------------------------------------------------------
+
+    async def sync_status(self, service: ManagedService) -> None:
+        """Check status and update service.status accordingly."""
+        if self._use_everest(service.service_type):
+            await self._everest_sync_status(service)
+        else:
+            await self._crd_sync_status(service)
+
+    async def sync_details(self, service: ManagedService) -> dict | None:
+        """Sync status and return runtime details dict for UI enrichment."""
+        if self._use_everest(service.service_type):
+            return await self._everest_sync_details(service)
+        # CRD path: sync status only, no extra details for now
+        await self._crd_sync_status(service)
+        return None
+
+    async def provision(self, service: ManagedService, tenant_namespace: str) -> None:
+        """Create the database/service and populate secret_name + connection_hint."""
+        if self._use_everest(service.service_type):
+            await self._everest_provision(service, tenant_namespace)
+        else:
+            await self._crd_provision(service, tenant_namespace)
+        logger.info(
+            "Service %s (%s) provisioned in %s via %s",
+            service.name,
+            service.service_type,
+            tenant_namespace,
+            "Everest" if self._use_everest(service.service_type) else "CRD",
+        )
+
+    async def update(
+        self,
+        service: ManagedService,
+        *,
+        replicas: int | None = None,
+        storage: str | None = None,
+        cpu: str | None = None,
+        memory: str | None = None,
+    ) -> None:
+        """Update the database/service resources."""
+        if self._use_everest(service.service_type):
+            await self._everest_update(
+                service, replicas=replicas, storage=storage, cpu=cpu, memory=memory
+            )
+        else:
+            logger.warning("CRD-based update not implemented for %s", service.name)
+
+    async def deprovision(self, service: ManagedService) -> None:
+        """Delete the database/service."""
+        if self._use_everest(service.service_type):
+            await self._everest_deprovision(service)
+        else:
+            await self._crd_deprovision(service)

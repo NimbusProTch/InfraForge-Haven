@@ -38,7 +38,7 @@ def _auth_headers(token: str) -> dict:
 
 
 @router.get("/auth/url")
-async def get_auth_url(current_user: CurrentUser) -> dict:
+async def get_auth_url() -> dict:
     """Return a GitHub OAuth authorization URL for the Connect GitHub popup flow."""
     if not settings.github_client_id:
         raise HTTPException(status_code=503, detail="GitHub OAuth not configured (GITHUB_CLIENT_ID missing)")
@@ -60,9 +60,7 @@ async def get_auth_url(current_user: CurrentUser) -> dict:
 
 
 @router.get("/auth/callback")
-async def oauth_callback(
-    current_user: CurrentUser, code: str = Query(..., description="OAuth code from GitHub")
-) -> dict:
+async def oauth_callback(code: str = Query(..., description="OAuth code from GitHub")) -> dict:
     """Exchange a GitHub OAuth code for an access token."""
     if not settings.github_client_id or not settings.github_client_secret:
         raise HTTPException(status_code=503, detail="GitHub OAuth not configured")
@@ -147,7 +145,6 @@ async def disconnect_github(
 
 @router.get("/user")
 async def get_user(
-    current_user: CurrentUser,
     authorization: str | None = Header(None),
     token: str | None = Query(None, description="Deprecated: use Authorization: Bearer header"),
 ) -> dict:
@@ -174,7 +171,6 @@ async def get_user(
 
 @router.get("/repos")
 async def list_repos(
-    current_user: CurrentUser,
     authorization: str | None = Header(None),
     token: str | None = Query(None, description="Deprecated: use Authorization: Bearer header"),
 ) -> list:
@@ -306,7 +302,6 @@ async def detect_repo_deps(
 async def list_branches(
     owner: str,
     repo: str,
-    current_user: CurrentUser,
     authorization: str | None = Header(None),
     token: str | None = Query(None, description="Deprecated: use Authorization: Bearer header"),
 ) -> list:
