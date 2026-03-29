@@ -1,0 +1,17 @@
+{
+  "name": "haven-e2e-tests",
+  "version": "1.0.0",
+  "description": "Haven Platform E2E tests — Playwright",
+  "scripts": {
+    "test": "npx playwright test",
+    "test:smoke": "npx playwright test specs/01-smoke",
+    "test:auth": "npx playwright test specs/02-auth",
+    "test:api": "npx playwright test specs/03-api-crud",
+    "test:ui": "npx playwright test specs/04- specs/05- specs/06- specs/07- specs/08-",
+    "test:all": "npx playwright test",
+    "report": "npx playwright show-report report"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.58.2"
+  }
+}

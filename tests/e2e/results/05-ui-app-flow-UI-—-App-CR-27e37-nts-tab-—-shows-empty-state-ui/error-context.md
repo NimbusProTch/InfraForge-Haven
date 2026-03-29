@@ -1,0 +1,100 @@
+# Page snapshot
+
+```yaml
+- generic [active] [ref=e1]:
+  - alert [ref=e2]
+  - generic [ref=e3]:
+    - complementary [ref=e4]:
+      - generic [ref=e5]:
+        - img [ref=e7]
+        - generic [ref=e10]: Haven
+      - navigation [ref=e11]:
+        - link "Dashboard" [ref=e12] [cursor=pointer]:
+          - /url: /dashboard
+          - img [ref=e13]
+          - text: Dashboard
+        - link "Tenants" [ref=e18] [cursor=pointer]:
+          - /url: /tenants
+          - img [ref=e19]
+          - text: Tenants
+      - generic [ref=e23]:
+        - button "Light mode" [ref=e24] [cursor=pointer]:
+          - img [ref=e25]
+          - text: Light mode
+        - generic [ref=e31]:
+          - generic [ref=e32]: T
+          - generic [ref=e33]: test@haven.nl
+          - button "Sign out" [ref=e34] [cursor=pointer]:
+            - img [ref=e35]
+    - main [ref=e38]:
+      - generic [ref=e39]:
+        - generic [ref=e40]:
+          - generic [ref=e41]:
+            - paragraph [ref=e42]: Platform
+            - heading "Projects" [level=1] [ref=e43]
+            - paragraph [ref=e44]: 4 projects
+          - link "New Project" [ref=e45] [cursor=pointer]:
+            - /url: /tenants/new
+            - img [ref=e46]
+            - text: New Project
+        - generic [ref=e47]:
+          - img [ref=e48]
+          - textbox "Search projects..." [ref=e51]
+        - generic [ref=e52]:
+          - link "PW UI Test tenant-pw-ui-test 16 CPU 32Gi 100Gi active" [ref=e53] [cursor=pointer]:
+            - /url: /tenants/pw-ui-test
+            - generic [ref=e54]:
+              - img [ref=e56]
+              - generic [ref=e58]:
+                - paragraph [ref=e59]: PW UI Test
+                - paragraph [ref=e60]: tenant-pw-ui-test
+            - generic [ref=e61]:
+              - generic [ref=e62]:
+                - generic [ref=e63]: 16 CPU
+                - generic [ref=e64]: 32Gi
+                - generic [ref=e65]: 100Gi
+              - generic [ref=e66]: active
+              - img [ref=e67]
+          - link "Service Test tenant-pw-svc-test 16 CPU 32Gi 100Gi active" [ref=e69] [cursor=pointer]:
+            - /url: /tenants/pw-svc-test
+            - generic [ref=e70]:
+              - img [ref=e72]
+              - generic [ref=e74]:
+                - paragraph [ref=e75]: Service Test
+                - paragraph [ref=e76]: tenant-pw-svc-test
+            - generic [ref=e77]:
+              - generic [ref=e78]:
+                - generic [ref=e79]: 16 CPU
+                - generic [ref=e80]: 32Gi
+                - generic [ref=e81]: 100Gi
+              - generic [ref=e82]: active
+              - img [ref=e83]
+          - link "Test Gemeente Utrecht tenant-gemeente-utrecht 16 CPU 32Gi 100Gi active" [ref=e85] [cursor=pointer]:
+            - /url: /tenants/gemeente-utrecht
+            - generic [ref=e86]:
+              - img [ref=e88]
+              - generic [ref=e90]:
+                - paragraph [ref=e91]: Test Gemeente Utrecht
+                - paragraph [ref=e92]: tenant-gemeente-utrecht
+            - generic [ref=e93]:
+              - generic [ref=e94]:
+                - generic [ref=e95]: 16 CPU
+                - generic [ref=e96]: 32Gi
+                - generic [ref=e97]: 100Gi
+              - generic [ref=e98]: active
+              - img [ref=e99]
+          - link "Demo Tenant tenant-demo 16 CPU 32Gi 100Gi active" [ref=e101] [cursor=pointer]:
+            - /url: /tenants/demo
+            - generic [ref=e102]:
+              - img [ref=e104]
+              - generic [ref=e106]:
+                - paragraph [ref=e107]: Demo Tenant
+                - paragraph [ref=e108]: tenant-demo
+            - generic [ref=e109]:
+              - generic [ref=e110]:
+                - generic [ref=e111]: 16 CPU
+                - generic [ref=e112]: 32Gi
+                - generic [ref=e113]: 100Gi
+              - generic [ref=e114]: active
+              - img [ref=e115]
+```

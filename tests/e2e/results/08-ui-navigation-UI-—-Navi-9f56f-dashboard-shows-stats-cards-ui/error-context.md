@@ -1,0 +1,125 @@
+# Page snapshot
+
+```yaml
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - complementary [ref=e3]:
+      - generic [ref=e4]:
+        - img [ref=e6]
+        - generic [ref=e9]: Haven
+      - navigation [ref=e10]:
+        - link "Dashboard" [ref=e11] [cursor=pointer]:
+          - /url: /dashboard
+          - img [ref=e12]
+          - text: Dashboard
+        - link "Tenants" [ref=e17] [cursor=pointer]:
+          - /url: /tenants
+          - img [ref=e18]
+          - text: Tenants
+      - generic [ref=e22]:
+        - button "Light mode" [ref=e23] [cursor=pointer]:
+          - img [ref=e24]
+          - text: Light mode
+        - generic [ref=e30]:
+          - generic [ref=e31]: T
+          - generic [ref=e32]: test@haven.nl
+          - button "Sign out" [ref=e33] [cursor=pointer]:
+            - img [ref=e34]
+    - main [ref=e37]:
+      - generic [ref=e38]:
+        - generic [ref=e39]:
+          - paragraph [ref=e40]: Overview
+          - heading "Welcome back, testdev" [level=1] [ref=e41]
+          - paragraph [ref=e42]: Haven Platform · Self-Service DevOps
+        - generic [ref=e43]:
+          - generic [ref=e44]:
+            - generic [ref=e45]:
+              - generic [ref=e46]: Projects
+              - img [ref=e48]
+            - paragraph [ref=e50]: "3"
+            - paragraph [ref=e51]: namespaces
+          - generic [ref=e52]:
+            - generic [ref=e53]:
+              - generic [ref=e54]: Applications
+              - img [ref=e56]
+            - paragraph [ref=e59]: "1"
+            - paragraph [ref=e60]: 0 running
+          - generic [ref=e61]:
+            - generic [ref=e62]:
+              - generic [ref=e63]: Running
+              - img [ref=e65]
+            - paragraph [ref=e67]: "0"
+            - paragraph [ref=e68]: healthy pods
+          - generic [ref=e69]:
+            - generic [ref=e70]:
+              - generic [ref=e71]: Cluster
+              - img [ref=e73]
+            - paragraph [ref=e76]: —
+            - paragraph [ref=e79]: degraded
+        - generic [ref=e80]:
+          - heading "Quick Actions" [level=2] [ref=e81]
+          - generic [ref=e82]:
+            - link "New Project" [ref=e83] [cursor=pointer]:
+              - /url: /tenants/new
+              - img [ref=e84]
+              - text: New Project
+            - link "View All Projects" [ref=e85] [cursor=pointer]:
+              - /url: /tenants
+              - img [ref=e86]
+              - text: View All Projects
+        - generic [ref=e88]:
+          - generic [ref=e89]:
+            - heading "Recent Projects" [level=2] [ref=e90]
+            - link "View all" [ref=e91] [cursor=pointer]:
+              - /url: /tenants
+              - text: View all
+              - img [ref=e92]
+          - generic [ref=e94]:
+            - link "Service Test pw-svc-test active" [ref=e95] [cursor=pointer]:
+              - /url: /tenants/pw-svc-test
+              - generic [ref=e96]:
+                - img [ref=e98]
+                - generic [ref=e100]:
+                  - paragraph [ref=e101]: Service Test
+                  - paragraph [ref=e102]: pw-svc-test
+              - generic [ref=e103]:
+                - generic [ref=e104]: active
+                - img [ref=e105]
+            - link "Test Gemeente Utrecht gemeente-utrecht active" [ref=e107] [cursor=pointer]:
+              - /url: /tenants/gemeente-utrecht
+              - generic [ref=e108]:
+                - img [ref=e110]
+                - generic [ref=e112]:
+                  - paragraph [ref=e113]: Test Gemeente Utrecht
+                  - paragraph [ref=e114]: gemeente-utrecht
+              - generic [ref=e115]:
+                - generic [ref=e116]: active
+                - img [ref=e117]
+            - link "Demo Tenant demo active" [ref=e119] [cursor=pointer]:
+              - /url: /tenants/demo
+              - generic [ref=e120]:
+                - img [ref=e122]
+                - generic [ref=e124]:
+                  - paragraph [ref=e125]: Demo Tenant
+                  - paragraph [ref=e126]: demo
+              - generic [ref=e127]:
+                - generic [ref=e128]: active
+                - img [ref=e129]
+        - generic [ref=e131]:
+          - heading "Recent Activity" [level=2] [ref=e132]
+          - link "Demo Flask App gemeente-utrecht manual 3/29/2026, 8:00:44 AM failed" [ref=e134] [cursor=pointer]:
+            - /url: /tenants/gemeente-utrecht/apps/demo-flask-app
+            - generic [ref=e137]:
+              - generic [ref=e138]:
+                - paragraph [ref=e139]: Demo Flask App
+                - generic [ref=e140]: gemeente-utrecht
+              - generic [ref=e141]:
+                - generic [ref=e142]: manual
+                - generic [ref=e143]:
+                  - img [ref=e144]
+                  - text: 3/29/2026, 8:00:44 AM
+            - generic [ref=e147]:
+              - generic [ref=e148]: failed
+              - img [ref=e149]
+  - alert [ref=e151]
+```

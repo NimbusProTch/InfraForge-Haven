@@ -1,0 +1,127 @@
+# Page snapshot
+
+```yaml
+- generic:
+  - generic:
+    - complementary:
+      - generic:
+        - generic:
+          - img
+        - generic: Haven
+      - navigation:
+        - link:
+          - /url: /dashboard
+          - img
+          - text: Dashboard
+        - link:
+          - /url: /tenants
+          - img
+          - text: Tenants
+      - generic:
+        - button:
+          - img
+          - text: Light mode
+        - generic:
+          - generic: T
+          - generic: test@haven.nl
+          - button:
+            - img
+    - main:
+      - generic:
+        - navigation:
+          - generic:
+            - link:
+              - /url: /tenants
+              - text: Projects
+          - generic:
+            - img
+            - generic: Service Test
+        - generic:
+          - generic:
+            - generic:
+              - generic:
+                - img
+              - heading [level=1]: Service Test
+              - generic: active
+            - paragraph: tenant-pw-svc-test
+          - button:
+            - img
+            - text: Delete Project
+        - generic:
+          - generic:
+            - paragraph: Namespace
+            - paragraph: pw-svc-test
+          - generic:
+            - paragraph: CPU Limit
+            - paragraph: "16"
+          - generic:
+            - paragraph: Memory
+            - paragraph: 32Gi
+          - generic:
+            - paragraph: Storage
+            - paragraph: 100Gi
+          - generic:
+            - paragraph: App Health
+            - generic:
+              - generic: —
+        - generic:
+          - tablist:
+            - tab:
+              - text: Applications
+              - generic: "0"
+            - tab [selected]:
+              - text: Services
+              - generic: "0"
+            - tab:
+              - img
+              - text: Members
+            - tab:
+              - img
+              - text: Usage
+            - tab:
+              - img
+              - text: Audit Log
+            - tab:
+              - img
+              - text: Privacy
+          - tabpanel:
+            - generic:
+              - paragraph: Managed services (PostgreSQL, Redis, RabbitMQ)
+              - button [expanded]:
+                - img
+                - text: Add Service
+            - generic:
+              - img
+              - paragraph: No managed services yet.
+              - paragraph: Add a PostgreSQL, Redis, or RabbitMQ instance to get started.
+  - alert
+  - dialog "Add Managed Service" [ref=e2]:
+    - generic [ref=e3]:
+      - heading "Add Managed Service" [level=2] [ref=e4]
+      - paragraph [ref=e5]: Provision a managed database, cache, or message queue for this tenant.
+    - generic [ref=e6]:
+      - generic [ref=e7]:
+        - text: Service name
+        - textbox "Service name" [active] [ref=e8]:
+          - /placeholder: my-database
+        - paragraph [ref=e9]: Lowercase letters, numbers, hyphens only.
+      - generic [ref=e10]:
+        - text: Type
+        - combobox "Type" [ref=e11] [cursor=pointer]:
+          - generic:
+            - generic: PostgreSQL (Percona)
+          - img [ref=e12]
+        - combobox [ref=e14]
+      - generic [ref=e15]:
+        - text: Tier
+        - combobox "Tier" [ref=e16] [cursor=pointer]:
+          - generic: Dev (single replica, small storage)
+          - img [ref=e17]
+        - combobox [ref=e19]
+      - generic [ref=e20]:
+        - button "Cancel" [ref=e21] [cursor=pointer]
+        - button "Create" [ref=e22] [cursor=pointer]
+    - button "Close" [ref=e23] [cursor=pointer]:
+      - img [ref=e24]
+      - generic [ref=e27]: Close
+```

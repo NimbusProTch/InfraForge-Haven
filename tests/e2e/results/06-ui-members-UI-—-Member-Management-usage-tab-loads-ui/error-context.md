@@ -1,0 +1,85 @@
+# Page snapshot
+
+```yaml
+- generic [ref=e1]:
+  - generic [ref=e2]:
+    - complementary [ref=e3]:
+      - generic [ref=e4]:
+        - img [ref=e6]
+        - generic [ref=e9]: Haven
+      - navigation [ref=e10]:
+        - link "Dashboard" [ref=e11] [cursor=pointer]:
+          - /url: /dashboard
+          - img [ref=e12]
+          - text: Dashboard
+        - link "Tenants" [ref=e17] [cursor=pointer]:
+          - /url: /tenants
+          - img [ref=e18]
+          - text: Tenants
+      - generic [ref=e22]:
+        - button "Light mode" [ref=e23] [cursor=pointer]:
+          - img [ref=e24]
+          - text: Light mode
+        - generic [ref=e30]:
+          - generic [ref=e31]: T
+          - generic [ref=e32]: test@haven.nl
+          - button "Sign out" [ref=e33] [cursor=pointer]:
+            - img [ref=e34]
+    - main [ref=e37]:
+      - generic [ref=e38]:
+        - navigation [ref=e39]:
+          - link "Projects" [ref=e41] [cursor=pointer]:
+            - /url: /tenants
+          - generic [ref=e42]:
+            - img [ref=e43]
+            - generic [ref=e45]: Member Test
+        - generic [ref=e46]:
+          - generic [ref=e47]:
+            - generic [ref=e48]:
+              - img [ref=e50]
+              - heading "Member Test" [level=1] [ref=e52]
+              - generic [ref=e53]: active
+            - paragraph [ref=e54]: tenant-pw-member-test
+          - button "Delete Project" [ref=e55] [cursor=pointer]:
+            - img [ref=e56]
+            - text: Delete Project
+        - generic [ref=e59]:
+          - generic [ref=e60]:
+            - paragraph [ref=e61]: Namespace
+            - paragraph [ref=e62]: pw-member-test
+          - generic [ref=e63]:
+            - paragraph [ref=e64]: CPU Limit
+            - paragraph [ref=e65]: "16"
+          - generic [ref=e66]:
+            - paragraph [ref=e67]: Memory
+            - paragraph [ref=e68]: 32Gi
+          - generic [ref=e69]:
+            - paragraph [ref=e70]: Storage
+            - paragraph [ref=e71]: 100Gi
+          - generic [ref=e72]:
+            - paragraph [ref=e73]: App Health
+            - generic [ref=e75]: —
+        - generic [ref=e76]:
+          - tablist [ref=e77]:
+            - tab "Applications 0" [ref=e78] [cursor=pointer]:
+              - text: Applications
+              - generic [ref=e79]: "0"
+            - tab "Services 0" [ref=e80] [cursor=pointer]:
+              - text: Services
+              - generic [ref=e81]: "0"
+            - tab "Members" [ref=e82] [cursor=pointer]:
+              - img [ref=e83]
+              - text: Members
+            - tab "Usage" [active] [selected] [ref=e88] [cursor=pointer]:
+              - img [ref=e89]
+              - text: Usage
+            - tab "Audit Log" [ref=e91] [cursor=pointer]:
+              - img [ref=e92]
+              - text: Audit Log
+            - tab "Privacy" [ref=e95] [cursor=pointer]:
+              - img [ref=e96]
+              - text: Privacy
+          - tabpanel "Usage" [ref=e98]:
+            - img [ref=e100]
+  - alert [ref=e102]
+```

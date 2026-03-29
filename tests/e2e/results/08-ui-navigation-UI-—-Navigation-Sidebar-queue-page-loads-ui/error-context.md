@@ -1,0 +1,81 @@
+# Page snapshot
+
+```yaml
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - complementary [ref=e3]:
+      - generic [ref=e4]:
+        - img [ref=e6]
+        - generic [ref=e9]: Haven
+      - navigation [ref=e10]:
+        - link "Dashboard" [ref=e11] [cursor=pointer]:
+          - /url: /dashboard
+          - img [ref=e12]
+          - text: Dashboard
+        - link "Tenants" [ref=e17] [cursor=pointer]:
+          - /url: /tenants
+          - img [ref=e18]
+          - text: Tenants
+      - generic [ref=e22]:
+        - button "Light mode" [ref=e23] [cursor=pointer]:
+          - img [ref=e24]
+          - text: Light mode
+        - generic [ref=e30]:
+          - generic [ref=e31]: T
+          - generic [ref=e32]: test@haven.nl
+          - button "Sign out" [ref=e33] [cursor=pointer]:
+            - img [ref=e34]
+    - main [ref=e37]:
+      - generic [ref=e38]:
+        - generic [ref=e39]:
+          - generic [ref=e40]:
+            - heading "Build Queue" [level=1] [ref=e41]
+            - paragraph [ref=e42]: Redis-backed FIFO queue for GitOps writes
+          - generic [ref=e43]:
+            - generic [ref=e44] [cursor=pointer]:
+              - checkbox "Auto (5s)" [checked] [ref=e46]
+              - generic [ref=e49]: Auto (5s)
+            - button "Refresh" [ref=e50] [cursor=pointer]:
+              - img [ref=e51]
+              - text: Refresh
+        - generic [ref=e56]:
+          - img [ref=e57]
+          - generic [ref=e60]: Worker
+          - generic [ref=e61]:
+            - generic [ref=e63]: Dead
+            - generic [ref=e64]: — git writes will not be processed
+          - generic [ref=e65]: "Last refreshed: 6:36:17 PM"
+        - generic [ref=e66]:
+          - generic [ref=e67]:
+            - generic [ref=e68]:
+              - img [ref=e69]
+              - generic [ref=e72]: Pending
+            - paragraph [ref=e73]: "0"
+          - generic [ref=e74]:
+            - generic [ref=e75]:
+              - img [ref=e76]
+              - generic [ref=e78]: Processing
+            - paragraph
+          - generic [ref=e79]:
+            - generic [ref=e80]:
+              - img [ref=e81]
+              - generic [ref=e83]: Dead Letter
+            - paragraph [ref=e84]: "6"
+            - paragraph [ref=e85]: requires attention
+        - generic [ref=e86]:
+          - generic [ref=e87]:
+            - img [ref=e88]
+            - heading "Queue Health Summary" [level=3] [ref=e90]
+          - generic [ref=e91]:
+            - generic [ref=e92]:
+              - img [ref=e93]
+              - generic [ref=e95]:
+                - paragraph [ref=e96]: Git Writer Worker
+                - paragraph [ref=e97]: "Worker is not running. Start it with: python -m app.workers.git_writer"
+            - generic [ref=e98]:
+              - img [ref=e99]
+              - generic [ref=e101]:
+                - paragraph [ref=e102]: Dead Letter Queue Has Items
+                - paragraph [ref=e103]: "6 job(s) failed after 3 retries. Check API logs for details. Jobs in DLQ: haven:git:dlq"
+  - alert [ref=e104]
+```

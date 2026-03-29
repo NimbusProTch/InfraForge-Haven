@@ -1,0 +1,169 @@
+# Page snapshot
+
+```yaml
+- generic [ref=e1]:
+  - generic [ref=e2]:
+    - complementary [ref=e3]:
+      - generic [ref=e4]:
+        - img [ref=e6]
+        - generic [ref=e9]: Haven
+      - navigation [ref=e10]:
+        - link "Dashboard" [ref=e11] [cursor=pointer]:
+          - /url: /dashboard
+          - img [ref=e12]
+          - text: Dashboard
+        - link "Tenants" [ref=e17] [cursor=pointer]:
+          - /url: /tenants
+          - img [ref=e18]
+          - text: Tenants
+      - generic [ref=e22]:
+        - button "Light mode" [ref=e23] [cursor=pointer]:
+          - img [ref=e24]
+          - text: Light mode
+        - generic [ref=e30]:
+          - generic [ref=e31]: T
+          - generic [ref=e32]: test@haven.nl
+          - button "Sign out" [ref=e33] [cursor=pointer]:
+            - img [ref=e34]
+    - main [ref=e37]:
+      - generic [ref=e38]:
+        - navigation [ref=e39]:
+          - link "Projects" [ref=e41] [cursor=pointer]:
+            - /url: /tenants
+          - generic [ref=e42]:
+            - img [ref=e43]
+            - link "pw-app-test" [ref=e45] [cursor=pointer]:
+              - /url: /tenants/pw-app-test
+          - generic [ref=e46]:
+            - img [ref=e47]
+            - generic [ref=e49]: E2E Test App
+        - generic [ref=e50]:
+          - generic [ref=e51]:
+            - generic [ref=e52]:
+              - generic [ref=e54]: ⚡
+              - heading "E2E Test App" [level=1] [ref=e55]
+            - paragraph [ref=e57]:
+              - text: test/sample-app
+              - img [ref=e58]
+              - generic [ref=e60]:
+                - img [ref=e61]
+                - text: main
+          - generic [ref=e65]:
+            - button "Build" [ref=e66] [cursor=pointer]:
+              - img [ref=e67]
+              - text: Build
+            - button "Deploy" [disabled] [ref=e71]:
+              - img [ref=e72]
+              - text: Deploy
+            - button "Sync" [ref=e77] [cursor=pointer]:
+              - img [ref=e78]
+              - text: Sync
+        - generic [ref=e83]:
+          - generic [ref=e84]:
+            - paragraph [ref=e85]: Replicas
+            - paragraph [ref=e86]: "1"
+          - generic [ref=e87]:
+            - paragraph [ref=e88]: Branch
+            - paragraph [ref=e89]: main
+          - generic [ref=e90]:
+            - paragraph [ref=e91]: Image
+            - paragraph [ref=e92]: "--"
+          - generic [ref=e93]:
+            - paragraph [ref=e94]: Webhook
+            - paragraph [ref=e95]: ...46a6aea1
+        - generic [ref=e96]:
+          - generic [ref=e97]: ArgoCD
+          - generic [ref=e99]: ·
+        - generic [ref=e100]:
+          - tablist [ref=e101]:
+            - tab "Deployments 0" [ref=e102] [cursor=pointer]:
+              - text: Deployments
+              - generic [ref=e103]: "0"
+            - tab "Observability" [ref=e104] [cursor=pointer]:
+              - img [ref=e105]
+              - text: Observability
+            - tab "Logs" [ref=e107] [cursor=pointer]:
+              - img [ref=e108]
+              - text: Logs
+            - tab "Environments" [ref=e110] [cursor=pointer]:
+              - img [ref=e111]
+              - text: Environments
+            - tab "Domains" [ref=e115] [cursor=pointer]:
+              - img [ref=e116]
+              - text: Domains
+            - tab "Jobs" [ref=e119] [cursor=pointer]:
+              - img [ref=e120]
+              - text: Jobs
+            - tab "Storage" [ref=e123] [cursor=pointer]:
+              - img [ref=e124]
+              - text: Storage
+            - tab "Canary" [ref=e126] [cursor=pointer]:
+              - img [ref=e127]
+              - text: Canary
+            - tab "Settings" [active] [selected] [ref=e132] [cursor=pointer]:
+              - img [ref=e133]
+              - text: Settings
+          - tabpanel "Settings" [ref=e136]:
+            - generic [ref=e138]:
+              - tablist [ref=e139]:
+                - tab "General" [selected] [ref=e140] [cursor=pointer]:
+                  - img [ref=e141]
+                  - text: General
+                - tab "Environment" [ref=e144] [cursor=pointer]:
+                  - img [ref=e145]
+                  - text: Environment
+                - tab "Resources" [ref=e150] [cursor=pointer]:
+                  - img [ref=e151]
+                  - text: Resources
+                - tab "Domain & Health" [ref=e154] [cursor=pointer]:
+                  - img [ref=e155]
+                  - text: Domain & Health
+                - tab "Dependencies" [ref=e158] [cursor=pointer]:
+                  - img [ref=e159]
+                  - text: Dependencies
+                - tab "Secrets" [ref=e163] [cursor=pointer]:
+                  - img [ref=e164]
+                  - text: Secrets
+              - tabpanel "General" [ref=e167]:
+                - generic [ref=e168]:
+                  - heading "Application Settings" [level=3] [ref=e169]
+                  - generic [ref=e170]:
+                    - generic [ref=e171]:
+                      - generic [ref=e172]: Name
+                      - textbox [ref=e173]: E2E Test App
+                    - generic [ref=e174]:
+                      - generic [ref=e175]:
+                        - generic [ref=e176]: Repository
+                        - button "Use GitHub" [ref=e177] [cursor=pointer]
+                      - generic [ref=e178]:
+                        - generic [ref=e179]:
+                          - generic [ref=e180]: Repository URL
+                          - textbox "https://github.com/owner/repo" [ref=e181]: https://github.com/test/sample-app
+                        - generic [ref=e182]:
+                          - generic [ref=e183]: Branch
+                          - textbox "main" [ref=e184]
+                    - generic [ref=e185]:
+                      - generic [ref=e186]: Replicas
+                      - spinbutton [ref=e187]: "1"
+                    - generic [ref=e188]:
+                      - generic [ref=e189] [cursor=pointer]:
+                        - checkbox "Use existing Dockerfile" [ref=e191]
+                        - generic [ref=e194]:
+                          - img [ref=e195]
+                          - generic [ref=e200]: Use existing Dockerfile
+                      - paragraph [ref=e201]: When enabled, the build will use the Dockerfile in the repo instead of Nixpacks auto-detection.
+                  - button "Save Changes" [ref=e202] [cursor=pointer]:
+                    - img [ref=e203]
+                    - text: Save Changes
+                - generic [ref=e207]:
+                  - heading "Danger Zone" [level=3] [ref=e208]
+                  - paragraph [ref=e209]: Deleting this application will remove all deployments and K8s resources. This action cannot be undone.
+                  - generic [ref=e210]:
+                    - generic [ref=e211]:
+                      - generic [ref=e212]: Type e2e-test-app to confirm
+                      - textbox "e2e-test-app" [ref=e213]
+                    - button "Delete Application" [disabled] [ref=e214]:
+                      - img [ref=e215]
+                      - text: Delete Application
+  - alert [ref=e218]
+```

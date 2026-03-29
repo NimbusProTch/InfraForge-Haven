@@ -1,0 +1,95 @@
+# Page snapshot
+
+```yaml
+- generic [active] [ref=e1]:
+  - alert [ref=e2]
+  - generic [ref=e3]:
+    - complementary [ref=e4]:
+      - generic [ref=e5]:
+        - img [ref=e7]
+        - generic [ref=e10]: Haven
+      - navigation [ref=e11]:
+        - link "Dashboard" [ref=e12] [cursor=pointer]:
+          - /url: /dashboard
+          - img [ref=e13]
+          - text: Dashboard
+        - link "Tenants" [ref=e18] [cursor=pointer]:
+          - /url: /tenants
+          - img [ref=e19]
+          - text: Tenants
+      - generic [ref=e23]:
+        - button "Light mode" [ref=e24] [cursor=pointer]:
+          - img [ref=e25]
+          - text: Light mode
+        - generic [ref=e31]:
+          - generic [ref=e32]: T
+          - generic [ref=e33]: test@haven.nl
+          - button "Sign out" [ref=e34] [cursor=pointer]:
+            - img [ref=e35]
+    - main [ref=e38]:
+      - generic [ref=e39]:
+        - navigation [ref=e40]:
+          - link "Projects" [ref=e42] [cursor=pointer]:
+            - /url: /tenants
+          - generic [ref=e43]:
+            - img [ref=e44]
+            - generic [ref=e46]: PW UI Test
+        - generic [ref=e47]:
+          - generic [ref=e48]:
+            - generic [ref=e49]:
+              - img [ref=e51]
+              - heading "PW UI Test" [level=1] [ref=e53]
+              - generic [ref=e54]: active
+            - paragraph [ref=e55]: tenant-pw-ui-test
+          - button "Delete Project" [ref=e56] [cursor=pointer]:
+            - img [ref=e57]
+            - text: Delete Project
+        - generic [ref=e60]:
+          - generic [ref=e61]:
+            - paragraph [ref=e62]: Namespace
+            - paragraph [ref=e63]: pw-ui-test
+          - generic [ref=e64]:
+            - paragraph [ref=e65]: CPU Limit
+            - paragraph [ref=e66]: "16"
+          - generic [ref=e67]:
+            - paragraph [ref=e68]: Memory
+            - paragraph [ref=e69]: 32Gi
+          - generic [ref=e70]:
+            - paragraph [ref=e71]: Storage
+            - paragraph [ref=e72]: 100Gi
+          - generic [ref=e73]:
+            - paragraph [ref=e74]: App Health
+            - generic [ref=e76]: —
+        - generic [ref=e77]:
+          - tablist [ref=e78]:
+            - tab "Applications 0" [selected] [ref=e79] [cursor=pointer]:
+              - text: Applications
+              - generic [ref=e80]: "0"
+            - tab "Services 0" [ref=e81] [cursor=pointer]:
+              - text: Services
+              - generic [ref=e82]: "0"
+            - tab "Members" [ref=e83] [cursor=pointer]:
+              - img [ref=e84]
+              - text: Members
+            - tab "Usage" [ref=e89] [cursor=pointer]:
+              - img [ref=e90]
+              - text: Usage
+            - tab "Audit Log" [ref=e92] [cursor=pointer]:
+              - img [ref=e93]
+              - text: Audit Log
+            - tab "Privacy" [ref=e96] [cursor=pointer]:
+              - img [ref=e97]
+              - text: Privacy
+          - tabpanel "Applications 0" [ref=e99]:
+            - generic [ref=e100]:
+              - paragraph [ref=e101]: Deployed applications
+              - link "New App" [ref=e102] [cursor=pointer]:
+                - /url: /tenants/pw-ui-test/apps/new
+                - img [ref=e103]
+                - text: New App
+            - generic [ref=e104]:
+              - img [ref=e105]
+              - paragraph [ref=e108]: No applications yet.
+              - link "Deploy your first app →" [ref=e109] [cursor=pointer]:
+                - /url: /tenants/pw-ui-test/apps/new
+```

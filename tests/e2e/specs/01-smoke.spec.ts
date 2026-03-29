@@ -1,0 +1,36 @@
+import { test, expect } from "@playwright/test";
+
+test.describe("Smoke Tests — Pages Load", () => {
+  test("login page loads", async ({ page }) => {
+    await page.goto("/auth/signin");
+    await expect(page.getByText("Haven Platform")).toBeVisible();
+    await expect(page.getByRole("button", { name: /keycloak/i })).toBeVisible();
+  });
+
+  test("login page has correct title", async ({ page }) => {
+    await page.goto("/auth/signin");
+    await expect(page).toHaveTitle(/Haven/);
+  });
+
+  test("root redirects to dashboard", async ({ page }) => {
+    await page.goto("/");
+    await page.waitForURL(/\/(dashboard|auth)/);
+  });
+
+  test("API health endpoint returns ok", async ({ request }) => {
+    const apiUrl = process.env.API_URL || "http://localhost:8000";
+    const resp = await request.get(`${apiUrl}/health`);
+    expect(resp.ok()).toBeTruthy();
+    const body = await resp.json();
+    expect(body.status).toBe("ok");
+  });
+
+  test("API readiness endpoint returns ready", async ({ request }) => {
+    const apiUrl = process.env.API_URL || "http://localhost:8000";
+    const resp = await request.get(`${apiUrl}/readiness`);
+    expect(resp.ok()).toBeTruthy();
+    const body = await resp.json();
+    expect(body.status).toBe("ready");
+    expect(body.checks.database).toBe("ok");
+  });
+});
