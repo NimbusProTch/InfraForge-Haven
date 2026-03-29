@@ -46,10 +46,14 @@ export interface Environment {
   id: string;
   application_id: string;
   name: string;
-  type: "staging" | "preview" | "production";
-  branch: string | null;
-  url: string | null;
-  status: "active" | "inactive" | "building";
+  env_type: "staging" | "preview" | "production";
+  branch: string;
+  status: "pending" | "building" | "running" | "failed" | "deleting";
+  pr_number: number | null;
+  env_vars: Record<string, string>;
+  replicas: number | null;
+  domain: string | null;
+  last_image_tag: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -638,7 +642,7 @@ export const api = {
     create: (
       tenantSlug: string,
       appSlug: string,
-      body: { name: string; type: string; branch?: string },
+      body: { name: string; env_type: string; branch?: string; env_vars?: Record<string, string>; replicas?: number },
       token?: string
     ) =>
       apiFetch<Environment>(

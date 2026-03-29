@@ -11,6 +11,7 @@ import { useToast } from "@/components/Toast";
 import { api, type Application, type Deployment, getLogsUrl } from "@/lib/api";
 import AppSettings from "@/components/AppSettings";
 import ObservabilityTab from "@/components/ObservabilityTab";
+import EnvironmentsTab from "@/components/EnvironmentsTab";
 import { AnsiTerminal } from "@/components/ui/ansi-terminal";
 import {
   Activity,
@@ -26,6 +27,7 @@ import {
   ChevronDown,
   ChevronUp,
   Settings,
+  Layers,
   Check,
   X,
   Circle,
@@ -797,6 +799,10 @@ export default function AppDetailPage() {
               <Terminal className="w-3.5 h-3.5 mr-1" />
               Logs
             </TabsTrigger>
+            <TabsTrigger value="environments">
+              <Layers className="w-3.5 h-3.5 mr-1" />
+              Environments
+            </TabsTrigger>
             <TabsTrigger value="settings">
               <Settings className="w-3.5 h-3.5 mr-1" />
               Settings
@@ -937,6 +943,15 @@ export default function AppDetailPage() {
                 endRef={logsEndRef}
               />
             </div>
+          </TabsContent>
+
+          {/* Environments tab */}
+          <TabsContent value="environments" className="pt-5">
+            <EnvironmentsTab
+              tenantSlug={tenantSlug}
+              appSlug={app.slug}
+              accessToken={accessToken}
+            />
           </TabsContent>
 
           {/* Settings tab */}
