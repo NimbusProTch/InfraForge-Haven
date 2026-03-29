@@ -405,6 +405,26 @@ export interface GitHubBranch {
   commit: { sha: string };
 }
 
+// Queue
+export interface QueueStatus {
+  pending: number;
+  processing: number;
+  dead_letter: number;
+  worker_alive: boolean;
+  oldest_pending_age_seconds: number | null;
+}
+
+export interface QueueJob {
+  job_id: string;
+  tenant_slug: string;
+  app_slug: string;
+  action: string;
+  status: string;
+  created_at: string;
+  attempts: number;
+  error: string | null;
+}
+
 // ---- Logs SSE URL helper ----
 export function getLogsUrl(tenantSlug: string, appSlug: string, token?: string): string {
   const base = `${API_BASE}${API_PREFIX}/tenants/${tenantSlug}/apps/${appSlug}/logs`;
@@ -948,6 +968,12 @@ export const api = {
         { method: "DELETE" },
         token
       ),
+  },
+  platform: {
+    queueStatus: (token?: string) =>
+      apiFetch<QueueStatus>("/platform/queue/status", {}, token),
+    queueJob: (jobId: string, token?: string) =>
+      apiFetch<QueueJob>(`/platform/queue/jobs/${jobId}`, {}, token),
   },
   clusters: {
     list: (token?: string) => apiFetch<Cluster[]>("/clusters", {}, token),

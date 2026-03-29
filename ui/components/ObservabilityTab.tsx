@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Badge } from "@/components/ui/badge";
+import { AnsiTerminal } from "@/components/ui/ansi-terminal";
 import { api, type PodInfo, type AppEvent } from "@/lib/api";
 import type { Deployment } from "@/lib/api";
 import {
@@ -354,10 +355,11 @@ export default function ObservabilityTab({
           </div>
         </div>
         <div className="bg-[#0a0a0a]">
-          <pre className="p-4 text-xs font-mono text-emerald-400/80 overflow-auto max-h-[250px] whitespace-pre-wrap break-all leading-relaxed">
-            {logs || `# Waiting for log data from ${appName}...\n# Click "Stream" to start receiving live logs.\n`}
-            <div ref={logsEndRef} />
-          </pre>
+          <AnsiTerminal
+            content={logs || `# Waiting for log data from ${appName}...\n# Click "Stream" to start receiving live logs.\n`}
+            className="p-4 max-h-[250px]"
+            endRef={logsEndRef}
+          />
         </div>
       </div>
 

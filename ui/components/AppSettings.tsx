@@ -23,6 +23,9 @@ import {
   Globe,
   Layers,
   FolderOpen,
+  Lock,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 
 const GITHUB_TOKEN_KEY = "haven_github_oauth_token";
@@ -71,6 +74,14 @@ export default function AppSettings({ tenantSlug, app, accessToken, onSaved }: A
   // Dependencies tab
   const [detectedDeps, setDetectedDeps] = useState<DetectedDepsType | null>(app.detected_deps ?? null);
   const [depsLoading, setDepsLoading] = useState(false);
+
+  // Secrets tab
+  const [visibleSecrets, setVisibleSecrets] = useState<Set<string>>(new Set());
+
+  const SENSITIVE_PATTERNS = /password|secret|key|token|credential|api_key|private|auth|cert|ssl/i;
+  function isSensitive(name: string): boolean {
+    return SENSITIVE_PATTERNS.test(name);
+  }
 
   // Save state
   const [saving, setSaving] = useState(false);
@@ -310,6 +321,10 @@ export default function AppSettings({ tenantSlug, app, accessToken, onSaved }: A
           <TabsTrigger value="dependencies">
             <Layers className="w-3.5 h-3.5 mr-1.5" />
             Dependencies
+          </TabsTrigger>
+          <TabsTrigger value="secrets">
+            <Lock className="w-3.5 h-3.5 mr-1.5" />
+            Secrets
           </TabsTrigger>
         </TabsList>
 
@@ -715,6 +730,100 @@ export default function AppSettings({ tenantSlug, app, accessToken, onSaved }: A
               Re-analyze
             </button>
           )}
+        </TabsContent>
+
+        {/* Secrets tab */}
+        <TabsContent value="secrets" className="pt-5">
+          <div className="bg-white dark:bg-[#141414] border border-gray-200 dark:border-[#222] rounded-lg p-5">
+            <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-2">Secret Variables</h3>
+            <p className="text-xs text-gray-400 dark:text-[#555] mb-4">
+              Variables with sensitive names are automatically detected. Values are masked by default.
+              All variables are stored as Kubernetes Secrets in your namespace.
+            </p>
+            {Object.entries(envVars).length === 0 ? (
+              <p className="text-xs text-gray-400 dark:text-[#555]">No environment variables defined yet. Add them in the Environment tab.</p>
+            ) : (
+              <div className="space-y-2">
+                {Object.entries(envVars)
+                  .filter(([key]) => isSensitive(key))
+                  .length === 0 ? (
+                  <p className="text-xs text-gray-400 dark:text-[#555]">No sensitive variables detected. Variables with names containing PASSWORD, SECRET, KEY, TOKEN, etc. will appear here.</p>
+                ) : (
+                  Object.entries(envVars)
+                    .filter(([key]) => isSensitive(key))
+                    .map(([key, value]) => {
+                      const isVisible = visibleSecrets.has(key);
+                      return (
+                        <div key={key} className="flex items-center gap-2 p-2.5 rounded-md border border-gray-100 dark:border-[#2a2a2a] bg-gray-50 dark:bg-[#0f0f0f]">
+                          <Lock className="w-3 h-3 text-amber-500 shrink-0" />
+                          <span className="text-xs font-mono text-gray-700 dark:text-[#ccc] flex-1">{key}</span>
+                          <span className="text-xs font-mono text-gray-500 dark:text-[#666] flex-1 truncate">
+                            {isVisible ? value : "•".repeat(Math.min(value.length, 20))}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const next = new Set(visibleSecrets);
+                              if (isVisible) next.delete(key); else next.add(key);
+                              setVisibleSecrets(next);
+                            }}
+                            className="text-gray-400 hover:text-gray-600 dark:text-[#555] dark:hover:text-[#999] transition-colors"
+                            title={isVisible ? "Hide value" : "Show value"}
+                          >
+                            {isVisible ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                          </button>
+                        </div>
+                      );
+                    })
+                )}
+                <div className="mt-4 pt-4 border-t border-gray-100 dark:border-[#1e1e1e]">
+                  <h4 className="text-xs font-medium text-gray-500 dark:text-[#666] mb-2">All Variables ({Object.keys(envVars).length})</h4>
+                  <div className="space-y-1.5">
+                    {Object.entries(envVars).map(([key, value]) => {
+                      const sensitive = isSensitive(key);
+                      const isVisible = visibleSecrets.has(key);
+                      return (
+                        <div key={key} className="flex items-center gap-2">
+                          {sensitive && <Lock className="w-3 h-3 text-amber-500 shrink-0" />}
+                          {!sensitive && <span className="w-3 h-3 shrink-0" />}
+                          <span className="text-xs font-mono text-gray-600 dark:text-[#888] w-48 truncate">{key}</span>
+                          <span className="text-xs font-mono text-gray-400 dark:text-[#555] flex-1 truncate">
+                            {sensitive && !isVisible ? "•".repeat(Math.min(value.length, 20)) : value}
+                          </span>
+                          {sensitive && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const next = new Set(visibleSecrets);
+                                if (isVisible) next.delete(key); else next.add(key);
+                                setVisibleSecrets(next);
+                              }}
+                              className="text-gray-400 hover:text-gray-600 dark:text-[#555] dark:hover:text-[#999] transition-colors shrink-0"
+                            >
+                              {isVisible ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+          <div className="mt-4 bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800/30 rounded-lg p-4">
+            <div className="flex items-start gap-2">
+              <Lock className="w-3.5 h-3.5 text-amber-500 mt-0.5 shrink-0" />
+              <div>
+                <p className="text-xs font-medium text-amber-700 dark:text-amber-400 mb-1">Security Notice</p>
+                <p className="text-xs text-amber-600 dark:text-amber-500/80">
+                  All environment variables are stored as Kubernetes Secrets with namespace-scoped RBAC.
+                  Sensitive values are never logged or exposed in deployment outputs.
+                  For external secret management, connect HashiCorp Vault via the platform settings.
+                </p>
+              </div>
+            </div>
+          </div>
         </TabsContent>
       </Tabs>
     </div>
