@@ -134,6 +134,26 @@ class EverestClient:
         logger.info("Creating Everest DB: name=%s engine=%s tier=%s", name, engine, tier)
         return await self._request("POST", f"/v1/namespaces/{EVEREST_NS}/database-clusters", json=body)
 
+    async def get_database_details(self, name: str) -> dict:
+        """Return structured details for UI enrichment."""
+        db = await self.get_database(name)
+        spec = db.get("spec", {})
+        status = db.get("status", {})
+        engine = spec.get("engine", {})
+        resources = engine.get("resources", {})
+        return {
+            "status": status.get("status", "unknown"),
+            "engine_version": engine.get("version"),
+            "replicas": engine.get("replicas"),
+            "ready_replicas": status.get("ready"),
+            "storage": engine.get("storage", {}).get("size"),
+            "cpu": resources.get("cpu"),
+            "memory": resources.get("memory"),
+            "hostname": status.get("hostname"),
+            "port": status.get("port"),
+            "error_message": status.get("message"),
+        }
+
     async def get_database(self, name: str) -> dict:
         return await self._request("GET", f"/v1/namespaces/{EVEREST_NS}/database-clusters/{name}")
 

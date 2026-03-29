@@ -274,9 +274,12 @@ class ManagedServiceProvisioner:
                 cpu=cpu,
                 memory=memory,
             )
+            service.status = ServiceStatus.UPDATING
+            service.error_message = None
             logger.info("Everest DB updated: %s", service.name)
         except Exception:
             logger.exception("Everest update failed for %s", service.name)
+            service.error_message = "Update request failed"
 
     async def _everest_sync_status(self, service: ManagedService) -> None:
         """Sync status from Everest API."""
@@ -288,8 +291,27 @@ class ManagedServiceProvisioner:
 
         if status == "ready":
             service.status = ServiceStatus.READY
+            service.error_message = None
         elif status in ("error", "failed", "not_found"):
             service.status = ServiceStatus.FAILED
+
+    async def _everest_sync_details(self, service: ManagedService) -> dict | None:
+        """Sync status and return runtime details for UI enrichment."""
+        try:
+            details = await self.everest.get_database_details(service.name)
+        except Exception:
+            logger.exception("Everest details fetch failed for %s", service.name)
+            return None
+
+        ev_status = details.get("status", "unknown")
+        if ev_status == "ready":
+            service.status = ServiceStatus.READY
+            service.error_message = None
+        elif ev_status in ("error", "failed", "not_found"):
+            service.status = ServiceStatus.FAILED
+            service.error_message = details.get("error_message")
+
+        return details
 
     async def _everest_deprovision(self, service: ManagedService) -> None:
         """Delete a database via Everest API."""
@@ -413,6 +435,14 @@ class ManagedServiceProvisioner:
             await self._everest_sync_status(service)
         else:
             await self._crd_sync_status(service)
+
+    async def sync_details(self, service: ManagedService) -> dict | None:
+        """Sync status and return runtime details dict for UI enrichment."""
+        if self._use_everest(service.service_type):
+            return await self._everest_sync_details(service)
+        # CRD path: sync status only, no extra details for now
+        await self._crd_sync_status(service)
+        return None
 
     async def provision(self, service: ManagedService, tenant_namespace: str) -> None:
         """Create the database/service and populate secret_name + connection_hint."""

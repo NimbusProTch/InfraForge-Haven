@@ -31,8 +31,32 @@ class ManagedServiceResponse(BaseModel):
     status: ServiceStatus
     secret_name: str | None
     connection_hint: str | None
+    error_message: str | None = None
     created_at: datetime
     updated_at: datetime
+
+
+class ConnectedAppSummary(BaseModel):
+    slug: str
+    name: str
+
+
+class ServiceRuntimeDetails(BaseModel):
+    engine_version: str | None = None
+    replicas: int | None = None
+    ready_replicas: int | None = None
+    storage: str | None = None
+    cpu: str | None = None
+    memory: str | None = None
+    hostname: str | None = None
+    port: int | None = None
+
+
+class ManagedServiceDetailResponse(ManagedServiceResponse):
+    """Enriched response for single service detail — includes live Everest data."""
+
+    runtime: ServiceRuntimeDetails | None = None
+    connected_apps: list[ConnectedAppSummary] = []
 
 
 class ManagedServiceUpdate(BaseModel):

@@ -4,15 +4,21 @@ from fastapi import APIRouter, HTTPException, status
 from sqlalchemy import select
 
 from app.deps import CurrentUser, DBSession, K8sDep
+from app.models.application import Application
 from app.models.managed_service import ManagedService, ServiceStatus
 from app.models.tenant import Tenant
 from app.schemas.managed_service import (
+    ConnectedAppSummary,
     ManagedServiceCreate,
+    ManagedServiceDetailResponse,
     ManagedServiceResponse,
     ManagedServiceUpdate,
     ServiceCredentials,
+    ServiceRuntimeDetails,
 )
 from app.services.managed_service import EVEREST_NAMESPACE, ManagedServiceProvisioner
+
+_TRANSITIONAL_STATUSES = {ServiceStatus.PROVISIONING, ServiceStatus.UPDATING}
 
 router = APIRouter(
     prefix="/tenants/{tenant_slug}/services",
@@ -78,10 +84,10 @@ async def create_service(
     return svc
 
 
-@router.get("/{service_name}", response_model=ManagedServiceResponse)
+@router.get("/{service_name}", response_model=ManagedServiceDetailResponse)
 async def get_service(
     tenant_slug: str, service_name: str, db: DBSession, k8s: K8sDep, current_user: CurrentUser
-) -> ManagedService:
+) -> ManagedServiceDetailResponse:
     tenant = await _get_tenant_or_404(tenant_slug, db)
     result = await db.execute(
         select(ManagedService).where(
@@ -93,14 +99,42 @@ async def get_service(
     if svc is None:
         raise HTTPException(status_code=404, detail="Service not found")
 
-    # Sync status from K8s if still provisioning
-    if svc.status == ServiceStatus.PROVISIONING:
-        provisioner = ManagedServiceProvisioner(k8s)
-        await provisioner.sync_status(svc)
+    # Sync status + fetch runtime details for transitional or ready states
+    runtime_details = None
+    provisioner = ManagedServiceProvisioner(k8s)
+    if svc.status in _TRANSITIONAL_STATUSES or svc.status == ServiceStatus.READY:
+        runtime_details = await provisioner.sync_details(svc)
         await db.commit()
         await db.refresh(svc)
 
-    return svc
+    # Query connected apps (apps that reference this service in env_from_secrets)
+    apps_result = await db.execute(
+        select(Application).where(Application.tenant_id == tenant.id)
+    )
+    connected_apps = []
+    for app_obj in apps_result.scalars():
+        if app_obj.env_from_secrets and any(
+            e.get("service_name") == svc.name for e in app_obj.env_from_secrets
+        ):
+            connected_apps.append(ConnectedAppSummary(slug=app_obj.slug, name=app_obj.name))
+
+    # Build enriched response
+    runtime = ServiceRuntimeDetails(**runtime_details) if runtime_details else None
+    return ManagedServiceDetailResponse(
+        id=svc.id,
+        tenant_id=svc.tenant_id,
+        name=svc.name,
+        service_type=svc.service_type,
+        tier=svc.tier,
+        status=svc.status,
+        secret_name=svc.secret_name,
+        connection_hint=svc.connection_hint,
+        error_message=svc.error_message,
+        created_at=svc.created_at,
+        updated_at=svc.updated_at,
+        runtime=runtime,
+        connected_apps=connected_apps,
+    )
 
 
 @router.patch("/{service_name}", response_model=ManagedServiceResponse)

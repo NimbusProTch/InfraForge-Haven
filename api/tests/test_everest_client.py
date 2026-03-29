@@ -543,6 +543,72 @@ class TestUpdateDatabase:
         assert put_body["spec"]["engine"]["storage"]["size"] == "1Gi"
 
 
+class TestGetDatabaseDetails:
+    @pytest.mark.asyncio
+    async def test_returns_structured_details(self):
+        client = EverestClient(base_url="http://fake:8080")
+        client._token = "my-token"
+
+        mock_resp = _mock_response(200, {
+            "metadata": {"name": "my-db", "resourceVersion": "100"},
+            "spec": {
+                "engine": {
+                    "type": "postgresql",
+                    "version": "17.7",
+                    "replicas": 1,
+                    "storage": {"size": "1Gi"},
+                    "resources": {"cpu": "600m", "memory": "512Mi"},
+                },
+            },
+            "status": {
+                "status": "ready",
+                "hostname": "my-db-pgbouncer.everest.svc",
+                "port": 5432,
+                "ready": 1,
+                "message": None,
+            },
+        })
+        mock_http = AsyncMock()
+        mock_http.request.return_value = mock_resp
+        mock_http.__aenter__ = AsyncMock(return_value=mock_http)
+        mock_http.__aexit__ = AsyncMock(return_value=False)
+
+        with patch("app.services.everest_client.httpx.AsyncClient", return_value=mock_http):
+            details = await client.get_database_details("my-db")
+
+        assert details["status"] == "ready"
+        assert details["engine_version"] == "17.7"
+        assert details["replicas"] == 1
+        assert details["ready_replicas"] == 1
+        assert details["storage"] == "1Gi"
+        assert details["cpu"] == "600m"
+        assert details["memory"] == "512Mi"
+        assert details["hostname"] == "my-db-pgbouncer.everest.svc"
+        assert details["port"] == 5432
+
+    @pytest.mark.asyncio
+    async def test_handles_missing_fields(self):
+        client = EverestClient(base_url="http://fake:8080")
+        client._token = "my-token"
+
+        mock_resp = _mock_response(200, {
+            "metadata": {"name": "my-db"},
+            "spec": {"engine": {"type": "postgresql"}},
+            "status": {"status": "initializing"},
+        })
+        mock_http = AsyncMock()
+        mock_http.request.return_value = mock_resp
+        mock_http.__aenter__ = AsyncMock(return_value=mock_http)
+        mock_http.__aexit__ = AsyncMock(return_value=False)
+
+        with patch("app.services.everest_client.httpx.AsyncClient", return_value=mock_http):
+            details = await client.get_database_details("my-db")
+
+        assert details["status"] == "initializing"
+        assert details["engine_version"] is None
+        assert details["hostname"] is None
+
+
 class TestListEngines:
     @pytest.mark.asyncio
     async def test_list_engines(self):
