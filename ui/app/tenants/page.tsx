@@ -31,7 +31,7 @@ export default function TenantsPage() {
       .finally(() => setLoading(false));
   }, [status, accessToken]);
 
-  if (status === "loading" || loading) {
+  if (status === "loading" || (status === "authenticated" && loading)) {
     return (
       <AppShell userEmail={session?.user?.email}>
         <div className="flex items-center justify-center h-full min-h-[400px]">
