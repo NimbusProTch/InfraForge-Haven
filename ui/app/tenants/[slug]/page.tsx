@@ -12,6 +12,7 @@ import { AddServiceModal } from "@/components/AddServiceModal";
 import MembersTab from "@/components/MembersTab";
 import BillingTab from "@/components/BillingTab";
 import AuditLogsTab from "@/components/AuditLogsTab";
+import GdprTab from "@/components/GdprTab";
 import { useToast } from "@/components/Toast";
 import { api, type Tenant, type Application, type ManagedService, type ServiceCredentials, type Deployment } from "@/lib/api";
 import {
@@ -38,6 +39,7 @@ import {
   Users,
   BarChart3,
   FileText,
+  Shield,
 } from "lucide-react";
 
 const LB_IP = process.env.NEXT_PUBLIC_LB_IP ?? "";
@@ -441,6 +443,10 @@ export default function TenantDetailPage() {
               <FileText className="w-3.5 h-3.5 mr-1" />
               Audit Log
             </TabsTrigger>
+            <TabsTrigger value="gdpr">
+              <Shield className="w-3.5 h-3.5 mr-1" />
+              Privacy
+            </TabsTrigger>
           </TabsList>
 
           {/* Applications tab */}
@@ -723,6 +729,11 @@ export default function TenantDetailPage() {
           {/* Audit Log tab */}
           <TabsContent value="audit" className="pt-5">
             <AuditLogsTab tenantSlug={slug} accessToken={accessToken} />
+          </TabsContent>
+
+          {/* GDPR/Privacy tab */}
+          <TabsContent value="gdpr" className="pt-5">
+            <GdprTab tenantSlug={slug} accessToken={accessToken} />
           </TabsContent>
         </Tabs>
       </div>

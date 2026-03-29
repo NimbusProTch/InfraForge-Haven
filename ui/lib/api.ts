@@ -121,9 +121,15 @@ export interface Consent {
 }
 
 export interface RetentionPolicy {
+  id: string;
   tenant_id: string;
-  log_retention_days: number;
-  backup_retention_days: number;
+  audit_log_days: number;
+  deployment_log_days: number;
+  build_log_days: number;
+  usage_record_days: number;
+  inactive_app_days: number;
+  notes: string | null;
+  created_at: string;
   updated_at: string;
 }
 
@@ -786,10 +792,10 @@ export const api = {
       ),
     export: (tenantSlug: string, token?: string) =>
       apiFetch<DataExport>(`/tenants/${tenantSlug}/gdpr/export`, {}, token),
-    erase: (tenantSlug: string, token?: string) =>
+    erase: (tenantSlug: string, body: { confirmation: string }, token?: string) =>
       apiFetch<ErasureResult>(
         `/tenants/${tenantSlug}/gdpr/erase`,
-        { method: "POST" },
+        { method: "POST", body: JSON.stringify(body) },
         token
       ),
   },
