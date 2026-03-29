@@ -10,6 +10,8 @@ import { Breadcrumb } from "@/components/Breadcrumb";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { AddServiceModal } from "@/components/AddServiceModal";
 import MembersTab from "@/components/MembersTab";
+import BillingTab from "@/components/BillingTab";
+import AuditLogsTab from "@/components/AuditLogsTab";
 import { useToast } from "@/components/Toast";
 import { api, type Tenant, type Application, type ManagedService, type ServiceCredentials, type Deployment } from "@/lib/api";
 import {
@@ -34,6 +36,8 @@ import {
   EyeOff,
   X,
   Users,
+  BarChart3,
+  FileText,
 } from "lucide-react";
 
 const LB_IP = process.env.NEXT_PUBLIC_LB_IP ?? "";
@@ -429,6 +433,14 @@ export default function TenantDetailPage() {
               <Users className="w-3.5 h-3.5 mr-1" />
               Members
             </TabsTrigger>
+            <TabsTrigger value="usage">
+              <BarChart3 className="w-3.5 h-3.5 mr-1" />
+              Usage
+            </TabsTrigger>
+            <TabsTrigger value="audit">
+              <FileText className="w-3.5 h-3.5 mr-1" />
+              Audit Log
+            </TabsTrigger>
           </TabsList>
 
           {/* Applications tab */}
@@ -701,6 +713,16 @@ export default function TenantDetailPage() {
           {/* Members tab */}
           <TabsContent value="members" className="pt-5">
             <MembersTab tenantSlug={slug} accessToken={accessToken} />
+          </TabsContent>
+
+          {/* Usage tab */}
+          <TabsContent value="usage" className="pt-5">
+            <BillingTab tenantSlug={slug} accessToken={accessToken} />
+          </TabsContent>
+
+          {/* Audit Log tab */}
+          <TabsContent value="audit" className="pt-5">
+            <AuditLogsTab tenantSlug={slug} accessToken={accessToken} />
           </TabsContent>
         </Tabs>
       </div>

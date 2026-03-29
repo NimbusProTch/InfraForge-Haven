@@ -15,6 +15,7 @@ import EnvironmentsTab from "@/components/EnvironmentsTab";
 import DomainsTab from "@/components/DomainsTab";
 import CronJobsTab from "@/components/CronJobsTab";
 import VolumesTab from "@/components/VolumesTab";
+import CanaryTab from "@/components/CanaryTab";
 import { AnsiTerminal } from "@/components/ui/ansi-terminal";
 import {
   Activity,
@@ -34,6 +35,7 @@ import {
   Globe,
   Timer,
   HardDrive,
+  GitCompare,
   Check,
   X,
   Circle,
@@ -821,6 +823,10 @@ export default function AppDetailPage() {
               <HardDrive className="w-3.5 h-3.5 mr-1" />
               Storage
             </TabsTrigger>
+            <TabsTrigger value="canary">
+              <GitCompare className="w-3.5 h-3.5 mr-1" />
+              Canary
+            </TabsTrigger>
             <TabsTrigger value="settings">
               <Settings className="w-3.5 h-3.5 mr-1" />
               Settings
@@ -993,6 +999,15 @@ export default function AppDetailPage() {
           {/* Storage tab */}
           <TabsContent value="storage" className="pt-5">
             <VolumesTab
+              tenantSlug={tenantSlug}
+              appSlug={app.slug}
+              accessToken={accessToken}
+            />
+          </TabsContent>
+
+          {/* Canary tab */}
+          <TabsContent value="canary" className="pt-5">
+            <CanaryTab
               tenantSlug={tenantSlug}
               appSlug={app.slug}
               accessToken={accessToken}
