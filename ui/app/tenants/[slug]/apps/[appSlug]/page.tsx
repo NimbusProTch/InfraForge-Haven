@@ -12,6 +12,7 @@ import { api, type Application, type Deployment, getLogsUrl } from "@/lib/api";
 import AppSettings from "@/components/AppSettings";
 import ObservabilityTab from "@/components/ObservabilityTab";
 import EnvironmentsTab from "@/components/EnvironmentsTab";
+import DomainsTab from "@/components/DomainsTab";
 import { AnsiTerminal } from "@/components/ui/ansi-terminal";
 import {
   Activity,
@@ -28,6 +29,7 @@ import {
   ChevronUp,
   Settings,
   Layers,
+  Globe,
   Check,
   X,
   Circle,
@@ -803,6 +805,10 @@ export default function AppDetailPage() {
               <Layers className="w-3.5 h-3.5 mr-1" />
               Environments
             </TabsTrigger>
+            <TabsTrigger value="domains">
+              <Globe className="w-3.5 h-3.5 mr-1" />
+              Domains
+            </TabsTrigger>
             <TabsTrigger value="settings">
               <Settings className="w-3.5 h-3.5 mr-1" />
               Settings
@@ -948,6 +954,15 @@ export default function AppDetailPage() {
           {/* Environments tab */}
           <TabsContent value="environments" className="pt-5">
             <EnvironmentsTab
+              tenantSlug={tenantSlug}
+              appSlug={app.slug}
+              accessToken={accessToken}
+            />
+          </TabsContent>
+
+          {/* Domains tab */}
+          <TabsContent value="domains" className="pt-5">
+            <DomainsTab
               tenantSlug={tenantSlug}
               appSlug={app.slug}
               accessToken={accessToken}

@@ -64,17 +64,22 @@ export interface Domain {
   id: string;
   application_id: string;
   domain: string;
-  verified: boolean;
-  tls_enabled: boolean;
-  cert_status: string | null;
+  verification_token: string;
+  verified_at: string | null;
+  certificate_status: "pending" | "issued" | "failed" | "not_requested";
+  certificate_expires_at: string | null;
+  certificate_error: string | null;
+  txt_record_name: string;
+  txt_record_value: string;
+  cname_instructions: string;
   created_at: string;
   updated_at: string;
 }
 
 export interface DomainVerifyResult {
-  domain: string;
   verified: boolean;
-  dns_records: Array<{ type: string; name: string; value: string }>;
+  message: string;
+  certificate_status: string;
 }
 
 // Audit
