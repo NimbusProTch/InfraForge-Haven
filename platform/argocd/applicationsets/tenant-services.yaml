@@ -8,33 +8,36 @@ spec:
   goTemplateOptions: ["missingkey=error"]
   generators:
     - git:
-        repoURL: https://github.com/NimbusProTch/InfraForge-Haven.git
+        repoURL: http://gitea-http.gitea-system.svc.cluster.local:3000/haven/haven-gitops.git
         revision: main
         directories:
-          - path: "gitops/tenants/*/services/*"
+          - path: "tenants/*/services/*"
   template:
     metadata:
-      # segments: [0]=gitops [1]=tenants [2]=tenant [3]=services [4]=service-name
-      name: "svc-{{ index .path.segments 2 }}-{{ index .path.segments 4 }}"
+      # segments: [0]=tenants [1]=tenant-slug [2]=services [3]=service-name
+      name: "svc-{{ index .path.segments 1 }}-{{ index .path.segments 3 }}"
       namespace: argocd
       labels:
         haven.io/managed: "true"
-        haven.io/tenant: "{{ index .path.segments 2 }}"
-        haven.io/service: "{{ index .path.segments 4 }}"
+        haven.io/tenant: "{{ index .path.segments 1 }}"
+        haven.io/service: "{{ index .path.segments 3 }}"
       finalizers:
         - resources-finalizer.argocd.argoproj.io
     spec:
       project: default
-      source:
-        repoURL: https://github.com/NimbusProTch/InfraForge-Haven.git
-        targetRevision: main
-        path: "charts/haven-managed-service"
-        helm:
-          valueFiles:
-            - "/{{ .path.path }}/values.yaml"
+      sources:
+        - repoURL: https://github.com/NimbusProTch/InfraForge-Haven.git
+          targetRevision: main
+          path: "charts/haven-managed-service"
+          helm:
+            valueFiles:
+              - "$values/{{ .path.path }}/values.yaml"
+        - repoURL: http://gitea-http.gitea-system.svc.cluster.local:3000/haven/haven-gitops.git
+          targetRevision: main
+          ref: values
       destination:
         server: https://kubernetes.default.svc
-        namespace: "tenant-{{ index .path.segments 2 }}"
+        namespace: "tenant-{{ index .path.segments 1 }}"
       syncPolicy:
         automated:
           prune: true

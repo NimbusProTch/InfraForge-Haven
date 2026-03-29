@@ -14,8 +14,15 @@ data:
   CORS_ORIGINS: "http://localhost:3000,http://localhost:3001,http://localhost:3002,http://app.46.225.42.2.sslip.io,https://app.46.225.42.2.sslip.io"
   GITHUB_REDIRECT_URI: "https://app.46.225.42.2.sslip.io/github/callback"
   ARGOCD_URL: "http://argocd-server.argocd.svc.cluster.local:80"
-  # GitOps monorepo config — GITOPS_GITHUB_TOKEN must be in haven-api-secrets
+  # Gitea (self-hosted GitOps)
+  GITEA_URL: "http://gitea-http.gitea-system.svc.cluster.local:3000"
+  GITEA_ORG: "haven"
+  GITEA_GITOPS_REPO: "haven-gitops"
+  GITEA_GITOPS_BRANCH: "main"
+  # Legacy GitHub GitOps (fallback)
   GITOPS_REPO_URL: "https://github.com/NimbusProTch/InfraForge-Haven.git"
-  GITOPS_BRANCH: "feature/platform-v2"
+  GITOPS_BRANCH: "main"
   GITOPS_CLONE_DIR: "/tmp/haven-gitops"
+  # Redis for git queue
+  REDIS_URL: "redis://haven-redis.redis-system.svc.cluster.local:6379/0"
   DEBUG: "false"

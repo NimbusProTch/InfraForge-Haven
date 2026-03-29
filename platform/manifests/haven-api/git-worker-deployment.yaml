@@ -1,0 +1,42 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: haven-git-worker
+  namespace: haven-system
+  labels:
+    app: haven-git-worker
+    haven.io/component: git-worker
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: haven-git-worker
+  template:
+    metadata:
+      labels:
+        app: haven-git-worker
+        haven.io/component: git-worker
+    spec:
+      serviceAccountName: haven-api
+      containers:
+        - name: git-worker
+          image: harbor.46.225.42.2.sslip.io/library/haven-api:9b8d7d3
+          command: ["python", "-m", "app.workers.git_worker"]
+          envFrom:
+            - configMapRef:
+                name: haven-api-config
+            - secretRef:
+                name: haven-api-secrets
+                optional: true
+          env:
+            - name: K8S_INCLUSTER
+              value: "true"
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+      tolerations:
+        - operator: Exists
