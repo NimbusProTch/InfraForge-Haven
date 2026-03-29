@@ -30,6 +30,7 @@ from app.routers import (
     observability,
     organizations,
     pvcs,
+    queue_status,
     services,
     tenants,
     webhooks,
@@ -131,3 +132,4 @@ app.include_router(cronjobs.router, prefix=settings.api_prefix)
 app.include_router(pvcs.router, prefix=settings.api_prefix)
 app.include_router(clusters.router, prefix=settings.api_prefix)
 app.include_router(gitea.router, prefix=settings.api_prefix)
+app.include_router(queue_status.router, prefix=settings.api_prefix)
