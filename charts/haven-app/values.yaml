@@ -93,3 +93,23 @@ preset: nonProd
 
 tolerations:
   - operator: "Exists"
+
+# Pod-level security context (applies to all containers)
+# Disabled by default so user apps that run as root aren't blocked.
+# Enable for apps that support it to meet restricted PSA.
+podSecurityContext:
+  enabled: false
+  runAsNonRoot: true
+  runAsUser: 1000
+  fsGroup: 1000
+  seccompProfile:
+    type: RuntimeDefault
+
+# Container-level security context
+containerSecurityContext:
+  enabled: false
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: false
+  capabilities:
+    drop:
+      - ALL

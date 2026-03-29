@@ -21,9 +21,9 @@ rules:
   - apiGroups: ["apps"]
     resources: ["deployments", "deployments/scale"]
     verbs: ["get", "list", "create", "patch", "update", "delete"]
-  # Batch jobs (Kaniko builds)
+  # Batch jobs (BuildKit builds) — jobs/status needed to poll build completion
   - apiGroups: ["batch"]
-    resources: ["jobs"]
+    resources: ["jobs", "jobs/status"]
     verbs: ["get", "list", "create", "delete", "watch"]
   # RBAC for tenant provisioning
   - apiGroups: ["rbac.authorization.k8s.io"]

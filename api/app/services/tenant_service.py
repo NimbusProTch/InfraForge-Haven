@@ -173,10 +173,11 @@ class TenantService:
                 labels={
                     "haven.io/tenant": slug,
                     "haven.io/managed": "true",
-                    # Pod Security Admission: enforce restricted profile
-                    "pod-security.kubernetes.io/enforce": "restricted",
+                    # Pod Security Admission: baseline allows user apps that may not
+                    # have full restricted securityContext (no hostPid/hostNet/privilege)
+                    "pod-security.kubernetes.io/enforce": "baseline",
                     "pod-security.kubernetes.io/enforce-version": "latest",
-                    "pod-security.kubernetes.io/warn": "restricted",
+                    "pod-security.kubernetes.io/warn": "baseline",
                     "pod-security.kubernetes.io/warn-version": "latest",
                 },
             )
