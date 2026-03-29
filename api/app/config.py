@@ -66,6 +66,12 @@ class Settings(BaseSettings):
     gitea_gitops_repo: str = "haven-gitops"
     gitea_gitops_branch: str = "main"
 
+    # Percona Everest (DB provisioning for PostgreSQL, MySQL, MongoDB)
+    everest_url: str = "http://everest.everest-system.svc.cluster.local:8080"
+    everest_admin_user: str = "admin"
+    everest_admin_password: str = "HavenEverest2026"
+    everest_namespace: str = "everest"
+
     # CORS allowed origins (comma-separated list)
     cors_origins: str = (
         "http://localhost:3000,http://localhost:3001,http://localhost:3002,http://127.0.0.1:3000,http://127.0.0.1:3001"
