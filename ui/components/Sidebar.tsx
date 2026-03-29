@@ -14,12 +14,14 @@ import {
   ChevronLeft,
   ChevronRight,
   ListOrdered,
+  Building2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const NAV_ITEMS = [
   { href: "/dashboard", label: "Home", icon: LayoutDashboard },
   { href: "/tenants", label: "Projects", icon: FolderKanban },
+  { href: "/organizations", label: "Organizations", icon: Building2 },
   { href: "/monitoring", label: "Monitoring", icon: Activity },
   { href: "/platform/queue", label: "Queue", icon: ListOrdered },
   { href: "/settings", label: "Settings", icon: Settings },
