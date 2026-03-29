@@ -216,12 +216,18 @@ export interface CronJob {
   application_id: string;
   name: string;
   schedule: string;
-  command: string;
-  enabled: boolean;
-  last_run_at: string | null;
-  last_run_status: string | null;
+  command: string[] | null;
+  suspended: boolean;
+  k8s_name: string | null;
+  last_schedule: string | null;
+  last_status: string | null;
+  description: string | null;
   created_at: string;
   updated_at: string;
+  // Compatibility aliases used in UI
+  active?: boolean;
+  last_successful?: string | null;
+  last_failed?: string | null;
 }
 
 // PVCs / Volumes
@@ -919,7 +925,7 @@ export const api = {
     create: (
       tenantSlug: string,
       appSlug: string,
-      body: { name: string; schedule: string; command: string },
+      body: { name: string; schedule: string; command?: string[] },
       token?: string
     ) =>
       apiFetch<CronJob>(
@@ -964,7 +970,7 @@ export const api = {
     create: (
       tenantSlug: string,
       appSlug: string,
-      body: { name: string; size_gi: number; access_mode?: string },
+      body: { name: string; size_gi: number; access_mode?: string; mount_path?: string },
       token?: string
     ) =>
       apiFetch<VolumeItem>(

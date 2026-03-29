@@ -13,6 +13,8 @@ import AppSettings from "@/components/AppSettings";
 import ObservabilityTab from "@/components/ObservabilityTab";
 import EnvironmentsTab from "@/components/EnvironmentsTab";
 import DomainsTab from "@/components/DomainsTab";
+import CronJobsTab from "@/components/CronJobsTab";
+import VolumesTab from "@/components/VolumesTab";
 import { AnsiTerminal } from "@/components/ui/ansi-terminal";
 import {
   Activity,
@@ -30,6 +32,8 @@ import {
   Settings,
   Layers,
   Globe,
+  Timer,
+  HardDrive,
   Check,
   X,
   Circle,
@@ -809,6 +813,14 @@ export default function AppDetailPage() {
               <Globe className="w-3.5 h-3.5 mr-1" />
               Domains
             </TabsTrigger>
+            <TabsTrigger value="cronjobs">
+              <Timer className="w-3.5 h-3.5 mr-1" />
+              Jobs
+            </TabsTrigger>
+            <TabsTrigger value="storage">
+              <HardDrive className="w-3.5 h-3.5 mr-1" />
+              Storage
+            </TabsTrigger>
             <TabsTrigger value="settings">
               <Settings className="w-3.5 h-3.5 mr-1" />
               Settings
@@ -963,6 +975,24 @@ export default function AppDetailPage() {
           {/* Domains tab */}
           <TabsContent value="domains" className="pt-5">
             <DomainsTab
+              tenantSlug={tenantSlug}
+              appSlug={app.slug}
+              accessToken={accessToken}
+            />
+          </TabsContent>
+
+          {/* CronJobs tab */}
+          <TabsContent value="cronjobs" className="pt-5">
+            <CronJobsTab
+              tenantSlug={tenantSlug}
+              appSlug={app.slug}
+              accessToken={accessToken}
+            />
+          </TabsContent>
+
+          {/* Storage tab */}
+          <TabsContent value="storage" className="pt-5">
+            <VolumesTab
               tenantSlug={tenantSlug}
               appSlug={app.slug}
               accessToken={accessToken}
