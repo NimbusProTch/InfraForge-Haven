@@ -3,9 +3,11 @@
 import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
 import pytest
 
 from app.models.tenant import Tenant
+from app.routers.github import _resolve_token
 
 
 async def _make_tenant(db):
@@ -25,6 +27,34 @@ async def _make_tenant(db):
     return tenant
 
 
+# ---------------------------------------------------------------------------
+# _resolve_token helper
+# ---------------------------------------------------------------------------
+
+
+class TestResolveToken:
+    def test_bearer_header(self):
+        assert _resolve_token("Bearer ghp_abc123", None) == "ghp_abc123"
+
+    def test_query_param_fallback(self):
+        assert _resolve_token(None, "ghp_query_token") == "ghp_query_token"
+
+    def test_bearer_takes_precedence(self):
+        assert _resolve_token("Bearer ghp_header", "ghp_query") == "ghp_header"
+
+    def test_no_token_raises_401(self):
+        from fastapi import HTTPException
+
+        with pytest.raises(HTTPException) as exc_info:
+            _resolve_token(None, None)
+        assert exc_info.value.status_code == 401
+
+
+# ---------------------------------------------------------------------------
+# /github/auth/url
+# ---------------------------------------------------------------------------
+
+
 @pytest.mark.asyncio
 async def test_auth_url_returns_url_and_state(async_client):
     """GET /github/auth/url returns a URL and state when client ID is configured."""
@@ -42,6 +72,21 @@ async def test_auth_url_returns_url_and_state(async_client):
 
 
 @pytest.mark.asyncio
+async def test_auth_url_preserves_scope_colons(async_client):
+    """GitHub OAuth scopes with colons (read:user, read:org) must not be percent-encoded."""
+    with patch("app.routers.github.settings") as mock_settings:
+        mock_settings.github_client_id = "test-client-id"
+        mock_settings.github_redirect_uri = "http://localhost:3000/callback"
+        response = await async_client.get("/api/v1/github/auth/url")
+
+    url = response.json()["url"]
+    assert "read:user" in url
+    assert "read:org" in url
+    # Ensure colons are NOT encoded as %3A
+    assert "read%3Auser" not in url
+
+
+@pytest.mark.asyncio
 async def test_auth_url_503_when_no_client_id(async_client):
     """GET /github/auth/url returns 503 when GitHub OAuth is not configured."""
     with patch("app.routers.github.settings") as mock_settings:
@@ -49,6 +94,102 @@ async def test_auth_url_503_when_no_client_id(async_client):
         response = await async_client.get("/api/v1/github/auth/url")
 
     assert response.status_code == 503
+
+
+# ---------------------------------------------------------------------------
+# /github/auth/callback
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_oauth_callback_exchanges_code(async_client):
+    """GET /github/auth/callback exchanges code for access_token."""
+    mock_response = MagicMock()
+    mock_response.is_success = True
+    mock_response.json.return_value = {"access_token": "gho_exchanged_token"}
+
+    with patch("app.routers.github.settings") as mock_settings, patch("httpx.AsyncClient") as mock_httpx:
+        mock_settings.github_client_id = "cid"
+        mock_settings.github_client_secret = "secret"
+        mock_settings.github_redirect_uri = "http://localhost/callback"
+
+        mock_http_instance = AsyncMock()
+        mock_http_instance.post = AsyncMock(return_value=mock_response)
+        mock_httpx.return_value.__aenter__ = AsyncMock(return_value=mock_http_instance)
+        mock_httpx.return_value.__aexit__ = AsyncMock(return_value=False)
+
+        response = await async_client.get("/api/v1/github/auth/callback?code=test-code")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["access_token"] == "gho_exchanged_token"
+
+
+@pytest.mark.asyncio
+async def test_oauth_callback_github_error_response(async_client):
+    """GET /github/auth/callback returns 400 when GitHub says code is bad."""
+    mock_response = MagicMock()
+    mock_response.is_success = True
+    mock_response.json.return_value = {"error": "bad_verification_code", "error_description": "Code expired"}
+
+    with (
+        patch("app.routers.github.settings") as mock_settings,
+        patch("app.routers.github.httpx.AsyncClient") as mock_httpx,
+    ):
+        mock_settings.github_client_id = "cid"
+        mock_settings.github_client_secret = "secret"
+        mock_settings.github_redirect_uri = "http://localhost/callback"
+
+        mock_http_instance = AsyncMock()
+        mock_http_instance.post = AsyncMock(return_value=mock_response)
+        mock_httpx.return_value.__aenter__ = AsyncMock(return_value=mock_http_instance)
+        mock_httpx.return_value.__aexit__ = AsyncMock(return_value=False)
+
+        response = await async_client.get("/api/v1/github/auth/callback?code=expired")
+
+    assert response.status_code == 400
+    assert "Code expired" in response.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_oauth_callback_http_failure(async_client):
+    """GET /github/auth/callback returns 502 when GitHub HTTP call fails."""
+    mock_response = MagicMock()
+    mock_response.is_success = False
+    mock_response.status_code = 500
+
+    with (
+        patch("app.routers.github.settings") as mock_settings,
+        patch("app.routers.github.httpx.AsyncClient") as mock_httpx,
+    ):
+        mock_settings.github_client_id = "cid"
+        mock_settings.github_client_secret = "secret"
+        mock_settings.github_redirect_uri = "http://localhost/callback"
+
+        mock_http_instance = AsyncMock()
+        mock_http_instance.post = AsyncMock(return_value=mock_response)
+        mock_httpx.return_value.__aenter__ = AsyncMock(return_value=mock_http_instance)
+        mock_httpx.return_value.__aexit__ = AsyncMock(return_value=False)
+
+        response = await async_client.get("/api/v1/github/auth/callback?code=abc")
+
+    assert response.status_code == 502
+
+
+@pytest.mark.asyncio
+async def test_oauth_callback_503_when_not_configured(async_client):
+    """GET /github/auth/callback returns 503 if GitHub OAuth is not configured."""
+    with patch("app.routers.github.settings") as mock_settings:
+        mock_settings.github_client_id = ""
+        mock_settings.github_client_secret = ""
+        response = await async_client.get("/api/v1/github/auth/callback?code=abc")
+
+    assert response.status_code == 503
+
+
+# ---------------------------------------------------------------------------
+# /github/connect/{tenant_slug}  (POST + DELETE)
+# ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
@@ -98,35 +239,234 @@ async def test_disconnect_github_removes_token(async_client, db_session):
 
 
 @pytest.mark.asyncio
-async def test_oauth_callback_exchanges_code(async_client):
-    """GET /github/auth/callback exchanges code for access_token."""
-    mock_response = MagicMock()
-    mock_response.is_success = True
-    mock_response.json.return_value = {"access_token": "gho_exchanged_token"}
+async def test_disconnect_github_404_for_unknown_tenant(async_client):
+    """DELETE /github/connect/{slug} returns 404 for unknown tenant slug."""
+    response = await async_client.delete("/api/v1/github/connect/nonexistent-tenant")
+    assert response.status_code == 404
 
-    with patch("app.routers.github.settings") as mock_settings, patch("httpx.AsyncClient") as mock_httpx:
-        mock_settings.github_client_id = "cid"
-        mock_settings.github_client_secret = "secret"
-        mock_settings.github_redirect_uri = "http://localhost/callback"
 
-        mock_http_instance = AsyncMock()
-        mock_http_instance.post = AsyncMock(return_value=mock_response)
-        mock_httpx.return_value.__aenter__ = AsyncMock(return_value=mock_http_instance)
-        mock_httpx.return_value.__aexit__ = AsyncMock(return_value=False)
-
-        response = await async_client.get("/api/v1/github/auth/callback?code=test-code")
-
-    assert response.status_code == 200
-    data = response.json()
-    assert data["access_token"] == "gho_exchanged_token"
+# ---------------------------------------------------------------------------
+# /github/user
+# ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_oauth_callback_503_when_not_configured(async_client):
-    """GET /github/auth/callback returns 503 if GitHub OAuth is not configured."""
-    with patch("app.routers.github.settings") as mock_settings:
-        mock_settings.github_client_id = ""
-        mock_settings.github_client_secret = ""
-        response = await async_client.get("/api/v1/github/auth/callback?code=abc")
+async def test_get_user_returns_profile(async_client):
+    """GET /github/user returns GitHub profile with Bearer token."""
+    mock_resp = MagicMock(spec=httpx.Response)
+    mock_resp.status_code = 200
+    mock_resp.is_success = True
+    mock_resp.json.return_value = {
+        "login": "testuser",
+        "id": 12345,
+        "name": "Test User",
+        "public_repos": 10,
+    }
 
-    assert response.status_code == 503
+    mock_http = AsyncMock()
+    mock_http.get.return_value = mock_resp
+    mock_http.__aenter__ = AsyncMock(return_value=mock_http)
+    mock_http.__aexit__ = AsyncMock(return_value=False)
+
+    with patch("app.routers.github.httpx.AsyncClient", return_value=mock_http):
+        response = await async_client.get(
+            "/api/v1/github/user",
+            headers={"Authorization": "Bearer ghp_testtoken"},
+        )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["login"] == "testuser"
+    assert data["id"] == 12345
+
+
+@pytest.mark.asyncio
+async def test_get_user_invalid_token_returns_401(async_client):
+    """GET /github/user returns 401 for invalid GitHub token."""
+    mock_resp = MagicMock(spec=httpx.Response)
+    mock_resp.status_code = 401
+    mock_resp.is_success = False
+
+    mock_http = AsyncMock()
+    mock_http.get.return_value = mock_resp
+    mock_http.__aenter__ = AsyncMock(return_value=mock_http)
+    mock_http.__aexit__ = AsyncMock(return_value=False)
+
+    with patch("app.routers.github.httpx.AsyncClient", return_value=mock_http):
+        response = await async_client.get(
+            "/api/v1/github/user",
+            headers={"Authorization": "Bearer bad_token"},
+        )
+
+    assert response.status_code == 401
+
+
+# ---------------------------------------------------------------------------
+# /github/repos
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_list_repos_combines_user_and_org(async_client):
+    """GET /github/repos merges user repos + org repos, deduplicating by id."""
+    user_repos = [{"id": 1, "full_name": "user/repo1"}, {"id": 2, "full_name": "user/repo2"}]
+    org_repos = [{"id": 3, "full_name": "org/repo3"}]
+    orgs = [{"login": "my-org"}]
+
+    async def mock_get(url, **kwargs):
+        resp = MagicMock(spec=httpx.Response)
+        resp.is_success = True
+        resp.status_code = 200
+        if "/user/repos" in url:
+            resp.json.return_value = user_repos
+        elif "/user/orgs" in url:
+            resp.json.return_value = orgs
+        elif "/orgs/my-org/repos" in url:
+            resp.json.return_value = org_repos
+        else:
+            resp.json.return_value = []
+        return resp
+
+    mock_http = AsyncMock()
+    mock_http.get = mock_get
+    mock_http.__aenter__ = AsyncMock(return_value=mock_http)
+    mock_http.__aexit__ = AsyncMock(return_value=False)
+
+    with patch("app.routers.github.httpx.AsyncClient", return_value=mock_http):
+        response = await async_client.get(
+            "/api/v1/github/repos",
+            headers={"Authorization": "Bearer ghp_token"},
+        )
+
+    assert response.status_code == 200
+    repos = response.json()
+    assert len(repos) == 3
+    repo_names = [r["full_name"] for r in repos]
+    assert "user/repo1" in repo_names
+    assert "org/repo3" in repo_names
+
+
+@pytest.mark.asyncio
+async def test_list_repos_deduplicates_by_id(async_client):
+    """GET /github/repos does not return duplicate repos that appear in both user and org lists."""
+    shared_repo = {"id": 1, "full_name": "org/repo1"}
+    orgs = [{"login": "my-org"}]
+
+    async def mock_get(url, **kwargs):
+        resp = MagicMock(spec=httpx.Response)
+        resp.is_success = True
+        resp.status_code = 200
+        if "/user/repos" in url:
+            resp.json.return_value = [shared_repo]
+        elif "/user/orgs" in url:
+            resp.json.return_value = orgs
+        elif "/orgs/my-org/repos" in url:
+            resp.json.return_value = [shared_repo]  # duplicate
+        else:
+            resp.json.return_value = []
+        return resp
+
+    mock_http = AsyncMock()
+    mock_http.get = mock_get
+    mock_http.__aenter__ = AsyncMock(return_value=mock_http)
+    mock_http.__aexit__ = AsyncMock(return_value=False)
+
+    with patch("app.routers.github.httpx.AsyncClient", return_value=mock_http):
+        response = await async_client.get(
+            "/api/v1/github/repos",
+            headers={"Authorization": "Bearer ghp_token"},
+        )
+
+    assert response.status_code == 200
+    repos = response.json()
+    assert len(repos) == 1  # deduplicated by id
+
+
+# ---------------------------------------------------------------------------
+# /github/repos/{owner}/{repo}/branches
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_list_branches(async_client):
+    """GET /github/repos/{owner}/{repo}/branches returns branch list."""
+    branches = [{"name": "main"}, {"name": "develop"}]
+    mock_resp = MagicMock(spec=httpx.Response)
+    mock_resp.status_code = 200
+    mock_resp.is_success = True
+    mock_resp.json.return_value = branches
+
+    mock_http = AsyncMock()
+    mock_http.get.return_value = mock_resp
+    mock_http.__aenter__ = AsyncMock(return_value=mock_http)
+    mock_http.__aexit__ = AsyncMock(return_value=False)
+
+    with patch("app.routers.github.httpx.AsyncClient", return_value=mock_http):
+        response = await async_client.get(
+            "/api/v1/github/repos/owner/repo/branches",
+            headers={"Authorization": "Bearer ghp_token"},
+        )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data) == 2
+    assert data[0]["name"] == "main"
+
+
+@pytest.mark.asyncio
+async def test_list_branches_repo_not_found(async_client):
+    """GET /github/repos/{owner}/{repo}/branches returns 404 for missing repo."""
+    mock_resp = MagicMock(spec=httpx.Response)
+    mock_resp.status_code = 404
+    mock_resp.is_success = False
+
+    mock_http = AsyncMock()
+    mock_http.get.return_value = mock_resp
+    mock_http.__aenter__ = AsyncMock(return_value=mock_http)
+    mock_http.__aexit__ = AsyncMock(return_value=False)
+
+    with patch("app.routers.github.httpx.AsyncClient", return_value=mock_http):
+        response = await async_client.get(
+            "/api/v1/github/repos/owner/nonexistent/branches",
+            headers={"Authorization": "Bearer ghp_token"},
+        )
+
+    assert response.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# /github/repos/{owner}/{repo}/tree
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_list_repo_tree(async_client):
+    """GET /github/repos/{owner}/{repo}/tree returns file tree."""
+    tree_data = {
+        "tree": [
+            {"path": "README.md", "type": "blob", "size": 100},
+            {"path": "src", "type": "tree"},
+            {"path": "src/main.py", "type": "blob", "size": 500},
+        ]
+    }
+    mock_resp = MagicMock(spec=httpx.Response)
+    mock_resp.status_code = 200
+    mock_resp.is_success = True
+    mock_resp.json.return_value = tree_data
+
+    mock_http = AsyncMock()
+    mock_http.get.return_value = mock_resp
+    mock_http.__aenter__ = AsyncMock(return_value=mock_http)
+    mock_http.__aexit__ = AsyncMock(return_value=False)
+
+    with patch("app.routers.github.httpx.AsyncClient", return_value=mock_http):
+        response = await async_client.get(
+            "/api/v1/github/repos/owner/repo/tree",
+            headers={"Authorization": "Bearer ghp_token"},
+        )
+
+    assert response.status_code == 200
+    items = response.json()
+    assert len(items) == 3
+    assert items[0]["path"] == "README.md"
+    assert items[1]["type"] == "tree"

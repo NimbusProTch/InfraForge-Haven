@@ -6,8 +6,13 @@ from sqlalchemy import select
 from app.deps import CurrentUser, DBSession, K8sDep
 from app.models.managed_service import ManagedService, ServiceStatus
 from app.models.tenant import Tenant
-from app.schemas.managed_service import ManagedServiceCreate, ManagedServiceResponse, ServiceCredentials
-from app.services.managed_service import ManagedServiceProvisioner
+from app.schemas.managed_service import (
+    ManagedServiceCreate,
+    ManagedServiceResponse,
+    ManagedServiceUpdate,
+    ServiceCredentials,
+)
+from app.services.managed_service import EVEREST_NAMESPACE, ManagedServiceProvisioner
 
 router = APIRouter(
     prefix="/tenants/{tenant_slug}/services",
@@ -98,6 +103,42 @@ async def get_service(
     return svc
 
 
+@router.patch("/{service_name}", response_model=ManagedServiceResponse)
+async def update_service(
+    tenant_slug: str,
+    service_name: str,
+    body: ManagedServiceUpdate,
+    db: DBSession,
+    k8s: K8sDep,
+    current_user: CurrentUser,
+) -> ManagedService:
+    """Update a managed service (replicas, storage, cpu, memory)."""
+    tenant = await _get_tenant_or_404(tenant_slug, db)
+    result = await db.execute(
+        select(ManagedService).where(
+            ManagedService.tenant_id == tenant.id,
+            ManagedService.name == service_name,
+        )
+    )
+    svc = result.scalar_one_or_none()
+    if svc is None:
+        raise HTTPException(status_code=404, detail="Service not found")
+    if svc.status != ServiceStatus.READY:
+        raise HTTPException(status_code=409, detail=f"Service must be ready to update (current: {svc.status})")
+
+    # Check at least one field is provided
+    update_fields = body.model_dump(exclude_none=True)
+    if not update_fields:
+        raise HTTPException(status_code=422, detail="No update fields provided")
+
+    provisioner = ManagedServiceProvisioner(k8s)
+    await provisioner.update(svc, **update_fields)
+
+    await db.commit()
+    await db.refresh(svc)
+    return svc
+
+
 @router.delete("/{service_name}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_service(
     tenant_slug: str, service_name: str, db: DBSession, k8s: K8sDep, current_user: CurrentUser
@@ -143,8 +184,10 @@ async def get_service_credentials(
     if not k8s.is_available() or k8s.core_v1 is None:
         raise HTTPException(status_code=503, detail="Kubernetes unavailable — cannot read credentials")
 
+    # Read K8s secret — Everest-managed DBs store secrets in the everest namespace
+    secret_namespace = svc.service_namespace or EVEREST_NAMESPACE
     try:
-        secret = k8s.core_v1.read_namespaced_secret(name=svc.secret_name, namespace=svc.service_namespace)
+        secret = k8s.core_v1.read_namespaced_secret(name=svc.secret_name, namespace=secret_namespace)
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Failed to read K8s secret: {exc}") from exc
 

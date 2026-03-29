@@ -35,6 +35,15 @@ class ManagedServiceResponse(BaseModel):
     updated_at: datetime
 
 
+class ManagedServiceUpdate(BaseModel):
+    """Update database resources. Only provided fields are changed."""
+
+    replicas: int | None = Field(None, ge=1, le=7)
+    storage: str | None = Field(None, pattern=r"^\d+Gi$")
+    cpu: str | None = Field(None, pattern=r"^\d+m?$")
+    memory: str | None = Field(None, pattern=r"^\d+(Mi|Gi)$")
+
+
 class ServiceCredentials(BaseModel):
     service_name: str
     secret_name: str

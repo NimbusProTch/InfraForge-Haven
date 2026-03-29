@@ -31,8 +31,9 @@ ENGINE_MAP = {
 }
 
 # Tier → resource configuration
+# Everest enforces minimum CPU 600m for DB engines
 TIER_CONFIG = {
-    "dev": {"replicas": 1, "storage": "5Gi", "cpu": "500m", "memory": "1Gi"},
+    "dev": {"replicas": 1, "storage": "1Gi", "cpu": "600m", "memory": "512Mi"},
     "prod": {"replicas": 3, "storage": "20Gi", "cpu": "2", "memory": "4Gi"},
 }
 
@@ -117,8 +118,8 @@ class EverestClient:
                     "replicas": cfg["replicas"],
                     "storage": {"size": cfg["storage"]},
                     "resources": {
-                        "cpu": {"value": cfg["cpu"]},
-                        "memory": {"value": cfg["memory"]},
+                        "cpu": cfg["cpu"],
+                        "memory": cfg["memory"],
                     },
                 },
                 "proxy": {
@@ -135,6 +136,46 @@ class EverestClient:
 
     async def get_database(self, name: str) -> dict:
         return await self._request("GET", f"/v1/namespaces/{EVEREST_NS}/database-clusters/{name}")
+
+    async def update_database(
+        self,
+        name: str,
+        *,
+        replicas: int | None = None,
+        storage: str | None = None,
+        cpu: str | None = None,
+        memory: str | None = None,
+    ) -> dict:
+        """Update a database cluster via Everest API (GET → modify → PUT).
+
+        Only provided fields are changed; others keep their current values.
+        Everest requires resourceVersion for optimistic concurrency.
+        """
+        current = await self.get_database(name)
+        spec = current["spec"]
+
+        if replicas is not None:
+            spec["engine"]["replicas"] = replicas
+            spec.setdefault("proxy", {})["replicas"] = replicas
+        if storage is not None:
+            spec["engine"]["storage"]["size"] = storage
+        if cpu is not None:
+            spec["engine"]["resources"]["cpu"] = cpu
+        if memory is not None:
+            spec["engine"]["resources"]["memory"] = memory
+
+        body = {
+            "apiVersion": "everest.percona.com/v1alpha1",
+            "kind": "DatabaseCluster",
+            "metadata": {
+                "name": name,
+                "resourceVersion": current["metadata"]["resourceVersion"],
+            },
+            "spec": spec,
+        }
+
+        logger.info("Updating Everest DB: name=%s", name)
+        return await self._request("PUT", f"/v1/namespaces/{EVEREST_NS}/database-clusters/{name}", json=body)
 
     async def delete_database(self, name: str) -> dict:
         logger.info("Deleting Everest DB: %s", name)
@@ -157,14 +198,17 @@ class EverestClient:
             raise
 
     async def get_credentials(self, name: str) -> dict[str, str]:
-        """Get connection credentials from Everest."""
+        """Get connection credentials from Everest.
+
+        Note: Everest API status doesn't include credentials directly.
+        Use K8s secret `everest-secrets-{name}` in the everest namespace instead.
+        This method returns what's available from the API (hostname, port).
+        """
         db = await self.get_database(name)
         status = db.get("status", {})
         return {
             "hostname": status.get("hostname", ""),
             "port": str(status.get("port", "")),
-            "username": status.get("credentials", {}).get("username", ""),
-            "password": status.get("credentials", {}).get("password", ""),
         }
 
     def is_configured(self) -> bool:

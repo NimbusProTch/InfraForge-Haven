@@ -60,9 +60,7 @@ async def get_auth_url() -> dict:
 
 
 @router.get("/auth/callback")
-async def oauth_callback(
-    code: str = Query(..., description="OAuth code from GitHub")
-) -> dict:
+async def oauth_callback(code: str = Query(..., description="OAuth code from GitHub")) -> dict:
     """Exchange a GitHub OAuth code for an access token."""
     if not settings.github_client_id or not settings.github_client_secret:
         raise HTTPException(status_code=503, detail="GitHub OAuth not configured")
