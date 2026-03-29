@@ -11,6 +11,7 @@ import { useToast } from "@/components/Toast";
 import { api, type Application, type Deployment, getLogsUrl } from "@/lib/api";
 import AppSettings from "@/components/AppSettings";
 import ObservabilityTab from "@/components/ObservabilityTab";
+import { AnsiTerminal } from "@/components/ui/ansi-terminal";
 import {
   Activity,
   GitBranch,
@@ -29,6 +30,7 @@ import {
   X,
   Circle,
   ExternalLink,
+  RefreshCw,
 } from "lucide-react";
 
 const LB_IP = process.env.NEXT_PUBLIC_LB_IP ?? "";
@@ -348,10 +350,11 @@ function BuildLogTerminal({
           <span className="w-2.5 h-2.5 rounded-full bg-emerald-500/40" />
           <span className="text-xs text-zinc-700 ml-2 font-mono">build.log</span>
         </div>
-        <pre className="p-4 text-xs font-mono text-emerald-400/90 overflow-auto max-h-[400px] whitespace-pre-wrap break-all leading-relaxed">
-          {logs}
-          <div ref={endRef} />
-        </pre>
+        <AnsiTerminal
+          content={logs}
+          className="p-4 max-h-[400px]"
+          endRef={endRef}
+        />
       </div>
     </div>
   );
@@ -372,6 +375,9 @@ export default function AppDetailPage() {
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<"build" | "deploy" | null>(null);
   const [rolling, setRolling] = useState<string | null>(null);
+  const [syncing, setSyncing] = useState(false);
+  const [syncStatus, setSyncStatus] = useState<{ health: string; sync: string } | null>(null);
+  const [argoHistory, setArgoHistory] = useState<Array<Record<string, unknown>>>([]);
 
   const [editName, setEditName] = useState("");
   const [editRepoUrl, setEditRepoUrl] = useState("");
@@ -401,6 +407,26 @@ export default function AppDetailPage() {
     }
   }, [tenantSlug, appSlug, status, accessToken]);
 
+  const loadSyncStatus = useCallback(async () => {
+    if (status !== "authenticated") return;
+    try {
+      const s = await api.deployments.syncStatus(tenantSlug, appSlug, accessToken);
+      setSyncStatus(s);
+    } catch {
+      /* ignore - ArgoCD may not be configured */
+    }
+  }, [tenantSlug, appSlug, status, accessToken]);
+
+  const loadArgoHistory = useCallback(async () => {
+    if (status !== "authenticated") return;
+    try {
+      const h = await api.deployments.deployHistory(tenantSlug, appSlug, accessToken);
+      setArgoHistory(h);
+    } catch {
+      /* ignore */
+    }
+  }, [tenantSlug, appSlug, status, accessToken]);
+
   useEffect(() => {
     if (status !== "authenticated") return;
     async function load() {
@@ -415,6 +441,8 @@ export default function AppDetailPage() {
         setEditBranch(a.branch);
         setEditReplicas(a.replicas);
         setDeployments(d as Deployment[]);
+        void loadSyncStatus();
+        void loadArgoHistory();
       } catch {
         router.push(`/tenants/${tenantSlug}`);
       } finally {
@@ -422,7 +450,7 @@ export default function AppDetailPage() {
       }
     }
     load();
-  }, [tenantSlug, appSlug, status, accessToken, router]);
+  }, [tenantSlug, appSlug, status, accessToken, router, loadSyncStatus, loadArgoHistory]);
 
   const latestDeployment = deployments[0];
   const isActiveBuild =
@@ -572,6 +600,19 @@ export default function AppDetailPage() {
     }
   }
 
+  async function handleSync() {
+    setSyncing(true);
+    try {
+      await api.deployments.sync(tenantSlug, appSlug, accessToken);
+      toastSuccess("ArgoCD sync triggered");
+      setTimeout(() => void loadSyncStatus(), 2000);
+    } catch (err) {
+      toastError(err instanceof Error ? err.message : "Sync failed");
+    } finally {
+      setSyncing(false);
+    }
+  }
+
   if (status === "loading" || loading) {
     return (
       <AppShell userEmail={session?.user?.email}>
@@ -669,6 +710,19 @@ export default function AppDetailPage() {
               )}
               Deploy
             </button>
+            <button
+              onClick={handleSync}
+              disabled={syncing}
+              title="Sync ArgoCD application state"
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-zinc-800 hover:border-zinc-700 bg-zinc-900/50 hover:bg-zinc-800/50 text-zinc-400 hover:text-zinc-200 text-xs font-medium transition-colors disabled:opacity-50"
+            >
+              {syncing ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <RefreshCw className="w-3.5 h-3.5" />
+              )}
+              Sync
+            </button>
           </div>
         </div>
 
@@ -712,6 +766,22 @@ export default function AppDetailPage() {
           ))}
         </div>
 
+        {/* ArgoCD status bar */}
+        {syncStatus && (
+          <div className="mb-4 flex items-center gap-3 px-3 py-2 rounded-lg border border-zinc-800 bg-zinc-900/30">
+            <span className="text-xs text-zinc-600">ArgoCD</span>
+            <div className="flex items-center gap-2">
+              <span className={`text-xs font-medium ${syncStatus.health === "Healthy" ? "text-emerald-400" : syncStatus.health === "Degraded" ? "text-red-400" : "text-amber-400"}`}>
+                {syncStatus.health}
+              </span>
+              <span className="text-zinc-700">·</span>
+              <span className={`text-xs font-medium ${syncStatus.sync === "Synced" ? "text-emerald-400" : syncStatus.sync === "OutOfSync" ? "text-amber-400" : "text-zinc-400"}`}>
+                {syncStatus.sync}
+              </span>
+            </div>
+          </div>
+        )}
+
         {/* Tabs */}
         <Tabs defaultValue="deployments">
           <TabsList>
@@ -751,6 +821,47 @@ export default function AppDetailPage() {
                     rolling={rolling}
                   />
                 ))}
+              </div>
+            )}
+            {argoHistory.length > 0 && (
+              <div className="mt-6">
+                <h4 className="text-xs font-medium text-zinc-500 uppercase tracking-wider mb-3">ArgoCD Revisions</h4>
+                <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl overflow-hidden">
+                  {argoHistory.slice(0, 10).map((h, i) => {
+                    const revision = h.revision as number | undefined;
+                    const deployedAt = h.deployedAt as string | undefined;
+                    const message = (h.source as Record<string, unknown> | undefined)?.repoURL as string ?? "";
+                    return (
+                      <div key={i} className="flex items-center justify-between px-4 py-2.5 border-b border-zinc-800/60 last:border-0">
+                        <div className="flex items-center gap-3">
+                          <span className="text-xs font-mono text-zinc-500">r{revision}</span>
+                          <span className="text-xs text-zinc-600 truncate max-w-xs">{message}</span>
+                        </div>
+                        <div className="flex items-center gap-3 shrink-0">
+                          {deployedAt && (
+                            <span className="text-xs text-zinc-700">{new Date(deployedAt).toLocaleString()}</span>
+                          )}
+                          {typeof revision === "number" && (
+                            <button
+                              onClick={async () => {
+                                try {
+                                  await api.deployments.argoCDRollback(tenantSlug, appSlug, revision, accessToken);
+                                  toastSuccess(`Rolled back to revision ${revision}`);
+                                } catch (err) {
+                                  toastError(err instanceof Error ? err.message : "Rollback failed");
+                                }
+                              }}
+                              className="text-zinc-600 hover:text-zinc-300 transition-colors"
+                              title={`Rollback to revision ${revision}`}
+                            >
+                              <RotateCcw className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             )}
           </TabsContent>
@@ -820,10 +931,11 @@ export default function AppDetailPage() {
                   </span>
                 )}
               </div>
-              <pre className="p-4 text-xs font-mono text-emerald-400/90 overflow-auto min-h-[240px] max-h-[500px] whitespace-pre-wrap break-all leading-relaxed">
-                {logs || "# Click 'Stream logs' to start receiving live logs from running pods...\n"}
-                <div ref={logsEndRef} />
-              </pre>
+              <AnsiTerminal
+                content={logs || "# Click 'Stream logs' to start receiving live logs from running pods...\n"}
+                className="p-4 min-h-[240px] max-h-[500px]"
+                endRef={logsEndRef}
+              />
             </div>
           </TabsContent>
 
