@@ -11,7 +11,7 @@ spec:
   project: default
   source:
     repoURL: https://github.com/NimbusProTch/InfraForge-Haven
-    targetRevision: feature/platform-v2
+    targetRevision: main
     path: platform/manifests/haven-ui
   destination:
     server: https://kubernetes.default.svc

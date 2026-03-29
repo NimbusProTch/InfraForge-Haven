@@ -18,6 +18,7 @@ from app.models.base import Base
 from app.models.cluster import Cluster  # noqa: F401 — ensures table created
 from app.models.cronjob import CronJob  # noqa: F401 — registers table in metadata
 from app.models.tenant import Tenant
+from app.models.tenant_member import TenantMember  # noqa: F401 — ensures table created
 
 TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
 

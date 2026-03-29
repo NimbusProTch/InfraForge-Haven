@@ -9,7 +9,7 @@ spec:
   generators:
     - git:
         repoURL: https://github.com/NimbusProTch/InfraForge-Haven.git
-        revision: feature/platform-v2
+        revision: main
         directories:
           - path: "gitops/tenants/*/services/*"
   template:
@@ -27,7 +27,7 @@ spec:
       project: default
       source:
         repoURL: https://github.com/NimbusProTch/InfraForge-Haven.git
-        targetRevision: feature/platform-v2
+        targetRevision: main
         path: "charts/haven-managed-service"
         helm:
           valueFiles:

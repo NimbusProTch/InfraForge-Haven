@@ -13,11 +13,11 @@ spec:
   sources:
     # Platform applications (haven-api, haven-ui)
     - repoURL: https://github.com/NimbusProTch/InfraForge-Haven.git
-      targetRevision: feature/platform-v2
+      targetRevision: main
       path: platform/argocd/apps
     # Tenant ApplicationSets (auto-discover from gitops repo)
     - repoURL: https://github.com/NimbusProTch/InfraForge-Haven.git
-      targetRevision: feature/platform-v2
+      targetRevision: main
       path: platform/argocd/applicationsets
   destination:
     server: https://kubernetes.default.svc

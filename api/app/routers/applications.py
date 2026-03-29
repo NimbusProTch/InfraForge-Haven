@@ -11,6 +11,7 @@ from app.models.application import Application
 from app.models.managed_service import ManagedService, ServiceStatus
 from app.models.tenant import Tenant
 from app.schemas.application import ApplicationCreate, ApplicationResponse, ApplicationUpdate
+from app.services.deploy_service import DeployService
 from app.services.git_queue_service import GitOperation, GitQueueService
 from app.services.gitops_scaffold import gitops_scaffold
 from app.services.helm_values_builder import render_app_values
@@ -181,7 +182,16 @@ async def delete_application(
     # GitOps scaffold: remove app directory from haven-gitops (non-blocking)
     await gitops_scaffold.delete_app(tenant_slug=tenant_slug, app_slug=app_slug)
 
-    # TODO (Sprint 3): undeploy from K8s before deleting from DB
+    # Undeploy K8s resources (Deployment, Service, HTTPRoute, HPA)
+    namespace = f"tenant-{tenant_slug}"
+    if k8s is not None and k8s.is_available():
+        try:
+            deploy_svc = DeployService(k8s)
+            await deploy_svc.undeploy(namespace=namespace, app_slug=app_slug)
+            logger.info("K8s resources cleaned up for %s/%s", namespace, app_slug)
+        except Exception:
+            logger.exception("Failed to clean up K8s resources for %s/%s", namespace, app_slug)
+
     await db.delete(app)
     await db.commit()
 
