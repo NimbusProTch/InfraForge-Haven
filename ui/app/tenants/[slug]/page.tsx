@@ -10,7 +10,7 @@ import { Breadcrumb } from "@/components/Breadcrumb";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { AddServiceModal } from "@/components/AddServiceModal";
 import { useToast } from "@/components/Toast";
-import { api, type Tenant, type Application, type ManagedService, type Deployment } from "@/lib/api";
+import { api, type Tenant, type Application, type ManagedService, type ServiceCredentials, type Deployment } from "@/lib/api";
 import {
   ArrowRight,
   Plus,
@@ -26,6 +26,12 @@ import {
   Clock,
   Activity,
   FolderKanban,
+  Key,
+  Link2,
+  Unlink,
+  Eye,
+  EyeOff,
+  X,
 } from "lucide-react";
 
 const LB_IP = process.env.NEXT_PUBLIC_LB_IP ?? "";
@@ -170,6 +176,10 @@ export default function TenantDetailPage() {
   const [services, setServices] = useState<ManagedService[]>([]);
   const [loading, setLoading] = useState(true);
   const [deletingService, setDeletingService] = useState<string | null>(null);
+  const [credentialsModal, setCredentialsModal] = useState<{ service: ManagedService; creds: ServiceCredentials | null; loading: boolean } | null>(null);
+  const [showPassword, setShowPassword] = useState<Record<string, boolean>>({});
+  const [connectModal, setConnectModal] = useState<ManagedService | null>(null);
+  const [connectingApp, setConnectingApp] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
   const [deletingTenant, setDeletingTenant] = useState(false);
@@ -224,6 +234,32 @@ export default function TenantDetailPage() {
       toastError(err instanceof Error ? err.message : "Failed to delete service");
     } finally {
       setDeletingService(null);
+    }
+  }
+
+  async function openCredentials(svc: ManagedService) {
+    setCredentialsModal({ service: svc, creds: null, loading: true });
+    setShowPassword({});
+    try {
+      const creds = await api.services.credentials(slug, svc.name, accessToken);
+      setCredentialsModal({ service: svc, creds, loading: false });
+    } catch (err) {
+      toastError(err instanceof Error ? err.message : "Failed to load credentials");
+      setCredentialsModal(null);
+    }
+  }
+
+  async function connectServiceToApp(appSlug: string) {
+    if (!connectModal) return;
+    setConnectingApp(true);
+    try {
+      await api.services.connectToApp(slug, appSlug, connectModal.name, accessToken);
+      toastSuccess(`${connectModal.name} connected to ${appSlug}`);
+      setConnectModal(null);
+    } catch (err) {
+      toastError(err instanceof Error ? err.message : "Failed to connect service");
+    } finally {
+      setConnectingApp(false);
     }
   }
 
@@ -444,6 +480,7 @@ export default function TenantDetailPage() {
               <div className="text-center py-16 border border-dashed border-zinc-800 rounded-xl">
                 <Database className="w-8 h-8 mx-auto mb-2 text-zinc-700" />
                 <p className="text-sm text-zinc-500">No managed services yet.</p>
+                <p className="text-xs text-zinc-600 mt-1">Add a PostgreSQL, Redis, or RabbitMQ instance to get started.</p>
               </div>
             ) : (
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -462,22 +499,9 @@ export default function TenantDetailPage() {
                           </p>
                         </div>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <Badge variant={SERVICE_STATUS_VARIANT[svc.status] ?? "secondary"}>
-                          {svc.status}
-                        </Badge>
-                        <button
-                          onClick={() => deleteService(svc.name)}
-                          disabled={deletingService === svc.name}
-                          className="text-zinc-700 hover:text-red-500 transition-colors disabled:opacity-50"
-                        >
-                          {deletingService === svc.name ? (
-                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                          ) : (
-                            <Trash2 className="w-3.5 h-3.5" />
-                          )}
-                        </button>
-                      </div>
+                      <Badge variant={SERVICE_STATUS_VARIANT[svc.status] ?? "secondary"}>
+                        {svc.status}
+                      </Badge>
                     </div>
 
                     {svc.connection_hint && (
@@ -488,8 +512,182 @@ export default function TenantDetailPage() {
                         <CopyButton text={svc.connection_hint} />
                       </div>
                     )}
+
+                    {/* Action buttons */}
+                    <div className="mt-3 flex items-center gap-2 border-t border-zinc-800/50 pt-3">
+                      {svc.status === "ready" && (
+                        <>
+                          <button
+                            onClick={() => openCredentials(svc)}
+                            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-xs font-medium text-zinc-300 hover:text-zinc-100 transition-colors"
+                          >
+                            <Key className="w-3 h-3" />
+                            Credentials
+                          </button>
+                          <button
+                            onClick={() => setConnectModal(svc)}
+                            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-xs font-medium text-zinc-300 hover:text-zinc-100 transition-colors"
+                          >
+                            <Link2 className="w-3 h-3" />
+                            Connect
+                          </button>
+                        </>
+                      )}
+                      <button
+                        onClick={() => deleteService(svc.name)}
+                        disabled={deletingService === svc.name}
+                        className="ml-auto flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-zinc-600 hover:text-red-400 hover:bg-red-950/30 transition-colors disabled:opacity-50"
+                      >
+                        {deletingService === svc.name ? (
+                          <Loader2 className="w-3 h-3 animate-spin" />
+                        ) : (
+                          <Trash2 className="w-3 h-3" />
+                        )}
+                        Delete
+                      </button>
+                    </div>
                   </div>
                 ))}
+              </div>
+            )}
+
+            {/* Credentials Modal */}
+            {credentialsModal && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
+                <div className="bg-zinc-900 border border-zinc-800 rounded-xl w-full max-w-lg mx-4 shadow-2xl overflow-hidden">
+                  <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800">
+                    <div className="flex items-center gap-2">
+                      <Key className="w-4 h-4 text-amber-500" />
+                      <h2 className="text-sm font-semibold text-zinc-100">
+                        {credentialsModal.service.name} Credentials
+                      </h2>
+                    </div>
+                    <button
+                      onClick={() => setCredentialsModal(null)}
+                      className="text-zinc-600 hover:text-zinc-300 transition-colors"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+
+                  <div className="p-5">
+                    {credentialsModal.loading ? (
+                      <div className="flex items-center justify-center py-8">
+                        <Loader2 className="w-5 h-5 animate-spin text-zinc-600" />
+                        <span className="ml-2 text-sm text-zinc-500">Reading K8s secret...</span>
+                      </div>
+                    ) : credentialsModal.creds ? (
+                      <div className="space-y-3">
+                        {/* Connection string */}
+                        {credentialsModal.creds.connection_hint && (
+                          <div className="mb-4">
+                            <p className="text-xs font-medium text-zinc-500 mb-1.5 uppercase tracking-wider">Connection String</p>
+                            <div className="flex items-center gap-2 bg-zinc-800 rounded-lg px-3 py-2.5">
+                              <p className="text-xs font-mono text-emerald-400 truncate flex-1">
+                                {credentialsModal.creds.connection_hint}
+                              </p>
+                              <CopyButton text={credentialsModal.creds.connection_hint} />
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Individual credentials */}
+                        <p className="text-xs font-medium text-zinc-500 uppercase tracking-wider">Secret Values</p>
+                        <div className="space-y-2">
+                          {Object.entries(credentialsModal.creds.credentials).map(([key, value]) => {
+                            const isSensitive = /pass|secret|token|key/i.test(key);
+                            const isVisible = showPassword[key] || !isSensitive;
+                            return (
+                              <div
+                                key={key}
+                                className="flex items-center gap-3 bg-zinc-800/70 rounded-lg px-3 py-2.5 group"
+                              >
+                                <span className="text-xs text-zinc-500 font-mono w-24 shrink-0 truncate">
+                                  {key}
+                                </span>
+                                <span className="text-xs font-mono text-zinc-200 flex-1 truncate">
+                                  {isVisible ? value : "••••••••••••"}
+                                </span>
+                                <div className="flex items-center gap-1 shrink-0">
+                                  {isSensitive && (
+                                    <button
+                                      onClick={() => setShowPassword((p) => ({ ...p, [key]: !p[key] }))}
+                                      className="text-zinc-600 hover:text-zinc-300 transition-colors"
+                                    >
+                                      {isVisible ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+                                    </button>
+                                  )}
+                                  <CopyButton text={value} />
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+
+                        <p className="text-xs text-zinc-600 mt-4 flex items-center gap-1">
+                          <Key className="w-3 h-3" />
+                          K8s Secret: <span className="font-mono">{credentialsModal.creds.secret_name}</span>
+                        </p>
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Connect to App Modal */}
+            {connectModal && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
+                <div className="bg-zinc-900 border border-zinc-800 rounded-xl w-full max-w-md mx-4 shadow-2xl overflow-hidden">
+                  <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800">
+                    <div className="flex items-center gap-2">
+                      <Link2 className="w-4 h-4 text-blue-500" />
+                      <h2 className="text-sm font-semibold text-zinc-100">
+                        Connect {connectModal.name} to App
+                      </h2>
+                    </div>
+                    <button
+                      onClick={() => setConnectModal(null)}
+                      className="text-zinc-600 hover:text-zinc-300 transition-colors"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+
+                  <div className="p-5">
+                    <p className="text-xs text-zinc-500 mb-4">
+                      Select an app to inject <span className="font-mono text-zinc-300">{connectModal.name}</span> credentials as environment variables.
+                    </p>
+
+                    {apps.length === 0 ? (
+                      <p className="text-sm text-zinc-600 text-center py-6">No applications to connect.</p>
+                    ) : (
+                      <div className="space-y-2 max-h-64 overflow-y-auto">
+                        {apps.map((app) => (
+                          <button
+                            key={app.id}
+                            onClick={() => connectServiceToApp(app.slug)}
+                            disabled={connectingApp}
+                            className="w-full flex items-center justify-between px-3 py-2.5 rounded-lg bg-zinc-800/50 hover:bg-zinc-800 border border-zinc-800 hover:border-zinc-700 transition-colors disabled:opacity-50 group"
+                          >
+                            <div className="flex items-center gap-2">
+                              <Server className="w-4 h-4 text-zinc-600 group-hover:text-zinc-400" />
+                              <div className="text-left">
+                                <p className="text-sm font-medium text-zinc-200">{app.name}</p>
+                                <p className="text-xs text-zinc-600 font-mono">{app.slug}</p>
+                              </div>
+                            </div>
+                            {connectingApp ? (
+                              <Loader2 className="w-3.5 h-3.5 animate-spin text-zinc-600" />
+                            ) : (
+                              <Link2 className="w-3.5 h-3.5 text-zinc-700 group-hover:text-blue-500 transition-colors" />
+                            )}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
             )}
           </TabsContent>
