@@ -25,4 +25,5 @@ data:
   GITOPS_CLONE_DIR: "/tmp/haven-gitops"
   # Redis for git queue
   REDIS_URL: "redis://haven-redis.redis-system.svc.cluster.local:6379/0"
+  EVEREST_URL: "http://everest.everest-system.svc.cluster.local:8080"
   DEBUG: "false"
