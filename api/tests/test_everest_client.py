@@ -40,7 +40,7 @@ class TestTierConfig:
         cfg = TIER_CONFIG["dev"]
         assert cfg["replicas"] == 1
         assert cfg["storage"] == "2Gi"
-        assert cfg["cpu"] == "600m"
+        assert cfg["cpu"] == "1"
         assert cfg["memory"] == "512Mi"
 
     def test_prod_tier(self):
