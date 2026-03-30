@@ -584,26 +584,30 @@ class ManagedServiceProvisioner:
         """Create a standardized secret in tenant namespace for CRD-based services."""
         from app.services.db_provisioner import create_tenant_secret, tenant_secret_name
 
-        if not service.secret_name or not service.service_namespace:
+        if not service.service_namespace:
             return
 
         try:
-            # Read the existing CRD secret
             if not self.k8s.is_available() or self.k8s.core_v1 is None:
                 return
 
-            source_secret = self.k8s.core_v1.read_namespaced_secret(
-                name=service.secret_name, namespace=service.service_namespace
-            )
             creds: dict[str, str] = {}
-            for key, val in (source_secret.data or {}).items():
-                creds[key] = base64.b64decode(val).decode()
 
-            # Add standardized URL
+            # Redis passwordless: no source secret, just build REDIS_URL
             if service.service_type == ServiceType.REDIS:
                 host = f"{service.name}.{tenant_namespace}.svc"
                 creds["REDIS_URL"] = f"redis://{host}:6379"
-            elif service.service_type == ServiceType.RABBITMQ:
+            else:
+                # Read the existing CRD secret for other service types
+                if not service.secret_name:
+                    return
+                source_secret = self.k8s.core_v1.read_namespaced_secret(
+                    name=service.secret_name, namespace=service.service_namespace
+                )
+                for key, val in (source_secret.data or {}).items():
+                    creds[key] = base64.b64decode(val).decode()
+
+            if service.service_type == ServiceType.RABBITMQ:
                 user = creds.get("username", "guest")
                 password = creds.get("password", "guest")
                 host = f"{service.name}.{tenant_namespace}.svc"
