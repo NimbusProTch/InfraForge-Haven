@@ -490,7 +490,7 @@ Sample app: `https://github.com/NimbusProTch/rotterdam-api` (FastAPI + PG + Redi
 - **Redis fsGroup**: OpsTree Redis Operator CRD'deki `securityContext.fsGroup` alanını StatefulSet'e **aktarmıyor**. Çözüm: Dev tier'da persistent storage kaldırıldı (ephemeral Redis). Prod tier'da init container veya volume ownership fix gerekli.
 - **Redis passwordless tenant secret**: OpsTree Redis secret oluşturmuyor. `_create_crd_tenant_secret` sadece `REDIS_URL` ile secret yaratır.
 - **ArgoCD per-tenant AppSet**: Global ApplicationSet kaldırıldı. Her tenant için `appset-{slug}` K8s API ile oluşturuluyor (tenant_service.py). haven-platform sadece haven-api + haven-ui yönetiyor.
-- **Everest provision bug**: `create_database()` fail oluyor → CRD fallback çalışıyor ama sync hâlâ Everest path'i deniyor → 404 → status stuck provisioning. Fix gerekli: CRD fallback sonrası `_use_everest` flag'i düzeltilmeli.
+- **Everest CPU minimum**: Everest v1.13 `CPU limits should be above 600m` — 600m dahil değil! Dev tier `1` core olarak set edildi. Bu fix öncesi Everest 400 dönüyordu → CRD fallback → sync stuck.
 - **EVEREST_URL**: configmap'e eklendi (`http://everest.everest-system.svc.cluster.local:8080`). Yoksa Everest path hiç çalışmaz.
 - **Backup**: DB oluşturulurken backup config default disabled (`pitr.enabled: false`)
 - **Redis passwordless**: OpsTree Redis şifresiz çalışıyor — prod'da güvenlik riski
