@@ -60,5 +60,10 @@ class ManagedService(Base, TimestampMixin):
     error_message: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     # Everest-managed DB name (prefixed with tenant slug for isolation)
     everest_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    # Custom database credentials (set by user or auto-generated)
+    db_name: Mapped[str | None] = mapped_column(String(63), nullable=True)
+    db_user: Mapped[str | None] = mapped_column(String(63), nullable=True)
+    # True when custom user/db has been provisioned (prevents re-provisioning)
+    credentials_provisioned: Mapped[bool] = mapped_column(default=False, server_default="0")
 
     tenant: Mapped["Tenant"] = relationship(back_populates="services")

@@ -1,16 +1,12 @@
 """Tests for enriched managed service responses — runtime details, connected apps, error messages."""
 
 import uuid
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
-import pytest_asyncio
-from sqlalchemy import select
 
 from app.models.application import Application
 from app.models.managed_service import ManagedService, ServiceStatus, ServiceTier, ServiceType
-from app.models.tenant import Tenant
-
 
 # ---------------------------------------------------------------------------
 # Enriched GET /services/{name} — runtime details
@@ -51,7 +47,7 @@ async def test_get_service_returns_runtime_details(async_client, db_session, sam
         instance.sync_details = AsyncMock(return_value=mock_details)
 
         # sync_details should also update service status to READY
-        async def side_effect(s):
+        async def side_effect(s, tenant_namespace=""):
             s.status = ServiceStatus.READY
             return mock_details
 
