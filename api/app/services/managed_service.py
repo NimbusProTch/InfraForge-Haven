@@ -238,11 +238,9 @@ class ManagedServiceProvisioner:
                 name=pod_name, namespace=service.service_namespace
             )
         except ApiException as e:
-            if e.status == 404:
-                if service.status == ServiceStatus.READY:
-                    service.status = ServiceStatus.DEGRADED
-                    service.error_message = "Pod not found"
-                # else stay provisioning/failed
+            if e.status == 404 and service.status == ServiceStatus.READY:
+                service.status = ServiceStatus.DEGRADED
+                service.error_message = "Pod not found"
             return
 
         phase = pod.status.phase if pod.status else None
@@ -290,7 +288,7 @@ class ManagedServiceProvisioner:
         everest_name = f"{tenant_slug}-{service.name}"
 
         try:
-            result = await self.everest.create_database(
+            await self.everest.create_database(
                 name=everest_name,
                 engine_type=engine_type,
                 tier=tier,
@@ -498,13 +496,113 @@ class ManagedServiceProvisioner:
         else:
             await self._crd_sync_status(service)
 
-    async def sync_details(self, service: ManagedService) -> dict | None:
-        """Sync status and return runtime details dict for UI enrichment."""
+    async def sync_details(self, service: ManagedService, tenant_namespace: str = "") -> dict | None:
+        """Sync status and return runtime details dict for UI enrichment.
+
+        When an Everest DB transitions to READY for the first time, provisions
+        custom database/user and creates a credentials secret in the tenant namespace.
+        """
         if self._use_everest(service.service_type):
-            return await self._everest_sync_details(service)
-        # CRD path: sync status only, no extra details for now
+            details = await self._everest_sync_details(service)
+
+            # Post-provision: create custom user/db + tenant secret when first READY
+            if (
+                service.status == ServiceStatus.READY
+                and not service.credentials_provisioned
+                and tenant_namespace
+            ):
+                await self._provision_custom_credentials(service, tenant_namespace)
+
+            return details
+
+        # CRD path: sync status only, create standardized secret when ready
         await self._crd_sync_status(service)
+        if (
+            service.status == ServiceStatus.READY
+            and not service.credentials_provisioned
+            and tenant_namespace
+        ):
+            await self._create_crd_tenant_secret(service, tenant_namespace)
+
         return None
+
+    async def _provision_custom_credentials(self, service: ManagedService, tenant_namespace: str) -> None:
+        """Create custom DB user/database and a secret in the tenant namespace."""
+        from app.services.db_provisioner import (
+            create_custom_database,
+            create_tenant_secret,
+            tenant_secret_name,
+        )
+
+        if not service.secret_name:
+            return
+
+        try:
+            db_name = service.db_name or service.name.replace("-", "_")
+            db_user = service.db_user or db_name
+
+            credentials = await create_custom_database(
+                k8s=self.k8s,
+                everest_secret_name=service.secret_name,
+                db_name=db_name,
+                db_user=db_user,
+            )
+
+            target_secret = tenant_secret_name(service.name)
+            await create_tenant_secret(self.k8s, tenant_namespace, target_secret, credentials)
+
+            # Update service to point to the tenant namespace secret
+            service.secret_name = target_secret
+            service.service_namespace = tenant_namespace
+            service.db_name = db_name
+            service.db_user = db_user
+            db_url = credentials["DATABASE_URL"]
+            service.connection_hint = db_url.split("@")[0].rsplit(":", 1)[0] + ":***@" + db_url.split("@")[1]
+            service.credentials_provisioned = True
+
+            logger.info("Custom credentials provisioned for %s → %s/%s", service.name, tenant_namespace, target_secret)
+        except Exception:
+            logger.exception("Failed to provision custom credentials for %s", service.name)
+
+    async def _create_crd_tenant_secret(self, service: ManagedService, tenant_namespace: str) -> None:
+        """Create a standardized secret in tenant namespace for CRD-based services."""
+        from app.services.db_provisioner import create_tenant_secret, tenant_secret_name
+
+        if not service.secret_name or not service.service_namespace:
+            return
+
+        try:
+            # Read the existing CRD secret
+            if not self.k8s.is_available() or self.k8s.core_v1 is None:
+                return
+
+            import base64
+
+            source_secret = self.k8s.core_v1.read_namespaced_secret(
+                name=service.secret_name, namespace=service.service_namespace
+            )
+            creds: dict[str, str] = {}
+            for key, val in (source_secret.data or {}).items():
+                creds[key] = base64.b64decode(val).decode()
+
+            # Add standardized URL
+            if service.service_type == ServiceType.REDIS:
+                host = f"{service.name}.{tenant_namespace}.svc"
+                creds["REDIS_URL"] = f"redis://{host}:6379"
+            elif service.service_type == ServiceType.RABBITMQ:
+                user = creds.get("username", "guest")
+                password = creds.get("password", "guest")
+                host = f"{service.name}.{tenant_namespace}.svc"
+                creds["RABBITMQ_URL"] = f"amqp://{user}:{password}@{host}:5672"
+
+            target_secret = tenant_secret_name(service.name)
+            await create_tenant_secret(self.k8s, tenant_namespace, target_secret, creds)
+
+            service.secret_name = target_secret
+            service.credentials_provisioned = True
+            logger.info("CRD tenant secret created for %s → %s/%s", service.name, tenant_namespace, target_secret)
+        except Exception:
+            logger.exception("Failed to create CRD tenant secret for %s", service.name)
 
     async def provision(self, service: ManagedService, tenant_namespace: str, tenant_slug: str = "") -> None:
         """Create the database/service and populate secret_name + connection_hint."""

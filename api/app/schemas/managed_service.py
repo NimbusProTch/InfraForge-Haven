@@ -10,6 +10,8 @@ class ManagedServiceCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=63, pattern=r"^[a-z0-9][a-z0-9-]*[a-z0-9]$")
     service_type: ServiceType
     tier: ServiceTier = ServiceTier.DEV
+    db_name: str | None = Field(None, max_length=63, description="Custom database name")
+    db_user: str | None = Field(None, max_length=63, description="Custom database user")
 
     @field_validator("name")
     @classmethod

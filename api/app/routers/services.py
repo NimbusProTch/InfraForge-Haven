@@ -72,6 +72,8 @@ async def create_service(
         service_type=body.service_type,
         tier=body.tier,
         status=ServiceStatus.PROVISIONING,
+        db_name=body.db_name,
+        db_user=body.db_user,
     )
     db.add(svc)
     await db.flush()
@@ -103,7 +105,7 @@ async def get_service(
     runtime_details = None
     provisioner = ManagedServiceProvisioner(k8s)
     if svc.status in _TRANSITIONAL_STATUSES or svc.status == ServiceStatus.READY:
-        runtime_details = await provisioner.sync_details(svc)
+        runtime_details = await provisioner.sync_details(svc, tenant_namespace=tenant.namespace)
         await db.commit()
         await db.refresh(svc)
 
