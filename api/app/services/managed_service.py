@@ -20,10 +20,14 @@ _EVEREST_ENGINES = {ServiceType.POSTGRES, ServiceType.MYSQL, ServiceType.MONGODB
 # ---------------------------------------------------------------------------
 
 
-def _cnpg_cluster_body(name: str, namespace: str, tier: ServiceTier) -> dict:
+def _cnpg_cluster_body(
+    name: str, namespace: str, tier: ServiceTier, *, db_name: str | None = None, db_user: str | None = None
+) -> dict:
     """Build a CNPG Cluster manifest for a tenant PostgreSQL instance."""
     instances = 1 if tier == ServiceTier.DEV else 3
     storage = "5Gi" if tier == ServiceTier.DEV else "20Gi"
+    database = db_name or name.replace("-", "_")
+    owner = db_user or (database + "_user")
     return {
         "apiVersion": "postgresql.cnpg.io/v1",
         "kind": "Cluster",
@@ -33,8 +37,8 @@ def _cnpg_cluster_body(name: str, namespace: str, tier: ServiceTier) -> dict:
             "storage": {"storageClass": "longhorn", "size": storage},
             "bootstrap": {
                 "initdb": {
-                    "database": name.replace("-", "_"),
-                    "owner": name.replace("-", "_") + "_user",
+                    "database": database,
+                    "owner": owner,
                 }
             },
             "affinity": {"tolerations": [{"operator": "Exists"}]},
@@ -64,8 +68,7 @@ def _redis_body(name: str, namespace: str, tier: ServiceTier) -> dict:
                     }
                 }
             },
-            "securityContext": {"runAsUser": 1000},
-            "podSecurityContext": {"runAsUser": 1000, "fsGroup": 1000},
+            "securityContext": {},
             "tolerations": [{"operator": "Exists"}],
         },
     }
@@ -390,7 +393,11 @@ class ManagedServiceProvisioner:
             return
 
         cfg = _CRD_CONFIG[service.service_type]
-        body = cfg["body_fn"](service.name, tenant_namespace, service.tier)
+        # Pass custom db_name/db_user to CNPG builder
+        if service.service_type == ServiceType.POSTGRES:
+            body = cfg["body_fn"](service.name, tenant_namespace, service.tier, db_name=service.db_name, db_user=service.db_user)
+        else:
+            body = cfg["body_fn"](service.name, tenant_namespace, service.tier)
 
         try:
             self.k8s.custom_objects.create_namespaced_custom_object(
@@ -411,6 +418,12 @@ class ManagedServiceProvisioner:
         service.secret_name = _SECRET_NAME_MAP[service.service_type](service.name)
         service.service_namespace = tenant_namespace
         service.connection_hint = _CONNECTION_HINT_MAP[service.service_type](service.name, tenant_namespace)
+        # Override connection_hint with custom db_name for CNPG
+        if service.service_type == ServiceType.POSTGRES and service.db_name:
+            db_user = service.db_user or (service.db_name + "_user")
+            service.connection_hint = (
+                f"postgresql://{db_user}@{service.name}-rw.{tenant_namespace}.svc:5432/{service.db_name}"
+            )
         service.status = ServiceStatus.PROVISIONING
 
     async def _crd_sync_status(self, service: ManagedService) -> None:
