@@ -151,6 +151,20 @@ async def test_wait_for_healthy_degraded():
 
 
 @pytest.mark.asyncio
+async def test_wait_for_healthy_out_of_sync_but_healthy():
+    """Healthy + OutOfSync should be accepted (e.g. HTTPRoute diff)."""
+    svc = _make_service()
+    with (
+        patch.object(svc, "get_app_status", new=AsyncMock(return_value={"health": "Healthy", "sync": "OutOfSync"})),
+        patch("asyncio.sleep", new=AsyncMock()),
+    ):
+        ok, msg = await svc.wait_for_healthy("my-app", timeout=10)
+
+    assert ok is True
+    assert "Healthy" in msg
+
+
+@pytest.mark.asyncio
 async def test_wait_for_healthy_no_url():
     svc = _make_service(url="")
     ok, msg = await svc.wait_for_healthy("my-app")

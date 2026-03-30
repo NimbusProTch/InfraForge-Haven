@@ -63,8 +63,11 @@ class ArgoCDService:
             logger.warning("ArgoCD API unreachable: %s", exc)
             return {}
 
-    async def wait_for_healthy(self, app_name: str, timeout: int = 180) -> tuple[bool, str]:
-        """Poll ArgoCD Application until Healthy+Synced or timeout.
+    async def wait_for_healthy(self, app_name: str, timeout: int = 300) -> tuple[bool, str]:
+        """Poll ArgoCD Application until Healthy or timeout.
+
+        Accepts both Synced and OutOfSync — minor resource diffs (e.g. HTTPRoute)
+        can cause OutOfSync while the app is fully operational.
 
         Returns (success, message).
         """
@@ -79,8 +82,8 @@ class ArgoCDService:
 
             logger.debug("ArgoCD app %s: health=%s sync=%s (poll %d)", app_name, health, sync, i)
 
-            if health == "Healthy" and sync == "Synced":
-                return True, f"Application {app_name} is Healthy and Synced"
+            if health == "Healthy":
+                return True, f"Application {app_name} is Healthy (sync={sync})"
 
             if health == "Degraded":
                 op_state = status.get("operationState", {})
