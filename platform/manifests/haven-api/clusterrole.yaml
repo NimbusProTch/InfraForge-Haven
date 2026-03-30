@@ -59,7 +59,10 @@ rules:
   - apiGroups: ["cert-manager.io"]
     resources: ["certificates", "certificaterequests"]
     verbs: ["get", "list", "watch", "create", "patch", "delete"]
-  # ArgoCD Applications (for sync status checks)
+  # ArgoCD Applications (sync status checks) + ApplicationSets (per-tenant)
   - apiGroups: ["argoproj.io"]
     resources: ["applications"]
     verbs: ["get", "list", "watch"]
+  - apiGroups: ["argoproj.io"]
+    resources: ["applicationsets"]
+    verbs: ["get", "list", "create", "delete"]
