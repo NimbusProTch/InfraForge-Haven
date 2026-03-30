@@ -476,9 +476,9 @@ Sample app: `https://github.com/NimbusProTch/rotterdam-api` (FastAPI + PG + Redi
 - Build pipeline: tenant'ın `github_token`'ını kullanarak private repo clone yapabiliyor
 
 ### Test Durumu
-- Backend unit testleri: **588** (provisioner, connect, disconnect, health check, degraded, prefix)
+- Backend unit testleri: **630** (provisioner, connect, disconnect, health check, degraded, prefix, custom db_name, redis ephemeral)
 - Playwright E2E: **36 test** (5 DB lifecycle + credentials flow + env vars)
-- Full E2E: rotterdam-api deploy + PG connected + Redis connected (manual doğrulama)
+- Full E2E: rotterdam-api deploy + PG connected (custom db_name=e2e_app) + Redis connected + RabbitMQ connected (2026-03-30)
 
 ### Bilinen Sorunlar / Gotcha'lar
 - **Redis connection_hint**: OpsTree operator service adı `{name}` (NOT `{name}-redis`) → fix edildi
@@ -487,8 +487,13 @@ Sample app: `https://github.com/NimbusProTch/rotterdam-api` (FastAPI + PG + Redi
 - **Harbor URL**: Build pipeline'da `HARBOR_URL` env var set edilmeli, docker config secret'taki host ile match etmeli
 - **apptype enum**: DB'de yoksa manual oluştur: `CREATE TYPE apptype AS ENUM ('web', 'worker', 'cron')`
 - **MySQL memory**: PXC 8.4 + Galera minimum 2Gi RAM, 5Gi storage gerekli (default 512Mi OOMKill eder)
-- **Redis fsGroup**: OpsTree Redis volume'a yazamıyor → `podSecurityContext.fsGroup: 1000` gerekli
-- **ArgoCD tenant app**: Tenant app'leri şu an ArgoCD ile yönetilmiyor (mode=direct)
+- **Redis fsGroup**: OpsTree Redis Operator CRD'deki `securityContext.fsGroup` alanını StatefulSet'e **aktarmıyor**. Çözüm: Dev tier'da persistent storage kaldırıldı (ephemeral Redis). Prod tier'da init container veya volume ownership fix gerekli.
+- **Redis passwordless tenant secret**: OpsTree Redis secret oluşturmuyor. `_create_crd_tenant_secret` sadece `REDIS_URL` ile secret yaratır.
+- **ArgoCD tenant app**: GitOps mode aktif — Gitea haven-gitops repo → ApplicationSet → ArgoCD sync
 - **Backup**: DB oluşturulurken backup config default disabled (`pitr.enabled: false`)
 - **Redis passwordless**: OpsTree Redis şifresiz çalışıyor — prod'da güvenlik riski
 - **Gitea tenant manifest**: scaffold_service/delete_service kaldırıldı — DB'ler GitOps ile değil direkt API ile yönetiliyor
+- **DB migration eksik**: Yeni model alanları (error_message, everest_name, db_name, db_user, credentials_provisioned) DB'ye manual ALTER TABLE ile eklendi. Alembic migration henüz yok.
+- **GITOPS_GITHUB_TOKEN**: haven-api-secrets'ta `GITOPS_GITHUB_TOKEN` varsa ve GitHub token'ı ise Gitea'ya bağlanamaz. Bu key kaldırılmalı — `GITEA_ADMIN_TOKEN` yeterli.
+- **CiliumNetworkPolicy everest egress**: Tenant network policy'de everest namespace'e egress gerekli (Everest DB'lere erişim). Kod'da var ama eski image ile oluşturulan policy'lerde eksik olabilir.
+- **App port**: rotterdam-api 8080 dinliyor, default 8000 değil. App oluşturulurken doğru port belirtilmeli.
