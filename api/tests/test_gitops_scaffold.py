@@ -207,21 +207,15 @@ async def test_gitea_client_upsert_updates_when_exists() -> None:
 
 
 @pytest.mark.asyncio
-async def test_scaffold_tenant_creates_namespace_and_kustomization() -> None:
+async def test_scaffold_tenant_is_noop() -> None:
+    """scaffold_tenant is now a no-op — tenant dir is created lazily by scaffold_app."""
     client = _make_client()
     scaffold = _make_scaffold(client)
 
-    with (
-        patch.object(client, "ensure_org", new_callable=AsyncMock),
-        patch.object(client, "ensure_repo", new_callable=AsyncMock),
-        patch.object(client, "upsert_file", new_callable=AsyncMock, return_value="sha") as mock_upsert,
-    ):
+    with patch.object(client, "upsert_file", new_callable=AsyncMock) as mock_upsert:
         await scaffold.scaffold_tenant("gemeente-utrecht")
 
-    assert mock_upsert.call_count == 2
-    paths = [call.args[2] for call in mock_upsert.call_args_list]
-    assert "tenants/gemeente-utrecht/namespace.yaml" in paths
-    assert "tenants/gemeente-utrecht/kustomization.yaml" in paths
+    mock_upsert.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -245,7 +239,7 @@ async def test_scaffold_app_creates_values_yaml() -> None:
 
     mock_upsert.assert_called_once()
     call = mock_upsert.call_args
-    assert call.args[2] == "tenants/gemeente-utrecht/apps/backend-api/values.yaml"
+    assert call.args[2] == "tenants/gemeente-utrecht/backend-api/values.yaml"
     content: str = call.args[3]
     assert "backend-api" in content
     assert "gemeente-utrecht" in content
@@ -269,7 +263,7 @@ async def test_scaffold_delete_app() -> None:
     mock_del.assert_called_once_with(
         "haven",
         "haven-gitops",
-        "tenants/my-tenant/apps/my-app",
+        "tenants/my-tenant/my-app",
         "Haven API: delete app my-app for tenant my-tenant",
         "main",
     )

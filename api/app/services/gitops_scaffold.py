@@ -1,13 +1,10 @@
 """GitOps scaffold service.
 
-Creates and manages tenant/app manifest directories in the haven-gitops Gitea repo.
-ArgoCD ApplicationSet watches these directories and deploys resources automatically.
+Creates and manages tenant/app values files in the haven-gitops Gitea repo.
+ArgoCD ApplicationSet watches tenant directories and deploys resources automatically.
 
 Repo layout:
-  tenants/{tenant_slug}/namespace.yaml           — K8s Namespace
-  tenants/{tenant_slug}/kustomization.yaml       — ArgoCD discovers apps from here
-  tenants/{tenant_slug}/apps/{app_slug}/values.yaml  — haven-app Helm values
-  tenants/{tenant_slug}/services/{name}.yaml     — haven-managed-service values
+  tenants/{tenant_slug}/{app_slug}/values.yaml  — haven-app Helm values
 """
 
 import logging
@@ -58,42 +55,11 @@ class GitOpsScaffold:
     # ------------------------------------------------------------------
 
     async def scaffold_tenant(self, tenant_slug: str) -> None:
-        """Create the tenant directory structure in haven-gitops.
+        """No-op: tenant directory is created lazily when the first app is scaffolded.
 
-        Creates:
-          tenants/{slug}/namespace.yaml
-          tenants/{slug}/kustomization.yaml  (empty resources list)
+        Namespace is provisioned via K8s API (TenantService.provision), not GitOps.
         """
-        if not self._is_configured():
-            logger.info("GitOps not configured — skipping scaffold_tenant(%s)", tenant_slug)
-            return
-        try:
-            await self._client.ensure_org(self._org)
-            await self._client.ensure_repo(self._org, self._repo, default_branch=self._branch)
-
-            ns_content = _render("namespace.yaml.j2", tenant_slug=tenant_slug)
-            kust_content = _render("tenant-kustomization.yaml.j2", tenant_slug=tenant_slug, apps=[])
-
-            prefix = f"Haven API: scaffold tenant {tenant_slug}"
-            await self._client.upsert_file(
-                self._org,
-                self._repo,
-                f"tenants/{tenant_slug}/namespace.yaml",
-                ns_content,
-                f"{prefix} — namespace",
-                self._branch,
-            )
-            await self._client.upsert_file(
-                self._org,
-                self._repo,
-                f"tenants/{tenant_slug}/kustomization.yaml",
-                kust_content,
-                f"{prefix} — kustomization",
-                self._branch,
-            )
-            logger.info("Scaffolded tenant '%s' in haven-gitops", tenant_slug)
-        except Exception as exc:
-            logger.error("scaffold_tenant(%s) failed: %s", tenant_slug, exc)
+        logger.info("scaffold_tenant(%s) — no-op, directory created on first app scaffold", tenant_slug)
 
     async def delete_tenant(self, tenant_slug: str) -> None:
         """Remove all tenant files from haven-gitops."""
@@ -153,7 +119,7 @@ class GitOpsScaffold:
             await self._client.upsert_file(
                 self._org,
                 self._repo,
-                f"tenants/{tenant_slug}/apps/{app_slug}/values.yaml",
+                f"tenants/{tenant_slug}/{app_slug}/values.yaml",
                 content,
                 f"Haven API: create app {app_slug} for tenant {tenant_slug}",
                 self._branch,
@@ -171,7 +137,7 @@ class GitOpsScaffold:
             await self._client.delete_directory(
                 self._org,
                 self._repo,
-                f"tenants/{tenant_slug}/apps/{app_slug}",
+                f"tenants/{tenant_slug}/{app_slug}",
                 f"Haven API: delete app {app_slug} for tenant {tenant_slug}",
                 self._branch,
             )

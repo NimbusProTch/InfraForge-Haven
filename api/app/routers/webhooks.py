@@ -8,7 +8,7 @@ from fastapi import APIRouter, Header, HTTPException, Request, status
 from sqlalchemy import select
 
 from app.config import settings
-from app.deps import DBSession, K8sDep, get_session_factory
+from app.deps import ArgoCDDep, DBSession, GitOpsDep, K8sDep, get_session_factory
 from app.models.application import Application
 from app.models.deployment import Deployment, DeploymentStatus
 from app.models.environment import Environment, EnvironmentStatus, EnvironmentType
@@ -47,6 +47,8 @@ async def github_webhook(
     request: Request,
     db: DBSession,
     k8s: K8sDep,
+    gitops: GitOpsDep,
+    argocd: ArgoCDDep,
     x_hub_signature_256: str | None = Header(default=None),
     x_github_event: str | None = Header(default=None),
 ) -> dict[str, str]:
@@ -67,9 +69,9 @@ async def github_webhook(
 
     # Route to the correct handler
     if event == "push":
-        return await _handle_push(webhook_token, request, db, k8s)
+        return await _handle_push(webhook_token, request, db, k8s, gitops, argocd)
     if event == "pull_request":
-        return await _handle_pull_request(webhook_token, request, db, k8s)
+        return await _handle_pull_request(webhook_token, request, db, k8s, gitops, argocd)
 
     logger.info("Webhook event %s ignored", event)
     return {"status": "ignored", "reason": f"event={event}"}
@@ -80,7 +82,9 @@ async def github_webhook(
 # ---------------------------------------------------------------------------
 
 
-async def _handle_push(webhook_token: str, request: Request, db: DBSession, k8s: K8sDep) -> dict[str, str]:
+async def _handle_push(
+    webhook_token: str, request: Request, db: DBSession, k8s: K8sDep, gitops: GitOpsDep, argocd: ArgoCDDep
+) -> dict[str, str]:
     result = await db.execute(select(Application).where(Application.webhook_token == webhook_token))
     app = result.scalar_one_or_none()
     if app is None:
@@ -134,6 +138,17 @@ async def _handle_push(webhook_token: str, request: Request, db: DBSession, k8s:
             session_factory=get_session_factory(),
             k8s=k8s,
             github_token=tenant.github_token,
+            gitops=gitops,
+            argocd=argocd,
+            custom_domain=app.custom_domain or "",
+            health_check_path=app.health_check_path or "",
+            resource_cpu_request=app.resource_cpu_request,
+            resource_cpu_limit=app.resource_cpu_limit,
+            resource_memory_request=app.resource_memory_request,
+            resource_memory_limit=app.resource_memory_limit,
+            min_replicas=app.min_replicas,
+            max_replicas=app.max_replicas,
+            cpu_threshold=app.cpu_threshold,
         ),
         name=f"pipeline-{deployment.id}",
     )
@@ -146,7 +161,9 @@ async def _handle_push(webhook_token: str, request: Request, db: DBSession, k8s:
 # ---------------------------------------------------------------------------
 
 
-async def _handle_pull_request(webhook_token: str, request: Request, db: DBSession, k8s: K8sDep) -> dict[str, str]:
+async def _handle_pull_request(
+    webhook_token: str, request: Request, db: DBSession, k8s: K8sDep, gitops: GitOpsDep, argocd: ArgoCDDep
+) -> dict[str, str]:
     result = await db.execute(select(Application).where(Application.webhook_token == webhook_token))
     app = result.scalar_one_or_none()
     if app is None:
@@ -175,6 +192,8 @@ async def _handle_pull_request(webhook_token: str, request: Request, db: DBSessi
             commit_sha=commit_sha,
             db=db,
             k8s=k8s,
+            gitops=gitops,
+            argocd=argocd,
         )
 
     if action in ("closed",):
@@ -200,6 +219,8 @@ async def _upsert_preview(
     commit_sha: str,
     db: DBSession,
     k8s: K8sDep,
+    gitops: GitOpsDep,
+    argocd: ArgoCDDep,
 ) -> dict[str, str]:
     """Create or update a preview environment, then queue a build+deploy."""
     # Find or create the Environment record
@@ -267,6 +288,8 @@ async def _upsert_preview(
             session_factory=get_session_factory(),
             k8s=k8s,
             github_token=tenant.github_token,
+            gitops=gitops,
+            argocd=argocd,
             environment_id=env.id,
         ),
         name=f"pipeline-{deployment.id}",
