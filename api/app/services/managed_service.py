@@ -1,5 +1,6 @@
 """Managed service provisioning: PostgreSQL, MySQL, MongoDB via Everest; Redis, RabbitMQ via K8s CRDs."""
 
+import base64
 import logging
 
 from kubernetes.client.exceptions import ApiException
@@ -575,8 +576,6 @@ class ManagedServiceProvisioner:
             # Read the existing CRD secret
             if not self.k8s.is_available() or self.k8s.core_v1 is None:
                 return
-
-            import base64
 
             source_secret = self.k8s.core_v1.read_namespaced_secret(
                 name=service.secret_name, namespace=service.service_namespace

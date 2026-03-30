@@ -256,6 +256,98 @@ async def test_create_custom_database_host_rewrite():
 
 
 # ---------------------------------------------------------------------------
+# SQL injection prevention
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_create_custom_database_rejects_unsafe_db_name():
+    """db_name with SQL injection payload must be rejected."""
+    mock_k8s = MagicMock()
+    mock_k8s.is_available.return_value = True
+    mock_secret = MagicMock()
+    mock_secret.data = {
+        "user": base64.b64encode(b"postgres").decode(),
+        "password": base64.b64encode(b"pass").decode(),
+        "host": base64.b64encode(b"db.svc").decode(),
+        "port": base64.b64encode(b"5432").decode(),
+    }
+    mock_k8s.core_v1.read_namespaced_secret.return_value = mock_secret
+
+    with pytest.raises(ValueError, match="Invalid db_name"):
+        await create_custom_database(
+            k8s=mock_k8s,
+            everest_secret_name="test",
+            db_name="'; DROP DATABASE postgres; --",
+            db_user="safe_user",
+        )
+
+
+@pytest.mark.asyncio
+async def test_create_custom_database_rejects_unsafe_db_user():
+    """db_user with special chars must be rejected."""
+    mock_k8s = MagicMock()
+    mock_k8s.is_available.return_value = True
+    mock_secret = MagicMock()
+    mock_secret.data = {
+        "user": base64.b64encode(b"postgres").decode(),
+        "password": base64.b64encode(b"pass").decode(),
+        "host": base64.b64encode(b"db.svc").decode(),
+        "port": base64.b64encode(b"5432").decode(),
+    }
+    mock_k8s.core_v1.read_namespaced_secret.return_value = mock_secret
+
+    with pytest.raises(ValueError, match="Invalid db_user"):
+        await create_custom_database(
+            k8s=mock_k8s,
+            everest_secret_name="test",
+            db_name="safe_db",
+            db_user="admin\"; DROP TABLE users; --",
+        )
+
+
+@pytest.mark.asyncio
+async def test_create_custom_database_accepts_valid_identifiers():
+    """Valid db_name/db_user with underscores must pass validation."""
+    mock_k8s = MagicMock()
+    mock_k8s.is_available.return_value = True
+    mock_secret = MagicMock()
+    mock_secret.data = {
+        "user": base64.b64encode(b"postgres").decode(),
+        "password": base64.b64encode(b"pass").decode(),
+        "host": base64.b64encode(b"db.svc").decode(),
+        "port": base64.b64encode(b"5432").decode(),
+    }
+    mock_k8s.core_v1.read_namespaced_secret.return_value = mock_secret
+
+    mock_conn = AsyncMock()
+    mock_conn.fetchval = AsyncMock(return_value=None)
+    mock_conn.execute = AsyncMock()
+    mock_conn.close = AsyncMock()
+
+    mock_db_conn = AsyncMock()
+    mock_db_conn.execute = AsyncMock()
+    mock_db_conn.close = AsyncMock()
+
+    conns = [mock_conn, mock_db_conn]
+
+    async def mock_connect(**kwargs):
+        return conns.pop(0) if conns else mock_db_conn
+
+    with patch("app.services.db_provisioner.asyncpg.connect", side_effect=mock_connect):
+        result = await create_custom_database(
+            k8s=mock_k8s,
+            everest_secret_name="test",
+            db_name="rotterdam_api_db",
+            db_user="rotterdam_user",
+            db_password="safepass123",
+        )
+
+    assert result["DB_NAME"] == "rotterdam_api_db"
+    assert result["DB_USER"] == "rotterdam_user"
+
+
+# ---------------------------------------------------------------------------
 # create_tenant_secret
 # ---------------------------------------------------------------------------
 

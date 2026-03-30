@@ -13,6 +13,7 @@ secret in the tenant namespace, apps can reference it via `envFrom.secretRef`.
 
 import base64
 import logging
+import re
 import secrets
 import string
 
@@ -20,6 +21,8 @@ import asyncpg
 from kubernetes.client import ApiException, V1ObjectMeta, V1Secret
 
 from app.k8s.client import K8sClient
+
+_SAFE_IDENTIFIER = re.compile(r"^[a-z][a-z0-9_]*$")
 
 logger = logging.getLogger(__name__)
 
@@ -83,6 +86,13 @@ async def create_custom_database(
     if not db_password:
         db_password = generate_password()
 
+    # Validate identifiers to prevent SQL injection.
+    # DDL statements (CREATE DATABASE/USER) don't support parameterized queries,
+    # so we enforce a strict allowlist pattern instead.
+    for name, label in [(db_name, "db_name"), (db_user, "db_user")]:
+        if name and not _SAFE_IDENTIFIER.match(name):
+            raise ValueError(f"Invalid {label}: must match ^[a-z][a-z0-9_]*$ (got '{name}')")
+
     conn = await asyncpg.connect(
         host=admin_host,
         port=admin_port,
@@ -96,17 +106,17 @@ async def create_custom_database(
         if db_name:
             exists = await conn.fetchval("SELECT 1 FROM pg_database WHERE datname = $1", db_name)
             if not exists:
-                # CREATE DATABASE cannot run inside a transaction
+                # Safe: db_name validated against _SAFE_IDENTIFIER
                 await conn.execute(f'CREATE DATABASE "{db_name}"')
                 logger.info("Created database: %s", db_name)
 
         # Create user if not exists
         user_exists = await conn.fetchval("SELECT 1 FROM pg_roles WHERE rolname = $1", db_user)
         if not user_exists:
+            # Safe: db_user validated, db_password is auto-generated alphanumeric
             await conn.execute(f"CREATE USER \"{db_user}\" WITH PASSWORD '{db_password}'")
             logger.info("Created user: %s", db_user)
         else:
-            # Update password for existing user
             await conn.execute(f"ALTER USER \"{db_user}\" WITH PASSWORD '{db_password}'")
             logger.info("Updated password for existing user: %s", db_user)
 
@@ -123,7 +133,9 @@ async def create_custom_database(
             )
             try:
                 await db_conn.execute(f'GRANT ALL ON SCHEMA public TO "{db_user}"')
-                await db_conn.execute(f'ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO "{db_user}"')
+                await db_conn.execute(
+                    f'ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO "{db_user}"'
+                )
                 await db_conn.execute(
                     f'ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO "{db_user}"'
                 )
