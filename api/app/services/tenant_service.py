@@ -1,13 +1,19 @@
 import base64
 import json
 import logging
+from pathlib import Path
 
+import yaml as pyyaml
+from jinja2 import Environment, FileSystemLoader
 from kubernetes import client as k8s_lib
 from kubernetes.client.exceptions import ApiException
 
 from app.config import settings
 from app.k8s.client import K8sClient
 from app.services.harbor_service import HarborService
+
+# ApplicationSet Jinja2 templates directory
+_TEMPLATES_DIR = Path(__file__).resolve().parents[3] / "platform" / "templates"
 
 logger = logging.getLogger(__name__)
 
@@ -135,12 +141,18 @@ class TenantService:
         await self._create_rbac(namespace, slug)
         await self._create_harbor_registry_secret(namespace)
         await self._provision_harbor_project(slug, namespace, tier)
+        await self._create_applicationset(slug)
         logger.info("Tenant %s provisioned in namespace %s (tier=%s)", slug, namespace, tier)
 
     async def deprovision(self, namespace: str, slug: str | None = None) -> None:
-        """Delete tenant namespace and Harbor project."""
+        """Delete tenant ApplicationSet, namespace, and Harbor project."""
         if not self.k8s.is_available() or self.k8s.core_v1 is None:
             return
+
+        # Delete ApplicationSet first (triggers ArgoCD to prune all tenant apps)
+        if slug:
+            await self._delete_applicationset(slug)
+
         try:
             self.k8s.core_v1.delete_namespace(namespace)
             logger.info("Namespace %s deleted", namespace)
@@ -507,3 +519,69 @@ class TenantService:
             logger.info("Harbor project + robot account provisioned for tenant %s", slug)
         except Exception as exc:
             logger.warning("Harbor provisioning failed for tenant %s (non-fatal): %s", slug, exc)
+
+    # ------------------------------------------------------------------
+    # ArgoCD ApplicationSet (per-tenant isolation)
+    # ------------------------------------------------------------------
+
+    async def _create_applicationset(self, tenant_slug: str) -> None:
+        """Render per-tenant ApplicationSet from Jinja2 template and apply via K8s API."""
+        if not self.k8s.is_available() or self.k8s.custom_objects is None:
+            logger.warning("K8s unavailable — skipping ApplicationSet for %s", tenant_slug)
+            return
+
+        gitops_repo_url = getattr(settings, "gitops_repo_url", "") or (
+            f"{settings.gitea_url}/{settings.gitea_org}/{settings.gitea_gitops_repo}.git"
+        )
+        chart_repo_url = "https://github.com/NimbusProTch/InfraForge-Haven.git"
+
+        try:
+            env = Environment(
+                loader=FileSystemLoader(str(_TEMPLATES_DIR)),
+                keep_trailing_newline=True,
+                autoescape=False,
+            )
+            tmpl = env.get_template("tenant-applicationset.yaml.tpl")
+            rendered = tmpl.render(
+                tenant_slug=tenant_slug,
+                gitops_repo_url=gitops_repo_url,
+                chart_repo_url=chart_repo_url,
+                target_revision="main",
+                chart_path="charts/haven-app",
+            )
+            body = pyyaml.safe_load(rendered)
+        except Exception:
+            logger.exception("Failed to render ApplicationSet template for %s", tenant_slug)
+            return
+
+        try:
+            self.k8s.custom_objects.create_namespaced_custom_object(
+                group="argoproj.io",
+                version="v1alpha1",
+                namespace="argocd",
+                plural="applicationsets",
+                body=body,
+            )
+            logger.info("ApplicationSet appset-%s created", tenant_slug)
+        except ApiException as e:
+            if e.status == 409:
+                logger.info("ApplicationSet appset-%s already exists", tenant_slug)
+            else:
+                logger.exception("Failed to create ApplicationSet for %s", tenant_slug)
+
+    async def _delete_applicationset(self, tenant_slug: str) -> None:
+        """Delete per-tenant ApplicationSet from ArgoCD namespace."""
+        if not self.k8s.is_available() or self.k8s.custom_objects is None:
+            return
+        try:
+            self.k8s.custom_objects.delete_namespaced_custom_object(
+                group="argoproj.io",
+                version="v1alpha1",
+                namespace="argocd",
+                plural="applicationsets",
+                name=f"appset-{tenant_slug}",
+            )
+            logger.info("ApplicationSet appset-%s deleted", tenant_slug)
+        except ApiException as e:
+            if e.status != 404:
+                logger.warning("Failed to delete ApplicationSet appset-%s: %s", tenant_slug, e)

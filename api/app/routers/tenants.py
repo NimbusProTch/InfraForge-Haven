@@ -4,10 +4,12 @@ from fastapi import APIRouter, HTTPException, status
 from sqlalchemy import select
 
 from app.deps import CurrentUser, DBSession, K8sDep
+from app.models.managed_service import ManagedService
 from app.models.tenant import Tenant
 from app.schemas.tenant import TenantCreate, TenantResponse, TenantUpdate
 from app.services.gitops_scaffold import gitops_scaffold
 from app.services.keycloak_service import keycloak_service
+from app.services.managed_service import ManagedServiceProvisioner
 from app.services.tenant_service import TenantService
 
 logger = logging.getLogger(__name__)
@@ -97,17 +99,28 @@ async def update_tenant(tenant_slug: str, body: TenantUpdate, db: DBSession, cur
 async def delete_tenant(tenant_slug: str, db: DBSession, k8s: K8sDep, current_user: CurrentUser) -> None:
     tenant = await _get_tenant_or_404(tenant_slug, db)
 
-    svc = TenantService(k8s)
-    await svc.deprovision(tenant.namespace, slug=tenant.slug)
+    # 1. Deprovision all managed services (Everest DBs, Redis CRDs, RabbitMQ CRDs)
+    provisioner = ManagedServiceProvisioner(k8s)
+    result = await db.execute(select(ManagedService).where(ManagedService.tenant_id == tenant.id))
+    for svc in result.scalars():
+        try:
+            await provisioner.deprovision(svc)
+        except Exception as exc:
+            logger.warning("Service deprovision failed for %s/%s: %s", tenant_slug, svc.name, exc)
 
-    # Delete per-tenant Keycloak realm
+    # 2. Delete ApplicationSet + K8s namespace + Harbor project
+    tenant_svc = TenantService(k8s)
+    await tenant_svc.deprovision(tenant.namespace, slug=tenant.slug)
+
+    # 3. Delete per-tenant Keycloak realm
     try:
         await keycloak_service.delete_realm(tenant.slug)
     except Exception as exc:
         logger.warning("Keycloak realm deletion failed for %s: %s", tenant.slug, exc)
 
-    # GitOps scaffold: remove tenant directory from haven-gitops (non-blocking)
+    # 4. GitOps scaffold: remove tenant directory from haven-gitops
     await gitops_scaffold.delete_tenant(tenant.slug)
 
+    # 5. DB cascade delete (tenant → apps → services → deployments)
     await db.delete(tenant)
     await db.commit()

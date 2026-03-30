@@ -57,7 +57,7 @@ REVISION = "main"
 
 def test_app_appset_is_valid_yaml():
     """Rendered app ApplicationSet must parse as valid YAML."""
-    rendered = render_app_appset(TENANT_SLUG, repo_url=REPO_URL, target_revision=REVISION)
+    rendered = render_app_appset(TENANT_SLUG, chart_repo_url=REPO_URL, target_revision=REVISION)
     docs = list(yaml.safe_load_all(rendered))
     assert len(docs) == 1
     assert docs[0] is not None
@@ -65,21 +65,21 @@ def test_app_appset_is_valid_yaml():
 
 def test_app_appset_name_follows_convention():
     """ApplicationSet name must be 'appset-{slug}'."""
-    rendered = render_app_appset(TENANT_SLUG, repo_url=REPO_URL, target_revision=REVISION)
+    rendered = render_app_appset(TENANT_SLUG, chart_repo_url=REPO_URL, target_revision=REVISION)
     doc = yaml.safe_load(rendered)
     assert doc["metadata"]["name"] == f"appset-{TENANT_SLUG}"
 
 
 def test_app_appset_namespace_is_argocd():
     """ApplicationSet must be in the argocd namespace."""
-    rendered = render_app_appset(TENANT_SLUG, repo_url=REPO_URL, target_revision=REVISION)
+    rendered = render_app_appset(TENANT_SLUG, chart_repo_url=REPO_URL, target_revision=REVISION)
     doc = yaml.safe_load(rendered)
     assert doc["metadata"]["namespace"] == "argocd"
 
 
 def test_app_appset_git_generator_path_contains_tenant_slug():
     """Git generator path must reference the tenant's gitops directory."""
-    rendered = render_app_appset(TENANT_SLUG, repo_url=REPO_URL, target_revision=REVISION)
+    rendered = render_app_appset(TENANT_SLUG, chart_repo_url=REPO_URL, target_revision=REVISION)
     doc = yaml.safe_load(rendered)
 
     generators = doc["spec"]["generators"]
@@ -90,7 +90,7 @@ def test_app_appset_git_generator_path_contains_tenant_slug():
 
 def test_app_appset_excludes_services_directory():
     """App ApplicationSet must exclude services/* from git generator."""
-    rendered = render_app_appset(TENANT_SLUG, repo_url=REPO_URL, target_revision=REVISION)
+    rendered = render_app_appset(TENANT_SLUG, chart_repo_url=REPO_URL, target_revision=REVISION)
     doc = yaml.safe_load(rendered)
 
     generators = doc["spec"]["generators"]
@@ -101,7 +101,7 @@ def test_app_appset_excludes_services_directory():
 
 def test_app_appset_destination_namespace_is_tenant_namespaced():
     """Destination namespace must be 'tenant-{slug}'."""
-    rendered = render_app_appset(TENANT_SLUG, repo_url=REPO_URL, target_revision=REVISION)
+    rendered = render_app_appset(TENANT_SLUG, chart_repo_url=REPO_URL, target_revision=REVISION)
     doc = yaml.safe_load(rendered)
     dest_ns = doc["spec"]["template"]["spec"]["destination"]["namespace"]
     assert dest_ns == f"tenant-{TENANT_SLUG}"
@@ -112,13 +112,14 @@ def test_app_appset_uses_custom_chart_path():
     custom_chart = "charts/my-custom-chart"
     rendered = render_app_appset(
         TENANT_SLUG,
-        repo_url=REPO_URL,
+        chart_repo_url=REPO_URL,
         target_revision=REVISION,
         chart_path=custom_chart,
     )
     doc = yaml.safe_load(rendered)
-    source_path = doc["spec"]["template"]["spec"]["source"]["path"]
-    assert source_path == custom_chart
+    sources = doc["spec"]["template"]["spec"]["sources"]
+    chart_source = sources[0]  # First source = Helm chart
+    assert chart_source["path"] == custom_chart
 
 
 # ---------------------------------------------------------------------------
@@ -128,7 +129,7 @@ def test_app_appset_uses_custom_chart_path():
 
 def test_svc_appset_is_valid_yaml():
     """Rendered service ApplicationSet must parse as valid YAML."""
-    rendered = render_svc_appset(TENANT_SLUG, repo_url=REPO_URL, target_revision=REVISION)
+    rendered = render_svc_appset(TENANT_SLUG, chart_repo_url=REPO_URL, target_revision=REVISION)
     docs = list(yaml.safe_load_all(rendered))
     assert len(docs) == 1
     assert docs[0] is not None
@@ -136,14 +137,14 @@ def test_svc_appset_is_valid_yaml():
 
 def test_svc_appset_name_follows_convention():
     """Service ApplicationSet name must be 'svcset-{slug}'."""
-    rendered = render_svc_appset(TENANT_SLUG, repo_url=REPO_URL, target_revision=REVISION)
+    rendered = render_svc_appset(TENANT_SLUG, chart_repo_url=REPO_URL, target_revision=REVISION)
     doc = yaml.safe_load(rendered)
     assert doc["metadata"]["name"] == f"svcset-{TENANT_SLUG}"
 
 
 def test_svc_appset_git_generator_path_includes_services():
     """Service ApplicationSet git generator must reference services/* path."""
-    rendered = render_svc_appset(TENANT_SLUG, repo_url=REPO_URL, target_revision=REVISION)
+    rendered = render_svc_appset(TENANT_SLUG, chart_repo_url=REPO_URL, target_revision=REVISION)
     doc = yaml.safe_load(rendered)
 
     generators = doc["spec"]["generators"]
@@ -157,26 +158,29 @@ def test_svc_appset_git_generator_path_includes_services():
 def test_svc_appset_has_haven_labels():
     """Both ApplicationSets must carry haven.io/managed and haven.io/tenant labels."""
     for render_fn in (render_app_appset, render_svc_appset):
-        rendered = render_fn(TENANT_SLUG, repo_url=REPO_URL, target_revision=REVISION)
+        rendered = render_fn(TENANT_SLUG, chart_repo_url=REPO_URL, target_revision=REVISION)
         doc = yaml.safe_load(rendered)
         labels = doc["metadata"]["labels"]
         assert labels.get("haven.io/managed") == "true"
         assert labels.get("haven.io/tenant") == TENANT_SLUG
 
 
-def test_appsets_use_custom_gitops_prefix():
-    """Custom gitops_prefix must be respected in generator paths."""
-    custom_prefix = "manifests"
-    rendered = render_app_appset(
-        TENANT_SLUG,
-        repo_url=REPO_URL,
-        target_revision=REVISION,
-        gitops_prefix=custom_prefix,
-    )
+def test_app_appset_uses_multi_source():
+    """App ApplicationSet must use multi-source (chart from GitHub, values from Gitea)."""
+    rendered = render_app_appset(TENANT_SLUG, chart_repo_url=REPO_URL, target_revision=REVISION)
+    doc = yaml.safe_load(rendered)
+    sources = doc["spec"]["template"]["spec"]["sources"]
+    assert len(sources) == 2, f"Expected 2 sources (chart + values), got {len(sources)}"
+    assert sources[0]["path"] == "charts/haven-app"
+    assert sources[1].get("ref") == "values"
+
+
+def test_app_appset_no_gitops_prefix():
+    """Generator paths must use 'tenants/{slug}/*' directly (no prefix)."""
+    rendered = render_app_appset(TENANT_SLUG, chart_repo_url=REPO_URL, target_revision=REVISION)
     doc = yaml.safe_load(rendered)
     generators = doc["spec"]["generators"]
     git_gen = next(g for g in generators if "git" in g)
     paths = [d["path"] for d in git_gen["git"]["directories"]]
-    assert any(p.startswith(custom_prefix) for p in paths), (
-        f"Expected custom prefix '{custom_prefix}' in paths: {paths}"
-    )
+    assert any(p.startswith("tenants/") for p in paths), f"Expected 'tenants/' prefix: {paths}"
+    assert not any(p.startswith("gitops/") for p in paths), f"gitops/ prefix should not be used: {paths}"

@@ -10,15 +10,12 @@ metadata:
     - resources-finalizer.argocd.argoproj.io
 spec:
   project: default
-  sources:
-    # Platform applications (haven-api, haven-ui)
-    - repoURL: https://github.com/NimbusProTch/InfraForge-Haven.git
-      targetRevision: main
-      path: platform/argocd/apps
-    # Tenant ApplicationSets (auto-discover from gitops repo)
-    - repoURL: https://github.com/NimbusProTch/InfraForge-Haven.git
-      targetRevision: main
-      path: platform/argocd/applicationsets
+  source:
+    # Platform applications only (haven-api, haven-ui)
+    # Tenant ApplicationSets are created per-tenant by the Haven API
+    repoURL: https://github.com/NimbusProTch/InfraForge-Haven.git
+    targetRevision: main
+    path: platform/argocd/apps
   destination:
     server: https://kubernetes.default.svc
     namespace: argocd

@@ -56,14 +56,20 @@ DEFAULT_REPO_URL = os.getenv("GITOPS_REPO_URL", "https://github.com/NimbusProTch
 DEFAULT_REVISION = os.getenv("GITOPS_BRANCH", "main")
 
 
+DEFAULT_GITOPS_REPO_URL = os.getenv(
+    "GITEA_GITOPS_REPO_URL",
+    "http://gitea-http.gitea-system.svc.cluster.local:3000/haven/haven-gitops.git",
+)
+
+
 def render_template(
     template_name: str,
     *,
     tenant_slug: str,
-    repo_url: str,
+    gitops_repo_url: str,
+    chart_repo_url: str,
     target_revision: str,
     chart_path: str,
-    gitops_prefix: str = "gitops",
 ) -> str:
     """Render a Jinja2 template and return the YAML string."""
     env = Environment(
@@ -75,48 +81,48 @@ def render_template(
     tmpl = env.get_template(template_name)
     return tmpl.render(
         tenant_slug=tenant_slug,
-        repo_url=repo_url,
+        gitops_repo_url=gitops_repo_url,
+        chart_repo_url=chart_repo_url,
         target_revision=target_revision,
         chart_path=chart_path,
-        gitops_prefix=gitops_prefix,
     )
 
 
 def render_app_appset(
     tenant_slug: str,
     *,
-    repo_url: str = DEFAULT_REPO_URL,
+    gitops_repo_url: str = "",
+    chart_repo_url: str = DEFAULT_REPO_URL,
     target_revision: str = DEFAULT_REVISION,
     chart_path: str = "charts/haven-app",
-    gitops_prefix: str = "gitops",
 ) -> str:
     """Render the tenant app ApplicationSet YAML."""
     return render_template(
         APP_TEMPLATE,
         tenant_slug=tenant_slug,
-        repo_url=repo_url,
+        gitops_repo_url=gitops_repo_url or DEFAULT_GITOPS_REPO_URL,
+        chart_repo_url=chart_repo_url,
         target_revision=target_revision,
         chart_path=chart_path,
-        gitops_prefix=gitops_prefix,
     )
 
 
 def render_svc_appset(
     tenant_slug: str,
     *,
-    repo_url: str = DEFAULT_REPO_URL,
+    gitops_repo_url: str = "",
+    chart_repo_url: str = DEFAULT_REPO_URL,
     target_revision: str = DEFAULT_REVISION,
     chart_path: str = "charts/haven-managed-service",
-    gitops_prefix: str = "gitops",
 ) -> str:
     """Render the tenant service ApplicationSet YAML."""
     return render_template(
         SVC_TEMPLATE,
         tenant_slug=tenant_slug,
-        repo_url=repo_url,
+        gitops_repo_url=gitops_repo_url or DEFAULT_GITOPS_REPO_URL,
+        chart_repo_url=chart_repo_url,
         target_revision=target_revision,
         chart_path=chart_path,
-        gitops_prefix=gitops_prefix,
     )
 
 
@@ -165,7 +171,7 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--revision", default=DEFAULT_REVISION, help="Target git revision")
     parser.add_argument("--app-chart", default="charts/haven-app", help="Path to haven-app chart")
     parser.add_argument("--svc-chart", default="charts/haven-managed-service", help="Path to managed-service chart")
-    parser.add_argument("--gitops-prefix", default="gitops", help="GitOps directory prefix")
+    # --gitops-prefix removed: Gitea repo uses tenants/{slug}/* directly (no prefix)
     parser.add_argument("--dry-run", action="store_true", help="Print rendered YAML; do not commit")
     parser.add_argument("--commit", action="store_true", help="Commit rendered YAML to gitops repo")
     parser.add_argument("--both", action="store_true", help="Render both app and service ApplicationSets")
@@ -180,22 +186,19 @@ def main() -> None:
     tenant_slug: str = args.tenant
     repo_url: str = args.repo_url
     revision: str = args.revision
-    gitops_prefix: str = args.gitops_prefix
 
     # Render templates
     app_yaml = render_app_appset(
         tenant_slug,
-        repo_url=repo_url,
+        chart_repo_url=repo_url,
         target_revision=revision,
         chart_path=args.app_chart,
-        gitops_prefix=gitops_prefix,
     )
     svc_yaml = render_svc_appset(
         tenant_slug,
-        repo_url=repo_url,
+        chart_repo_url=repo_url,
         target_revision=revision,
         chart_path=args.svc_chart,
-        gitops_prefix=gitops_prefix,
     ) if args.both else None
 
     if args.dry_run or (not args.commit and not args.output_dir):
