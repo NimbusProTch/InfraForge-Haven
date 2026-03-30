@@ -42,6 +42,19 @@ class TestCnpgBody:
         body = _cnpg_cluster_body("my-pg", "tenant-acme", ServiceTier.DEV)
         assert body["spec"]["bootstrap"]["initdb"]["database"] == "my_pg"
 
+    def test_custom_db_name(self):
+        body = _cnpg_cluster_body("my-pg", "tenant-acme", ServiceTier.DEV, db_name="custom_app")
+        assert body["spec"]["bootstrap"]["initdb"]["database"] == "custom_app"
+
+    def test_custom_db_user(self):
+        body = _cnpg_cluster_body("my-pg", "tenant-acme", ServiceTier.DEV, db_name="mydb", db_user="app_user")
+        assert body["spec"]["bootstrap"]["initdb"]["owner"] == "app_user"
+
+    def test_custom_db_name_default_user(self):
+        body = _cnpg_cluster_body("my-pg", "tenant-acme", ServiceTier.DEV, db_name="mydb")
+        assert body["spec"]["bootstrap"]["initdb"]["database"] == "mydb"
+        assert body["spec"]["bootstrap"]["initdb"]["owner"] == "mydb_user"
+
     def test_tolerations_present(self):
         body = _cnpg_cluster_body("my-pg", "tenant-acme", ServiceTier.DEV)
         assert body["spec"]["affinity"]["tolerations"] == [{"operator": "Exists"}]
@@ -102,6 +115,15 @@ class TestRedisBody:
         body = _redis_body("my-redis", "tenant-acme", ServiceTier.PROD)
         storage_size = body["spec"]["storage"]["volumeClaimTemplate"]["spec"]["resources"]["requests"]["storage"]
         assert storage_size == "5Gi"
+
+    def test_dev_no_security_context(self):
+        body = _redis_body("my-redis", "tenant-acme", ServiceTier.DEV)
+        assert "securityContext" not in body["spec"]
+
+    def test_prod_has_persistent_storage(self):
+        body = _redis_body("my-redis", "tenant-acme", ServiceTier.PROD)
+        assert "storage" in body["spec"]
+        assert body["spec"]["storage"]["keepAfterDelete"] is True
 
     def test_tolerations_present(self):
         body = _redis_body("my-redis", "tenant-acme", ServiceTier.DEV)
@@ -914,3 +936,49 @@ class TestSyncFromPod:
         await p.sync_status(svc)
 
         assert svc.status == ServiceStatus.READY
+
+
+# ---------------------------------------------------------------------------
+# Custom db_name / db_user passthrough (CRD path)
+# ---------------------------------------------------------------------------
+
+
+class TestProvisionCustomDbName:
+    """CRD-based PostgreSQL provisioning with custom db_name/db_user."""
+
+    @pytest.mark.asyncio
+    async def test_cnpg_custom_db_name_in_crd(self, mock_k8s_available):
+        svc = _make_service(name="main-db", stype=ServiceType.POSTGRES)
+        svc.db_name = "e2e_app"
+        svc.db_user = "app_user"
+        p = ManagedServiceProvisioner(mock_k8s_available, everest=_no_everest())
+        await p.provision(svc, "tenant-demo")
+
+        call_args = mock_k8s_available.custom_objects.create_namespaced_custom_object.call_args
+        body = call_args.kwargs["body"]
+        assert body["spec"]["bootstrap"]["initdb"]["database"] == "e2e_app"
+        assert body["spec"]["bootstrap"]["initdb"]["owner"] == "app_user"
+
+    @pytest.mark.asyncio
+    async def test_cnpg_custom_db_name_overrides_connection_hint(self, mock_k8s_available):
+        svc = _make_service(name="main-db", stype=ServiceType.POSTGRES)
+        svc.db_name = "e2e_app"
+        svc.db_user = "app_user"
+        p = ManagedServiceProvisioner(mock_k8s_available, everest=_no_everest())
+        await p.provision(svc, "tenant-demo")
+
+        assert "e2e_app" in svc.connection_hint
+        assert "app_user" in svc.connection_hint
+
+    @pytest.mark.asyncio
+    async def test_cnpg_no_custom_db_name_uses_service_name(self, mock_k8s_available):
+        svc = _make_service(name="my-pg", stype=ServiceType.POSTGRES)
+        svc.db_name = None
+        svc.db_user = None
+        p = ManagedServiceProvisioner(mock_k8s_available, everest=_no_everest())
+        await p.provision(svc, "tenant-demo")
+
+        call_args = mock_k8s_available.custom_objects.create_namespaced_custom_object.call_args
+        body = call_args.kwargs["body"]
+        assert body["spec"]["bootstrap"]["initdb"]["database"] == "my_pg"
+        assert body["spec"]["bootstrap"]["initdb"]["owner"] == "my_pg_user"
