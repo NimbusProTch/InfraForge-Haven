@@ -33,7 +33,7 @@ ENGINE_MAP = {
 # Tier → resource configuration (defaults, overridden per-engine below)
 # Everest enforces minimum CPU 600m for DB engines
 TIER_CONFIG = {
-    "dev": {"replicas": 1, "storage": "2Gi", "cpu": "600m", "memory": "512Mi"},
+    "dev": {"replicas": 1, "storage": "2Gi", "cpu": "1", "memory": "512Mi"},
     "prod": {"replicas": 3, "storage": "20Gi", "cpu": "2", "memory": "4Gi"},
 }
 
