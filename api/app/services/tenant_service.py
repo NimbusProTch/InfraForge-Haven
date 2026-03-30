@@ -1,19 +1,13 @@
 import base64
 import json
 import logging
-from pathlib import Path
 
-import yaml as pyyaml
-from jinja2 import Environment, FileSystemLoader
 from kubernetes import client as k8s_lib
 from kubernetes.client.exceptions import ApiException
 
 from app.config import settings
 from app.k8s.client import K8sClient
 from app.services.harbor_service import HarborService
-
-# ApplicationSet Jinja2 templates directory
-_TEMPLATES_DIR = Path(__file__).resolve().parents[3] / "platform" / "templates"
 
 logger = logging.getLogger(__name__)
 
@@ -524,35 +518,91 @@ class TenantService:
     # ArgoCD ApplicationSet (per-tenant isolation)
     # ------------------------------------------------------------------
 
-    async def _create_applicationset(self, tenant_slug: str) -> None:
-        """Render per-tenant ApplicationSet from Jinja2 template and apply via K8s API."""
-        if not self.k8s.is_available() or self.k8s.custom_objects is None:
-            logger.warning("K8s unavailable — skipping ApplicationSet for %s", tenant_slug)
-            return
-
+    def _build_applicationset_body(self, tenant_slug: str) -> dict:
+        """Build per-tenant ApplicationSet manifest. Lives only in K8s, not in git."""
         gitops_repo_url = getattr(settings, "gitops_repo_url", "") or (
             f"{settings.gitea_url}/{settings.gitea_org}/{settings.gitea_gitops_repo}.git"
         )
         chart_repo_url = "https://github.com/NimbusProTch/InfraForge-Haven.git"
 
-        try:
-            env = Environment(
-                loader=FileSystemLoader(str(_TEMPLATES_DIR)),
-                keep_trailing_newline=True,
-                autoescape=False,
-            )
-            tmpl = env.get_template("tenant-applicationset.yaml.tpl")
-            rendered = tmpl.render(
-                tenant_slug=tenant_slug,
-                gitops_repo_url=gitops_repo_url,
-                chart_repo_url=chart_repo_url,
-                target_revision="main",
-                chart_path="charts/haven-app",
-            )
-            body = pyyaml.safe_load(rendered)
-        except Exception:
-            logger.exception("Failed to render ApplicationSet template for %s", tenant_slug)
+        return {
+            "apiVersion": "argoproj.io/v1alpha1",
+            "kind": "ApplicationSet",
+            "metadata": {
+                "name": f"appset-{tenant_slug}",
+                "namespace": "argocd",
+                "labels": {
+                    "haven.io/managed": "true",
+                    "haven.io/tenant": tenant_slug,
+                    "haven.io/type": "tenant-apps",
+                },
+            },
+            "spec": {
+                "goTemplate": True,
+                "goTemplateOptions": ["missingkey=error"],
+                "generators": [
+                    {
+                        "git": {
+                            "repoURL": gitops_repo_url,
+                            "revision": "main",
+                            "directories": [
+                                {"path": f"tenants/{tenant_slug}/*"},
+                                {"path": f"tenants/{tenant_slug}/services", "exclude": True},
+                                {"path": f"tenants/{tenant_slug}/services/*", "exclude": True},
+                            ],
+                        }
+                    }
+                ],
+                "template": {
+                    "metadata": {
+                        "name": f"{tenant_slug}-{{{{ index .path.segments 2 }}}}",
+                        "namespace": "argocd",
+                        "labels": {
+                            "haven.io/managed": "true",
+                            "haven.io/tenant": tenant_slug,
+                            "haven.io/app": "{{ index .path.segments 2 }}",
+                        },
+                        "finalizers": ["resources-finalizer.argocd.argoproj.io"],
+                    },
+                    "spec": {
+                        "project": "default",
+                        "sources": [
+                            {
+                                "repoURL": chart_repo_url,
+                                "targetRevision": "main",
+                                "path": "charts/haven-app",
+                                "helm": {"valueFiles": ["$values/{{ .path.path }}/values.yaml"]},
+                            },
+                            {
+                                "repoURL": gitops_repo_url,
+                                "targetRevision": "main",
+                                "ref": "values",
+                            },
+                        ],
+                        "destination": {
+                            "server": "https://kubernetes.default.svc",
+                            "namespace": f"tenant-{tenant_slug}",
+                        },
+                        "syncPolicy": {
+                            "automated": {"prune": True, "selfHeal": True},
+                            "syncOptions": ["CreateNamespace=false", "ServerSideApply=true"],
+                            "retry": {
+                                "limit": 3,
+                                "backoff": {"duration": "5s", "factor": 2, "maxDuration": "3m"},
+                            },
+                        },
+                    },
+                },
+            },
+        }
+
+    async def _create_applicationset(self, tenant_slug: str) -> None:
+        """Create per-tenant ApplicationSet in ArgoCD namespace via K8s API."""
+        if not self.k8s.is_available() or self.k8s.custom_objects is None:
+            logger.warning("K8s unavailable — skipping ApplicationSet for %s", tenant_slug)
             return
+
+        body = self._build_applicationset_body(tenant_slug)
 
         try:
             self.k8s.custom_objects.create_namespaced_custom_object(
