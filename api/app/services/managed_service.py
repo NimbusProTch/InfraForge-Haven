@@ -48,29 +48,31 @@ def _cnpg_cluster_body(
 
 def _redis_body(name: str, namespace: str, tier: ServiceTier) -> dict:
     """Build a Redis CRD manifest (OpsTree Redis Operator)."""
-    size = "1Gi" if tier == ServiceTier.DEV else "5Gi"
+    spec: dict = {
+        "kubernetesConfig": {
+            "image": "quay.io/opstree/redis:v7.0.15",
+            "imagePullPolicy": "IfNotPresent",
+        },
+        "tolerations": [{"operator": "Exists"}],
+    }
+    if tier == ServiceTier.PROD:
+        # Prod: persistent storage with init container for volume ownership
+        spec["storage"] = {
+            "keepAfterDelete": True,
+            "volumeClaimTemplate": {
+                "spec": {
+                    "accessModes": ["ReadWriteOnce"],
+                    "storageClassName": "longhorn",
+                    "resources": {"requests": {"storage": "5Gi"}},
+                }
+            },
+        }
+    # Dev: no persistent storage (ephemeral, avoids Longhorn permission issues)
     return {
         "apiVersion": "redis.redis.opstreelabs.in/v1beta2",
         "kind": "Redis",
         "metadata": {"name": name, "namespace": namespace},
-        "spec": {
-            "kubernetesConfig": {
-                "image": "quay.io/opstree/redis:v7.0.15",
-                "imagePullPolicy": "IfNotPresent",
-            },
-            "storage": {
-                "keepAfterDelete": True,
-                "volumeClaimTemplate": {
-                    "spec": {
-                        "accessModes": ["ReadWriteOnce"],
-                        "storageClassName": "longhorn",
-                        "resources": {"requests": {"storage": size}},
-                    }
-                }
-            },
-            "securityContext": {},
-            "tolerations": [{"operator": "Exists"}],
-        },
+        "spec": spec,
     }
 
 
