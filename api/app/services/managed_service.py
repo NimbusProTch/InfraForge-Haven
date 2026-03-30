@@ -54,6 +54,7 @@ def _redis_body(name: str, namespace: str, tier: ServiceTier) -> dict:
                 "imagePullPolicy": "IfNotPresent",
             },
             "storage": {
+                "keepAfterDelete": True,
                 "volumeClaimTemplate": {
                     "spec": {
                         "accessModes": ["ReadWriteOnce"],
@@ -62,6 +63,8 @@ def _redis_body(name: str, namespace: str, tier: ServiceTier) -> dict:
                     }
                 }
             },
+            "securityContext": {"runAsUser": 1000},
+            "podSecurityContext": {"runAsUser": 1000, "fsGroup": 1000},
             "tolerations": [{"operator": "Exists"}],
         },
     }
@@ -107,7 +110,7 @@ _CONNECTION_HINT_MAP = {
     ServiceType.POSTGRES: lambda name, ns: f"postgresql://{name}-app@{name}-rw.{ns}.svc:5432/{name.replace('-', '_')}",
     ServiceType.MYSQL: lambda name, ns: f"mysql://{name}-pxc@{name}-haproxy.{ns}.svc:3306/{name.replace('-', '_')}",
     ServiceType.MONGODB: lambda name, ns: f"mongodb://{name}-rs0@{name}-mongos.{ns}.svc:27017/{name.replace('-', '_')}",
-    ServiceType.REDIS: lambda name, ns: f"redis://{name}-redis.{ns}.svc:6379",
+    ServiceType.REDIS: lambda name, ns: f"redis://{name}.{ns}.svc:6379",
     ServiceType.RABBITMQ: lambda name, ns: f"amqp://{name}-default-user@{name}.{ns}.svc:5672",
 }
 
@@ -226,33 +229,84 @@ class ManagedServiceProvisioner:
         """Return True if this service type should be provisioned via Everest."""
         return service_type in _EVEREST_ENGINES and self.everest.is_configured()
 
+    def _sync_from_pod(self, service: ManagedService, pod_name: str) -> None:
+        """Fallback health check: inspect pod status when CRD status is empty."""
+        if not self.k8s.core_v1:
+            return
+        try:
+            pod = self.k8s.core_v1.read_namespaced_pod(
+                name=pod_name, namespace=service.service_namespace
+            )
+        except ApiException as e:
+            if e.status == 404:
+                if service.status == ServiceStatus.READY:
+                    service.status = ServiceStatus.DEGRADED
+                    service.error_message = "Pod not found"
+                # else stay provisioning/failed
+            return
+
+        phase = pod.status.phase if pod.status else None
+        containers = pod.status.container_statuses or [] if pod.status else []
+
+        if phase == "Running" and containers and all(c.ready for c in containers):
+            service.status = ServiceStatus.READY
+            service.error_message = None
+            return
+
+        # Detect specific failure reasons for user-friendly messages
+        error_msg = None
+        for c in containers:
+            if c.last_state and c.last_state.terminated:
+                reason = c.last_state.terminated.reason or ""
+                if reason == "OOMKilled":
+                    error_msg = "Out of memory — consider increasing memory limit"
+                elif reason:
+                    error_msg = f"Container terminated: {reason}"
+            if c.state and c.state.waiting:
+                reason = c.state.waiting.reason or ""
+                if reason == "CrashLoopBackOff":
+                    error_msg = "Service crashing — check logs"
+                elif reason == "ImagePullBackOff":
+                    error_msg = "Failed to pull container image"
+
+        if error_msg:
+            service.error_message = error_msg
+            if service.status == ServiceStatus.READY:
+                service.status = ServiceStatus.DEGRADED
+            elif service.status == ServiceStatus.PROVISIONING:
+                service.status = ServiceStatus.FAILED
+
     # ------------------------------------------------------------------
     # Everest-based provisioning (PostgreSQL, MySQL, MongoDB)
     # ------------------------------------------------------------------
 
-    async def _everest_provision(self, service: ManagedService, tenant_namespace: str) -> None:
+    async def _everest_provision(self, service: ManagedService, tenant_namespace: str, tenant_slug: str) -> None:
         """Provision a database via Percona Everest REST API."""
         engine_map = {ServiceType.POSTGRES: "postgres", ServiceType.MYSQL: "mysql", ServiceType.MONGODB: "mongodb"}
         engine_type = engine_map[service.service_type]
         tier = "dev" if service.tier == ServiceTier.DEV else "prod"
 
+        # Prefix DB name with tenant slug for namespace isolation
+        everest_name = f"{tenant_slug}-{service.name}"
+
         try:
             result = await self.everest.create_database(
-                name=service.name,
+                name=everest_name,
                 engine_type=engine_type,
                 tier=tier,
             )
-            logger.info("Everest DB created: %s (%s)", service.name, engine_type)
+            logger.info("Everest DB created: %s → %s (%s)", service.name, everest_name, engine_type)
         except Exception:
             logger.exception("Everest provision failed for %s — falling back to CRD", service.name)
             await self._crd_provision(service, tenant_namespace)
             return
 
-        # Everest creates secrets in its own namespace with a different naming convention
+        # Store the Everest-side name for all future API calls
+        service.everest_name = everest_name
         service.service_namespace = EVEREST_NAMESPACE
-        service.secret_name = _EVEREST_SECRET_NAME(service.name)
+        service.secret_name = _EVEREST_SECRET_NAME(everest_name)
         service.connection_hint = _CONNECTION_HINT_MAP[service.service_type](
-            service.name, EVEREST_NAMESPACE
+            everest_name, EVEREST_NAMESPACE
         )
         service.status = ServiceStatus.PROVISIONING
 
@@ -266,9 +320,10 @@ class ManagedServiceProvisioner:
         memory: str | None = None,
     ) -> None:
         """Update a database via Everest API."""
+        ev_name = service.everest_name or service.name
         try:
             await self.everest.update_database(
-                service.name,
+                ev_name,
                 replicas=replicas,
                 storage=storage,
                 cpu=cpu,
@@ -276,17 +331,18 @@ class ManagedServiceProvisioner:
             )
             service.status = ServiceStatus.UPDATING
             service.error_message = None
-            logger.info("Everest DB updated: %s", service.name)
+            logger.info("Everest DB updated: %s", ev_name)
         except Exception:
-            logger.exception("Everest update failed for %s", service.name)
+            logger.exception("Everest update failed for %s", ev_name)
             service.error_message = "Update request failed"
 
     async def _everest_sync_status(self, service: ManagedService) -> None:
         """Sync status from Everest API."""
+        ev_name = service.everest_name or service.name
         try:
-            status = await self.everest.get_database_status(service.name)
+            status = await self.everest.get_database_status(ev_name)
         except Exception:
-            logger.exception("Everest status check failed for %s", service.name)
+            logger.exception("Everest status check failed for %s", ev_name)
             return
 
         if status == "ready":
@@ -297,10 +353,11 @@ class ManagedServiceProvisioner:
 
     async def _everest_sync_details(self, service: ManagedService) -> dict | None:
         """Sync status and return runtime details for UI enrichment."""
+        ev_name = service.everest_name or service.name
         try:
-            details = await self.everest.get_database_details(service.name)
+            details = await self.everest.get_database_details(ev_name)
         except Exception:
-            logger.exception("Everest details fetch failed for %s", service.name)
+            logger.exception("Everest details fetch failed for %s", ev_name)
             return None
 
         ev_status = details.get("status", "unknown")
@@ -315,11 +372,12 @@ class ManagedServiceProvisioner:
 
     async def _everest_deprovision(self, service: ManagedService) -> None:
         """Delete a database via Everest API."""
+        ev_name = service.everest_name or service.name
         try:
-            await self.everest.delete_database(service.name)
-            logger.info("Everest DB deleted: %s", service.name)
+            await self.everest.delete_database(ev_name)
+            logger.info("Everest DB deleted: %s", ev_name)
         except Exception:
-            logger.exception("Everest deprovision failed for %s", service.name)
+            logger.exception("Everest deprovision failed for %s", ev_name)
 
     # ------------------------------------------------------------------
     # CRD-based provisioning (Redis, RabbitMQ, and fallback)
@@ -391,6 +449,10 @@ class ManagedServiceProvisioner:
             ready = k8s_status.get("readyReplicas", 0)
             if ready and ready > 0:
                 service.status = ServiceStatus.READY
+                service.error_message = None
+            else:
+                # OpsTree Redis operator may not populate CRD status — check pod
+                self._sync_from_pod(service, f"{service.name}-0")
         elif svc_type == ServiceType.MYSQL or svc_type == ServiceType.MONGODB:
             state = k8s_status.get("state", "")
             if state == "ready":
@@ -444,10 +506,11 @@ class ManagedServiceProvisioner:
         await self._crd_sync_status(service)
         return None
 
-    async def provision(self, service: ManagedService, tenant_namespace: str) -> None:
+    async def provision(self, service: ManagedService, tenant_namespace: str, tenant_slug: str = "") -> None:
         """Create the database/service and populate secret_name + connection_hint."""
         if self._use_everest(service.service_type):
-            await self._everest_provision(service, tenant_namespace)
+            slug = tenant_slug or tenant_namespace.removeprefix("tenant-")
+            await self._everest_provision(service, tenant_namespace, slug)
         else:
             await self._crd_provision(service, tenant_namespace)
         logger.info(

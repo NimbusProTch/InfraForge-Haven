@@ -1,11 +1,10 @@
-"""GitOps service: manages tenant app and service manifests in a git repository.
+"""GitOps service: manages tenant app manifests in the haven-gitops Gitea repo.
 
-Instead of directly calling K8s API, writes Helm values files to a git repo.
+Instead of directly calling K8s API, writes Helm values files to git.
 ArgoCD ApplicationSet detects changes and syncs resources to the cluster.
 
-Monorepo layout (InfraForge-Haven):
-  gitops/tenants/{tenant}/{app}/values.yaml          → haven-app chart
-  gitops/tenants/{tenant}/services/{svc}/values.yaml → haven-managed-service chart
+Gitea repo layout (haven/haven-gitops):
+  tenants/{tenant}/{app}/values.yaml  → haven-app chart values
 """
 
 import asyncio
@@ -20,12 +19,8 @@ from app.config import settings
 
 logger = logging.getLogger(__name__)
 
-# Monorepo path prefix — all gitops manifests live under this directory
-GITOPS_PREFIX = "gitops"
-
-
 class GitOpsService:
-    """Manages tenant deployment manifests in the InfraForge-Haven monorepo."""
+    """Manages tenant deployment manifests in the haven-gitops Gitea repo."""
 
     def __init__(
         self,
@@ -39,7 +34,7 @@ class GitOpsService:
         self._branch = branch or settings.gitops_branch
         self._clone_dir = Path(clone_dir or settings.gitops_clone_dir)
         self._deploy_key_path = deploy_key_path or settings.gitops_deploy_key_path
-        self._github_token = github_token or settings.gitops_github_token
+        self._github_token = github_token or settings.gitops_github_token or settings.gitea_admin_token
         self._lock = asyncio.Lock()
         self._initialized = False
 
@@ -167,10 +162,10 @@ class GitOpsService:
         return sha
 
     def _app_dir(self, tenant_slug: str, app_slug: str) -> Path:
-        return self._clone_dir / GITOPS_PREFIX / "tenants" / tenant_slug / app_slug
+        return self._clone_dir / "tenants" / tenant_slug / app_slug
 
     def _service_dir(self, tenant_slug: str, service_name: str) -> Path:
-        return self._clone_dir / GITOPS_PREFIX / "tenants" / tenant_slug / "services" / service_name
+        return self._clone_dir / "tenants" / tenant_slug / "services" / service_name
 
     async def write_app_values(self, tenant_slug: str, app_slug: str, values: dict) -> str:
         """Write values.yaml for a tenant app, commit, and push. Returns commit SHA."""
@@ -233,7 +228,7 @@ class GitOpsService:
         async with self._lock:
             await self._ensure_repo()
 
-            tenant_dir = self._clone_dir / GITOPS_PREFIX / "tenants" / tenant_slug
+            tenant_dir = self._clone_dir / "tenants" / tenant_slug
             if tenant_dir.exists():
                 import shutil
 

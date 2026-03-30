@@ -19,8 +19,8 @@ data:
   GITEA_ORG: "haven"
   GITEA_GITOPS_REPO: "haven-gitops"
   GITEA_GITOPS_BRANCH: "main"
-  # Legacy GitHub GitOps (fallback)
-  GITOPS_REPO_URL: "https://github.com/NimbusProTch/InfraForge-Haven.git"
+  # GitOps repo (Gitea in-cluster)
+  GITOPS_REPO_URL: "http://gitea-http.gitea-system.svc.cluster.local:3000/haven/haven-gitops.git"
   GITOPS_BRANCH: "main"
   GITOPS_CLONE_DIR: "/tmp/haven-gitops"
   # Redis for git queue
