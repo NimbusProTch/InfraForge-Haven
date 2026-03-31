@@ -17,9 +17,9 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 _TIER_QUOTAS: dict[str, dict[str, str]] = {
-    "free": {"pods": "10", "persistentvolumeclaims": "3", "services": "5"},
-    "dev": {"pods": "20", "persistentvolumeclaims": "5", "services": "10"},
-    "starter": {"pods": "20", "persistentvolumeclaims": "5", "services": "10"},
+    "free": {"pods": "20", "persistentvolumeclaims": "5", "services": "15"},
+    "dev": {"pods": "30", "persistentvolumeclaims": "10", "services": "20"},
+    "starter": {"pods": "30", "persistentvolumeclaims": "10", "services": "20"},
     "standard": {"pods": "50", "persistentvolumeclaims": "20", "services": "20"},
     "pro": {"pods": "50", "persistentvolumeclaims": "20", "services": "20"},
     "premium": {"pods": "200", "persistentvolumeclaims": "100", "services": "50"},
@@ -83,6 +83,10 @@ _CILIUM_NETPOL_TEMPLATE: dict = {
                         ]
                     }
                 ],
+            },
+            {
+                # Everest namespace: Managed databases (PG, MySQL, MongoDB) live here
+                "toEndpoints": [{"matchLabels": {"io.kubernetes.pod.namespace": "everest"}}],
             },
             {
                 # Internet egress (world entity = external IPs, excludes cluster pods)

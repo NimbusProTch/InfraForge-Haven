@@ -483,11 +483,11 @@ class TestEverestProvision:
         await p.provision(svc, "tenant-acme", tenant_slug="acme")
 
         everest.create_database.assert_called_once_with(
-            name="acme-test-db", engine_type="postgres", tier="dev", namespace="tenant-acme"
+            name="acme-test-db", engine_type="postgres", tier="dev", namespace="everest"
         )
         assert svc.status == ServiceStatus.PROVISIONING
         assert svc.everest_name == "acme-test-db"
-        assert svc.service_namespace == "tenant-acme"
+        assert svc.service_namespace == "everest"
         assert svc.secret_name == "everest-secrets-acme-test-db"
         assert svc.connection_hint is not None
         mock_k8s_available.custom_objects.create_namespaced_custom_object.assert_not_called()
@@ -503,7 +503,7 @@ class TestEverestProvision:
         await p.provision(svc, "tenant-acme", tenant_slug="acme")
 
         everest.create_database.assert_called_once_with(
-            name="acme-test-db", engine_type="mysql", tier="dev", namespace="tenant-acme"
+            name="acme-test-db", engine_type="mysql", tier="dev", namespace="everest"
         )
         assert svc.status == ServiceStatus.PROVISIONING
         assert svc.everest_name == "acme-test-db"
@@ -519,7 +519,7 @@ class TestEverestProvision:
         await p.provision(svc, "tenant-acme", tenant_slug="acme")
 
         everest.create_database.assert_called_once_with(
-            name="acme-test-db", engine_type="mongodb", tier="dev", namespace="tenant-acme"
+            name="acme-test-db", engine_type="mongodb", tier="dev", namespace="everest"
         )
 
     @pytest.mark.asyncio
@@ -533,7 +533,7 @@ class TestEverestProvision:
         await p.provision(svc, "tenant-acme", tenant_slug="acme")
 
         everest.create_database.assert_called_once_with(
-            name="acme-prod-db", engine_type="postgres", tier="prod", namespace="tenant-acme"
+            name="acme-prod-db", engine_type="postgres", tier="prod", namespace="everest"
         )
 
     @pytest.mark.asyncio
@@ -572,7 +572,7 @@ class TestEverestSyncStatus:
         everest.get_database_status.return_value = "ready"
 
         svc = _make_service(stype=ServiceType.POSTGRES)
-        svc.service_namespace = "tenant-acme"
+        svc.service_namespace = "everest"
         p = ManagedServiceProvisioner(mock_k8s_available, everest=everest)
         await p.sync_status(svc)
 
@@ -585,7 +585,7 @@ class TestEverestSyncStatus:
         everest.get_database_status.return_value = "error"
 
         svc = _make_service(stype=ServiceType.POSTGRES)
-        svc.service_namespace = "tenant-acme"
+        svc.service_namespace = "everest"
         p = ManagedServiceProvisioner(mock_k8s_available, everest=everest)
         await p.sync_status(svc)
 
@@ -598,7 +598,7 @@ class TestEverestSyncStatus:
         everest.get_database_status.return_value = "not_found"
 
         svc = _make_service(stype=ServiceType.MYSQL)
-        svc.service_namespace = "tenant-acme"
+        svc.service_namespace = "everest"
         p = ManagedServiceProvisioner(mock_k8s_available, everest=everest)
         await p.sync_status(svc)
 
@@ -611,7 +611,7 @@ class TestEverestSyncStatus:
         everest.get_database_status.return_value = "initializing"
 
         svc = _make_service(stype=ServiceType.POSTGRES)
-        svc.service_namespace = "tenant-acme"
+        svc.service_namespace = "everest"
         svc.status = ServiceStatus.PROVISIONING
         p = ManagedServiceProvisioner(mock_k8s_available, everest=everest)
         await p.sync_status(svc)
@@ -625,7 +625,7 @@ class TestEverestSyncStatus:
         everest.get_database_status.side_effect = Exception("Connection refused")
 
         svc = _make_service(stype=ServiceType.POSTGRES)
-        svc.service_namespace = "tenant-acme"
+        svc.service_namespace = "everest"
         svc.status = ServiceStatus.PROVISIONING
         p = ManagedServiceProvisioner(mock_k8s_available, everest=everest)
         await p.sync_status(svc)
@@ -640,13 +640,13 @@ class TestEverestUpdate:
         everest.is_configured.return_value = True
 
         svc = _make_service(stype=ServiceType.POSTGRES)
-        svc.service_namespace = "tenant-acme"
+        svc.service_namespace = "everest"
         svc.status = ServiceStatus.READY
         p = ManagedServiceProvisioner(mock_k8s_available, everest=everest)
         await p.update(svc, storage="5Gi", cpu="1")
 
         everest.update_database.assert_called_once_with(
-            "test-db", replicas=None, storage="5Gi", cpu="1", memory=None, namespace="tenant-acme"
+            "test-db", replicas=None, storage="5Gi", cpu="1", memory=None, namespace="everest"
         )
 
     @pytest.mark.asyncio
@@ -670,11 +670,11 @@ class TestEverestDeprovision:
         everest.is_configured.return_value = True
 
         svc = _make_service(stype=ServiceType.POSTGRES)
-        svc.service_namespace = "tenant-acme"
+        svc.service_namespace = "everest"
         p = ManagedServiceProvisioner(mock_k8s_available, everest=everest)
         await p.deprovision(svc)
 
-        everest.delete_database.assert_called_once_with("test-db", namespace="tenant-acme")
+        everest.delete_database.assert_called_once_with("test-db", namespace="everest")
         mock_k8s_available.custom_objects.delete_namespaced_custom_object.assert_not_called()
 
     @pytest.mark.asyncio
@@ -684,7 +684,7 @@ class TestEverestDeprovision:
         everest.delete_database.side_effect = Exception("Everest error")
 
         svc = _make_service(stype=ServiceType.POSTGRES)
-        svc.service_namespace = "tenant-acme"
+        svc.service_namespace = "everest"
         p = ManagedServiceProvisioner(mock_k8s_available, everest=everest)
         await p.deprovision(svc)  # should not raise
 
@@ -723,12 +723,12 @@ class TestEverestPostgresConnectionDetails:
 
         assert svc.connection_hint is not None
         assert svc.connection_hint.startswith("postgresql://")
-        assert ".tenant-acme.svc:" in svc.connection_hint
+        assert ".everest.svc:" in svc.connection_hint
         # Must contain the prefixed name (tenant-service)
         assert "acme-my-pg" in svc.connection_hint
         # Everest was called with prefixed name and tenant namespace
         everest.create_database.assert_called_once_with(
-            name="acme-my-pg", engine_type="postgres", tier="dev", namespace="tenant-acme"
+            name="acme-my-pg", engine_type="postgres", tier="dev", namespace="everest"
         )
 
     @pytest.mark.asyncio
@@ -743,7 +743,7 @@ class TestEverestPostgresConnectionDetails:
         await p.provision(svc, "tenant-acme", tenant_slug="acme")
 
         assert svc.everest_name == "acme-pg-1"
-        assert svc.service_namespace == "tenant-acme"
+        assert svc.service_namespace == "everest"
         assert svc.secret_name == "everest-secrets-acme-pg-1"
 
     @pytest.mark.asyncio
@@ -799,11 +799,11 @@ class TestEverestPostgresConnectionDetails:
 
         svc = _make_service(stype=ServiceType.POSTGRES)
         svc.everest_name = "acme-test-db"
-        svc.service_namespace = "tenant-acme"
+        svc.service_namespace = "everest"
         p = ManagedServiceProvisioner(mock_k8s_available, everest=everest)
         await p.deprovision(svc)
 
-        everest.delete_database.assert_called_once_with("acme-test-db", namespace="tenant-acme")
+        everest.delete_database.assert_called_once_with("acme-test-db", namespace="everest")
 
 
 # ---------------------------------------------------------------------------

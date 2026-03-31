@@ -37,6 +37,10 @@ dependencies = [
 
     # Redis (git queue, session cache)
     "redis[hiredis]>=5.0.0",
+
+    # Managed DB credential provisioning (MySQL, MongoDB)
+    "aiomysql>=0.2.0",
+    "motor>=3.6.0",
 ]
 
 [project.optional-dependencies]

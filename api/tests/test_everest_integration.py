@@ -41,7 +41,7 @@ async def test_provision_postgres_via_backend(async_client, db_session, sample_t
     assert data["name"] == "integ-test-pg"
     assert data["service_type"] == "postgres"
     assert data["status"] == "provisioning"
-    assert data["service_namespace"] == sample_tenant.namespace
+    assert data["service_namespace"] == "everest"
     assert data["secret_name"] is not None
     assert data["connection_hint"] is not None
     logger.info("Service created: %s (status=%s)", data["name"], data["status"])

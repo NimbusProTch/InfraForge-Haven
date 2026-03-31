@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
@@ -46,11 +47,72 @@ logger = logging.getLogger(__name__)
 limiter = Limiter(key_func=get_remote_address, default_limits=["200/minute"])
 
 
+async def _credential_provisioning_tick(session_factory: "async_sessionmaker") -> int:
+    """Single tick of the credential provisioning loop. Returns count of services processed.
+
+    Finds services that are either:
+    1. PROVISIONING (need status sync from Everest/CRD)
+    2. READY but credentials not yet provisioned (need custom user/db/secret)
+    """
+    from sqlalchemy import or_, select
+
+    from app.models.managed_service import ManagedService, ServiceStatus
+    from app.models.tenant import Tenant
+    from app.services.managed_service import ManagedServiceProvisioner
+
+    async with session_factory() as db:
+        result = await db.execute(
+            select(ManagedService).where(
+                or_(
+                    ManagedService.status == ServiceStatus.PROVISIONING,
+                    ManagedService.status == ServiceStatus.UPDATING,
+                    (ManagedService.status == ServiceStatus.READY)
+                    & (ManagedService.credentials_provisioned == False),  # noqa: E712
+                )
+            )
+        )
+        services = list(result.scalars().all())
+        if not services:
+            return 0
+
+        provisioner = ManagedServiceProvisioner(k8s_client)
+        for svc in services:
+            tenant = await db.get(Tenant, svc.tenant_id)
+            if tenant and tenant.namespace:
+                await provisioner.sync_details(svc, tenant_namespace=tenant.namespace)
+
+        await db.commit()
+        return len(services)
+
+
+async def _credential_provisioning_loop() -> None:
+    """Background loop: provision custom credentials for READY Everest databases.
+
+    Runs every 15 seconds. Finds services that are READY but haven't had
+    custom credentials provisioned yet, and creates custom user/db/secret.
+    This removes the dependency on a UI GET request to trigger provisioning.
+    """
+    from app.deps import get_session_factory
+
+    session_factory = get_session_factory()
+
+    while True:
+        await asyncio.sleep(15)
+        try:
+            count = await _credential_provisioning_tick(session_factory)
+            if count:
+                logger.info("Background credential loop: processed %d services", count)
+        except Exception:
+            logger.exception("Credential provisioning loop error")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     logger.info("Starting Haven Platform API")
     await k8s_client.initialize()
+    task = asyncio.create_task(_credential_provisioning_loop())
     yield
+    task.cancel()
     logger.info("Shutting down Haven Platform API")
     await k8s_client.close()
 

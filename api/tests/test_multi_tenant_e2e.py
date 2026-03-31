@@ -406,7 +406,7 @@ class TestManagedServiceProvisioning:
             name="rotterdam-app-pg",
             engine_type="postgres",
             tier="dev",
-            namespace="tenant-rotterdam",
+            namespace="everest",
         )
 
     @pytest.mark.asyncio
@@ -499,7 +499,7 @@ class TestManagedServiceProvisioning:
             name="amsterdam-app-mongo",
             engine_type="mongodb",
             tier="dev",
-            namespace="tenant-amsterdam",
+            namespace="everest",
         )
 
     @pytest.mark.asyncio
@@ -545,7 +545,7 @@ class TestManagedServiceProvisioning:
             name="utrecht-app-mysql",
             engine_type="mysql",
             tier="dev",
-            namespace="tenant-utrecht",
+            namespace="everest",
         )
 
     @pytest.mark.asyncio
@@ -1239,7 +1239,7 @@ class TestTenantDeletion:
 
             await client.delete("/api/v1/tenants/amsterdam")
 
-        mock_ev.delete_database.assert_called_once_with("amsterdam-mongo-db", namespace="tenant-amsterdam")
+        mock_ev.delete_database.assert_called_once_with("amsterdam-mongo-db", namespace="everest")
 
     @pytest.mark.asyncio
     async def test_delete_tenant_deprovisions_crd_services(self, client, db, k8s_mock):
@@ -1339,7 +1339,7 @@ class TestServiceDelete:
 
             r = await client.delete("/api/v1/tenants/amsterdam/services/del-pg")
         assert r.status_code == 204
-        mock_ev.delete_database.assert_called_once_with("amsterdam-del-pg", namespace="tenant-amsterdam")
+        mock_ev.delete_database.assert_called_once_with("amsterdam-del-pg", namespace="everest")
 
     @pytest.mark.asyncio
     async def test_delete_nonexistent_service_returns_404(self, client, k8s_mock):
