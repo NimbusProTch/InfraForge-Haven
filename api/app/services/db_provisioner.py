@@ -22,6 +22,9 @@ from kubernetes.client import ApiException, V1ObjectMeta, V1Secret
 
 from app.k8s.client import K8sClient
 
+# Lazy imports for optional DB drivers (aiomysql, motor)
+# Imported inside functions to avoid hard dependency when not needed
+
 _SAFE_IDENTIFIER = re.compile(r"^[a-z][a-z0-9_]*$")
 
 logger = logging.getLogger(__name__)
@@ -154,6 +157,145 @@ async def create_custom_database(
         "DB_USER": db_user,
         "DB_PASSWORD": db_password,
         "DB_NAME": db_name or "postgres",
+    }
+
+
+async def create_custom_mysql_database(
+    k8s: K8sClient,
+    everest_secret_name: str,
+    db_name: str | None = None,
+    db_user: str | None = None,
+    db_password: str | None = None,
+) -> dict[str, str]:
+    """Connect to Everest MySQL with admin creds, create custom database + user.
+
+    Same pattern as create_custom_database (PostgreSQL) but uses aiomysql.
+    """
+    import aiomysql
+
+    admin_creds = await read_admin_credentials(k8s, everest_secret_name)
+
+    admin_host = admin_creds.get("host", "")
+    admin_port = int(admin_creds.get("port", "3306"))
+    admin_user = admin_creds.get("user", "root")
+    admin_password = admin_creds.get("password", "")
+
+    if not db_user:
+        db_user = db_name or "app"
+    if not db_password:
+        db_password = generate_password()
+
+    # Validate identifiers to prevent SQL injection (DDL doesn't support params)
+    for name, label in [(db_name, "db_name"), (db_user, "db_user")]:
+        if name and not _SAFE_IDENTIFIER.match(name):
+            raise ValueError(f"Invalid {label}: must match ^[a-z][a-z0-9_]*$ (got '{name}')")
+
+    conn = await aiomysql.connect(
+        host=admin_host,
+        port=admin_port,
+        user=admin_user,
+        password=admin_password,
+    )
+
+    try:
+        async with conn.cursor() as cur:
+            if db_name:
+                await cur.execute(f"CREATE DATABASE IF NOT EXISTS `{db_name}`")
+                logger.info("Created MySQL database: %s", db_name)
+
+            # CREATE USER IF NOT EXISTS doesn't update password, so ALTER afterwards
+            await cur.execute(f"CREATE USER IF NOT EXISTS '{db_user}'@'%%' IDENTIFIED BY '{db_password}'")
+            await cur.execute(f"ALTER USER '{db_user}'@'%%' IDENTIFIED BY '{db_password}'")
+
+            target_db = db_name or "mysql"
+            await cur.execute(f"GRANT ALL PRIVILEGES ON `{target_db}`.* TO '{db_user}'@'%%'")
+            await cur.execute("FLUSH PRIVILEGES")
+            logger.info("Created/updated MySQL user: %s with access to %s", db_user, target_db)
+    finally:
+        conn.close()
+
+    database_url = f"mysql://{db_user}:{db_password}@{admin_host}:{admin_port}/{db_name or 'mysql'}"
+
+    return {
+        "DATABASE_URL": database_url,
+        "DB_HOST": admin_host,
+        "DB_PORT": str(admin_port),
+        "DB_USER": db_user,
+        "DB_PASSWORD": db_password,
+        "DB_NAME": db_name or "mysql",
+    }
+
+
+async def create_custom_mongodb_database(
+    k8s: K8sClient,
+    everest_secret_name: str,
+    db_name: str | None = None,
+    db_user: str | None = None,
+    db_password: str | None = None,
+) -> dict[str, str]:
+    """Connect to Everest MongoDB with admin creds, create custom database + user.
+
+    Same pattern as create_custom_database (PostgreSQL) but uses motor (async pymongo).
+    """
+    import motor.motor_asyncio
+
+    admin_creds = await read_admin_credentials(k8s, everest_secret_name)
+
+    admin_host = admin_creds.get("host", "")
+    admin_port = int(admin_creds.get("port", "27017"))
+    admin_user = admin_creds.get("user", "")
+    admin_password = admin_creds.get("password", "")
+
+    if not db_user:
+        db_user = db_name or "app"
+    if not db_password:
+        db_password = generate_password()
+
+    # Validate identifiers
+    for name, label in [(db_name, "db_name"), (db_user, "db_user")]:
+        if name and not _SAFE_IDENTIFIER.match(name):
+            raise ValueError(f"Invalid {label}: must match ^[a-z][a-z0-9_]*$ (got '{name}')")
+
+    target_db = db_name or "app"
+
+    # Use constructor params to avoid URL-encoding issues with special chars in admin password
+    client = motor.motor_asyncio.AsyncIOMotorClient(
+        host=admin_host,
+        port=admin_port,
+        username=admin_user,
+        password=admin_password,
+        authSource="admin",
+        serverSelectionTimeoutMS=10000,
+    )
+
+    try:
+        db = client[target_db]
+
+        # Check if user exists in this database
+        existing = await db.command("usersInfo", db_user)
+        if existing.get("users"):
+            await db.command("updateUser", db_user, pwd=db_password)
+            logger.info("Updated MongoDB user: %s on db %s", db_user, target_db)
+        else:
+            await db.command(
+                "createUser",
+                db_user,
+                pwd=db_password,
+                roles=[{"role": "readWrite", "db": target_db}],
+            )
+            logger.info("Created MongoDB user: %s on db %s", db_user, target_db)
+    finally:
+        client.close()
+
+    database_url = f"mongodb://{db_user}:{db_password}@{admin_host}:{admin_port}/{target_db}?authSource={target_db}"
+
+    return {
+        "DATABASE_URL": database_url,
+        "DB_HOST": admin_host,
+        "DB_PORT": str(admin_port),
+        "DB_USER": db_user,
+        "DB_PASSWORD": db_password,
+        "DB_NAME": target_db,
     }
 
 
