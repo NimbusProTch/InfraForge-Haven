@@ -114,13 +114,15 @@ async def create_custom_database(
                 logger.info("Created database: %s", db_name)
 
         # Create user if not exists
+        # DDL doesn't support $1 params in asyncpg, but db_user is validated by _SAFE_IDENTIFIER
+        # and db_password is either auto-generated (alphanumeric) or escaped here
+        safe_password = db_password.replace("'", "''")
         user_exists = await conn.fetchval("SELECT 1 FROM pg_roles WHERE rolname = $1", db_user)
         if not user_exists:
-            # Safe: db_user validated, db_password is auto-generated alphanumeric
-            await conn.execute(f"CREATE USER \"{db_user}\" WITH PASSWORD '{db_password}'")
+            await conn.execute(f"CREATE USER \"{db_user}\" WITH PASSWORD '{safe_password}'")
             logger.info("Created user: %s", db_user)
         else:
-            await conn.execute(f"ALTER USER \"{db_user}\" WITH PASSWORD '{db_password}'")
+            await conn.execute(f"ALTER USER \"{db_user}\" WITH PASSWORD '{safe_password}'")
             logger.info("Updated password for existing user: %s", db_user)
 
         # Grant privileges
@@ -204,10 +206,12 @@ async def create_custom_mysql_database(
                 logger.info("Created MySQL database: %s", db_name)
 
             # CREATE USER IF NOT EXISTS doesn't update password, so ALTER afterwards
-            await cur.execute(f"CREATE USER IF NOT EXISTS '{db_user}'@'%%' IDENTIFIED BY '{db_password}'")
-            await cur.execute(f"ALTER USER '{db_user}'@'%%' IDENTIFIED BY '{db_password}'")
+            # Use parameterized queries for password to prevent SQL injection
+            await cur.execute("CREATE USER IF NOT EXISTS %s@'%%' IDENTIFIED BY %s", (db_user, db_password))
+            await cur.execute("ALTER USER %s@'%%' IDENTIFIED BY %s", (db_user, db_password))
 
             target_db = db_name or "mysql"
+            # db_user validated by _SAFE_IDENTIFIER, target_db validated or is literal "mysql"
             await cur.execute(f"GRANT ALL PRIVILEGES ON `{target_db}`.* TO '{db_user}'@'%%'")
             await cur.execute("FLUSH PRIVILEGES")
             logger.info("Created/updated MySQL user: %s with access to %s", db_user, target_db)
