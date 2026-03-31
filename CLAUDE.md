@@ -273,7 +273,21 @@ haven-platform/
 - [x] "Use existing Dockerfile" toggle option
 - [x] Tenant delete with slug confirmation dialog
 
-### Phase 1 Sprint 3: Monorepo + Akıllı Detection (SONRAKI)
+### Phase 1 Sprint 3: Managed Services + Multi-Tenant E2E ✅
+- [x] Everest entegrasyonu (PostgreSQL v17.7, MySQL v8.4.7, MongoDB v8.0.17)
+- [x] Redis OpsTree Operator (standalone, dev ephemeral / prod persistent)
+- [x] RabbitMQ Cluster Operator (dev 1 replica / prod 3 replicas)
+- [x] MySQL/MongoDB credential provisioning (Everest admin secret → tenant namespace)
+- [x] SSE lifecycle events (tenant provision/deprovision, service provision/deprovision)
+- [x] Helm chart guard: skip Deployment/Service/HPA/HTTPRoute when image.repository empty
+- [x] Multi-tenant E2E: 3 tenants (Rotterdam PG+Redis, Amsterdam MongoDB+Redis, Utrecht MySQL+RabbitMQ)
+- [x] ArgoCD per-tenant ApplicationSet (appset-{slug}, multi-source: chart + gitops values)
+- [x] Gitea haven-gitops repo with tenant/app values.yaml manifests
+- [x] Harbor per-tenant projects + robot accounts
+- [x] Build + Deploy pipeline E2E: build trigger → BuildKit → Harbor → Gitea values update → ArgoCD sync → Pod Running
+- [x] 752 backend tests (all passing)
+
+### Phase 1 Sprint 4: Monorepo + Smart Detection (SONRAKI)
 - [ ] `dockerfile_path` — Hangi Dockerfile kullanılacak (`backend/Dockerfile`)
 - [ ] `build_context` — Build root dizini (`./backend`)
 - [ ] Repo içindeki app'leri/dizinleri listeleme (GitHub API tree endpoint)
@@ -282,14 +296,6 @@ haven-platform/
 - [ ] Auto-detect: Redis ihtiyacı (redis-py, ioredis → Redis provision)
 - [ ] Auto-detect: Queue ihtiyacı (pika, amqplib → RabbitMQ provision)
 - [ ] UI'da dependency gösterimi: "Bu app PostgreSQL ve Redis kullanıyor"
-
-### Phase 1 Sprint 4: Managed Services
-- [ ] OpenEverest entegrasyonu (MySQL, PostgreSQL, MongoDB — prod-ready)
-- [ ] Redis Official Operator (Sentinel/Cluster mode)
-- [ ] RabbitMQ Official Operator (queue management)
-- [ ] Env var management UI (key-value editor, K8s Secrets)
-- [ ] Internal service discovery (same-cluster endpoints, auto env injection)
-- [ ] Connection string template: `postgresql://user:pass@cnpg-cluster.ns.svc:5432/db`
 
 ### Phase 1 Sprint 5: Observability
 - [ ] Grafana Loki (app log aggregation, per-tenant)
@@ -390,7 +396,7 @@ haven-platform/
 - Plan dosyası güncel tutulmalı
 - Yeni gotcha'lar eklenmeli
 
-## Mevcut Durum (2026-03-30)
+## Mevcut Durum (2026-03-31)
 
 ### Cluster Erişimi
 - **Kubeconfig**: `infrastructure/environments/dev/kubeconfig`
@@ -406,14 +412,16 @@ haven-platform/
     .venv/bin/python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
   ```
 - **Everest port-forward**: `kubectl port-forward -n everest-system svc/everest 8888:8080`
+- **Keycloak port-forward**: `kubectl port-forward -n keycloak svc/keycloak-keycloakx-http 8080:80`
 - **Keycloak lokal**: `http://localhost:8080` (haven realm, haven-api client, testdev/Test1234!)
 - **Gitea port-forward**: `kubectl port-forward -n gitea-system svc/gitea-http 3030:3000`
+- **Gitea login**: `http://localhost:3030` (havenAdmin / HavenAdmin2026)
 - **Harbor external**: `http://harbor.46.225.42.2.sslip.io` (admin/HavenHarbor2026!)
 
 ### Cluster Bileşenleri
 - 6 node RKE2 cluster (3 master, 3 worker) — Hetzner dev
 - **ArgoCD**: haven-platform, haven-api, haven-ui → Synced+Healthy
-- **Gitea**: gitea-system ns, haven/haven-gitops repo (tenant manifests için hazır ama şu an kullanılmıyor)
+- **Gitea**: gitea-system ns, haven/haven-gitops repo (tenant manifests AKTİF — her app'in values.yaml'ı burada)
 - **Harbor**: harbor-system ns, `haven` project, tenant image'ları `haven/tenant-{slug}/{app}:{tag}` altında
 - **Keycloak**: keycloak ns, haven realm, haven-api + haven-ui client'lar
 - **BuildKit**: haven-builds ns, `buildkitd` Deployment (dockerfile build + harbor push)
@@ -422,30 +430,34 @@ haven-platform/
 - **CNPG**: cnpg-system ns (platform DB: haven_platform)
 - **Percona Everest v1.13.0**: everest-system ns, 3 DB engine (PG, MySQL, MongoDB) operational
 
-### Namespace Yapısı (Deploy Sonrası)
+### Namespace Yapısı (3-Tenant Deploy Sonrası)
 ```
-everest                  → Everest-managed DB pod'ları (PG, MySQL, MongoDB)
-                           testing-app-pg-instance1-*     (PostgreSQL 17.7)
-                           testing-app-pg-pgbouncer-*     (PgBouncer proxy)
-tenant-testing           → Tenant app'leri + CRD-based servisler
-                           rotterdam-api-*                (sample FastAPI app)
-                           app-redis-0                    (Redis standalone)
-harbor-system            → Image registry (haven/tenant-testing/rotterdam-api:manual)
+everest                  → Everest-managed DB pod'ları
+                           rotterdam-app-pg-instance1-*   (PostgreSQL 17.7 + PgBouncer)
+                           amsterdam-app-mongo-rs0-0      (MongoDB 8.0.17)
+                           utrecht-app-mysql-pxc-0        (MySQL 8.4.7 + HAProxy)
+tenant-rotterdam         → rotterdam-api + app-redis-0
+tenant-amsterdam         → amsterdam-portal + app-redis-0
+tenant-utrecht           → utrecht-worker + app-rabbit-server-0
+harbor-system            → Image registry (tenant-rotterdam/amsterdam/utrecht projects)
 haven-builds             → BuildKit daemon + build job pod'ları
 ```
 
-### App Deploy Akışı (E2E DOĞRULANDI)
+### App Deploy Akışı (E2E DOĞRULANDI — 3 Tenant)
 ```
-1. POST /tenants/{slug}/apps          → App kaydı oluştur (DB)
-2. POST /apps/{slug}/build            → Build trigger (background task)
-3. BuildKit: git clone → Dockerfile build → Harbor push
-4. Deploy: Direct K8s API (Deployment + Service + HPA oluştur)
-5. Pod Running → App erişilebilir
+1. POST /tenants                      → Tenant oluştur (ns, quota, RBAC, CNP, Harbor, AppSet)
+2. POST /tenants/{slug}/apps          → App kaydı oluştur + Gitea values.yaml yaz
+3. POST /tenants/{slug}/services      → Managed service provision (Everest/CRD)
+4. POST /apps/{slug}/build            → Build trigger (background task)
+5. BuildKit: git clone → Dockerfile build → Harbor push
+6. Pipeline: Gitea values.yaml image tag güncelle → ArgoCD sync → Pod Running
+7. GET /tenants/{slug}/events         → SSE ile adım adım progress stream
 ```
-- **Deploy mode**: `direct` (K8s API ile), ArgoCD şu an tenant app'lerini yönetmiyor
-- **Gitea GitOps**: Scaffold kodu var ama aktif değil — app deploy direkt K8s API
-- **Harbor image format**: `harbor.46.225.42.2.sslip.io/haven/tenant-{slug}/{app}:{commit[:8]}`
-- **Scaling**: `PATCH /apps/{slug}` ile `replicas` güncellenebilir, redeploy gerekli
+- **Deploy mode**: GitOps (ArgoCD ApplicationSet per tenant, multi-source Helm)
+- **Gitea GitOps**: AKTİF — `tenants/{slug}/{app}/values.yaml` ArgoCD tarafından izleniyor
+- **Harbor image format**: `harbor.46.225.42.2.sslip.io/library/tenant-{slug}/{app}:{commit[:8]}`
+- **Scaling**: `PATCH /apps/{slug}` ile `replicas` güncellenebilir
+- **SSE Events**: Tenant provision/deprovision + service provision adım adım stream
 
 ### Managed Services (Sprint B+C TAMAMLANDI)
 - **5 DB tipi gerçek cluster'da E2E doğrulandı** (Playwright + curl):
@@ -460,14 +472,18 @@ haven-builds             → BuildKit daemon + build job pod'ları
 - **Credentials endpoint**: `/services/{name}/credentials` → tüm K8s secret key'lerini base64 decode edip döner
 - **Backup**: PITR disabled (default), backup_service.py CRD-based var, Everest backup API henüz entegre değil
 
-### Full E2E Doğrulama (rotterdam-api)
-Sample app: `https://github.com/NimbusProTch/rotterdam-api` (FastAPI + PG + Redis + RabbitMQ test)
+### Full E2E Doğrulama (3 Tenant — 2026-03-31)
 ```
-✅ App create → build → Harbor push → deploy → Pod Running
-✅ PG create → ready → credentials → app env vars PATCH → /health → "postgres: connected"
-✅ Redis create → ready → app env vars PATCH → /health → "redis: connected"
-✅ /db-test → "PostgreSQL 17.7 - Percona Server for PostgreSQL 17.7.1"
-✅ /redis-test → set/get working ("rotterdam")
+✅ Tenant create → namespace + quota + RBAC + CNP + Harbor + AppSet (3 tenant)
+✅ App create → Gitea values.yaml + ArgoCD Application (3 app)
+✅ Service provision → Everest PG/MySQL/MongoDB + CRD Redis/RabbitMQ (6 service, all READY)
+✅ Build trigger → BuildKit → Harbor push (3 build, all Completed)
+✅ Gitea values.yaml image update → ArgoCD sync → Pod Running (3 app Running)
+✅ Credential provisioning → svc-* secret in tenant namespace (PG/MySQL/MongoDB/Redis/RabbitMQ)
+✅ ArgoCD: 3 AppSets + 3 tenant apps + 3 platform apps = all Healthy
+✅ Gitea: tenants/rotterdam/rotterdam-api, tenants/amsterdam/amsterdam-portal, tenants/utrecht/utrecht-worker
+✅ Harbor: tenant-rotterdam, tenant-amsterdam, tenant-utrecht projects
+✅ Delete tenant → cascade apps + services + namespace + AppSet + Harbor (verified)
 ```
 
 ### GitHub OAuth
@@ -476,9 +492,9 @@ Sample app: `https://github.com/NimbusProTch/rotterdam-api` (FastAPI + PG + Redi
 - Build pipeline: tenant'ın `github_token`'ını kullanarak private repo clone yapabiliyor
 
 ### Test Durumu
-- Backend unit testleri: **644** (provisioner, connect, disconnect, health check, degraded, prefix, custom db_name, redis ephemeral, per-tenant ApplicationSet CRUD)
+- Backend unit testleri: **752** (multi-tenant E2E, all 5 DB types, SSE lifecycle events, connect/disconnect, credentials, status sync, CRD body builders, ApplicationSet CRUD, tenant deletion cascade)
 - Playwright E2E: **36 test** (5 DB lifecycle + credentials flow + env vars)
-- Full E2E lifecycle: 39/39 passed — tenant create → appset → services → app → build → deploy → scale → env → delete → cleanup (2026-03-31)
+- Real cluster E2E: 3 tenants × (app + 2 services + build + deploy + delete) — all verified
 
 ### Bilinen Sorunlar / Gotcha'lar
 - **Redis connection_hint**: OpsTree operator service adı `{name}` (NOT `{name}-redis`) → fix edildi
@@ -497,5 +513,11 @@ Sample app: `https://github.com/NimbusProTch/rotterdam-api` (FastAPI + PG + Redi
 - **Gitea tenant manifest**: scaffold_service/delete_service kaldırıldı — DB'ler GitOps ile değil direkt API ile yönetiliyor
 - **DB migration eksik**: Yeni model alanları (error_message, everest_name, db_name, db_user, credentials_provisioned) DB'ye manual ALTER TABLE ile eklendi. Alembic migration henüz yok.
 - **GITOPS_GITHUB_TOKEN**: haven-api-secrets'ta `GITOPS_GITHUB_TOKEN` varsa ve GitHub token'ı ise Gitea'ya bağlanamaz. Bu key kaldırılmalı — `GITEA_ADMIN_TOKEN` yeterli.
+- **Helm chart empty image guard**: `image.repository` boşken Deployment/Service/HPA/HTTPRoute oluşturulmamalı. `{{- if .Values.image.repository }}` guard eklendi. Aksi halde `:latest` image → InvalidImageName.
+- **MySQL/MongoDB credential provisioning**: `create_custom_database` sadece PostgreSQL destekliyor (asyncpg). MySQL/MongoDB için Everest admin secret okunup direkt tenant namespace'ine kopyalanıyor — her Everest instance zaten tenant-izole.
+- **ArgoCD auto-sync wipe protection**: Helm chart image guard sonrası tüm resources siliniyor → ArgoCD "auto-sync will wipe out all resources" uyarısı ile auto-sync engelliyor. Manuel sync gerekli.
+- **haven-api image build (ARM64 → AMD64)**: Local Mac'te build edince `exec format error`. `docker build --platform linux/amd64` zorunlu.
+- **Gitea admin password**: `must-change-password` flag'i set edilmiş olabilir. `gitea admin user change-password --must-change-password=false` ile reset gerekli. Güncel: havenAdmin / HavenAdmin2026
+- **Port-forward'lar**: haven-api svc port 80 (not 8000!), keycloak svc `keycloak-keycloakx-http` port 80
 - **CiliumNetworkPolicy everest egress**: Tenant network policy'de everest namespace'e egress gerekli (Everest DB'lere erişim). Kod'da var ama eski image ile oluşturulan policy'lerde eksik olabilir.
 - **App port**: rotterdam-api 8080 dinliyor, default 8000 değil. App oluşturulurken doğru port belirtilmeli.
