@@ -1,11 +1,14 @@
-"""Managed service provisioning: PostgreSQL, MySQL, MongoDB via Everest; Redis, RabbitMQ via K8s CRDs."""
+"""Managed service provisioning: PostgreSQL, MySQL, MongoDB via Everest; Redis, RabbitMQ via K8s CRDs.
+
+Everest databases are created in the TENANT namespace (not a shared namespace).
+This eliminates cross-namespace secret issues — secrets are always co-located with app pods.
+"""
 
 import base64
 import logging
 
 from kubernetes.client.exceptions import ApiException
 
-from app.config import settings
 from app.k8s.client import K8sClient
 from app.models.managed_service import ManagedService, ServiceStatus, ServiceTier, ServiceType
 from app.services.everest_client import EverestClient, everest_client
@@ -57,7 +60,6 @@ def _redis_body(name: str, namespace: str, tier: ServiceTier) -> dict:
         "tolerations": [{"operator": "Exists"}],
     }
     if tier == ServiceTier.PROD:
-        # Prod: persistent storage with init container for volume ownership
         spec["storage"] = {
             "keepAfterDelete": True,
             "volumeClaimTemplate": {
@@ -68,7 +70,6 @@ def _redis_body(name: str, namespace: str, tier: ServiceTier) -> dict:
                 }
             },
         }
-    # Dev: no persistent storage (ephemeral, avoids Longhorn permission issues)
     return {
         "apiVersion": "redis.redis.opstreelabs.in/v1beta2",
         "kind": "Redis",
@@ -101,17 +102,15 @@ def _rabbitmq_body(name: str, namespace: str, tier: ServiceTier) -> dict:
 # ---------------------------------------------------------------------------
 
 _SECRET_NAME_MAP = {
-    ServiceType.POSTGRES: lambda name: f"{name}-app",  # CNPG/Percona app user secret
-    ServiceType.MYSQL: lambda name: f"{name}-pxc-secrets",  # Percona XtraDB secret
-    ServiceType.MONGODB: lambda name: f"{name}-psmdb-secrets",  # Percona MongoDB secret
-    ServiceType.REDIS: lambda name: f"{name}-redis",  # OpsTree Redis secret
-    ServiceType.RABBITMQ: lambda name: f"{name}-default-user",  # RabbitMQ Operator default user
+    ServiceType.POSTGRES: lambda name: f"{name}-app",
+    ServiceType.MYSQL: lambda name: f"{name}-pxc-secrets",
+    ServiceType.MONGODB: lambda name: f"{name}-psmdb-secrets",
+    ServiceType.REDIS: lambda name: f"{name}-redis",
+    ServiceType.RABBITMQ: lambda name: f"{name}-default-user",
 }
 
-# Everest-managed DBs use a different secret naming convention
+# Everest secret naming: created in the SAME namespace as the database
 _EVEREST_SECRET_NAME = lambda name: f"everest-secrets-{name}"  # noqa: E731
-# Everest creates secrets in its own namespace, not the tenant namespace
-EVEREST_NAMESPACE = getattr(settings, "everest_namespace", "") or "everest"
 
 _CONNECTION_HINT_MAP = {
     ServiceType.POSTGRES: lambda name, ns: f"postgresql://{name}-app@{name}-rw.{ns}.svc:5432/{name.replace('-', '_')}",
@@ -223,8 +222,10 @@ _CRD_CONFIG = {
 class ManagedServiceProvisioner:
     """Creates and deletes managed service CRDs or Everest databases in tenant namespaces.
 
-    PostgreSQL, MySQL, and MongoDB are routed through Percona Everest API when available.
-    Redis and RabbitMQ always use direct K8s CRDs (OpsTree / RabbitMQ Operator).
+    Everest databases are created DIRECTLY in the tenant namespace. Secrets are
+    co-located with app pods — no cross-namespace copy needed.
+
+    Redis and RabbitMQ always use direct K8s CRDs.
     Falls back to direct CRDs if Everest is not configured or unreachable.
     """
 
@@ -258,7 +259,6 @@ class ManagedServiceProvisioner:
             service.error_message = None
             return
 
-        # Detect specific failure reasons for user-friendly messages
         error_msg = None
         for c in containers:
             if c.last_state and c.last_state.terminated:
@@ -283,15 +283,15 @@ class ManagedServiceProvisioner:
 
     # ------------------------------------------------------------------
     # Everest-based provisioning (PostgreSQL, MySQL, MongoDB)
+    # DB created in TENANT namespace — secret co-located with app pods
     # ------------------------------------------------------------------
 
     async def _everest_provision(self, service: ManagedService, tenant_namespace: str, tenant_slug: str) -> None:
-        """Provision a database via Percona Everest REST API."""
+        """Provision a database via Percona Everest REST API in the TENANT namespace."""
         engine_map = {ServiceType.POSTGRES: "postgres", ServiceType.MYSQL: "mysql", ServiceType.MONGODB: "mongodb"}
         engine_type = engine_map[service.service_type]
         tier = "dev" if service.tier == ServiceTier.DEV else "prod"
 
-        # Prefix DB name with tenant slug for namespace isolation
         everest_name = f"{tenant_slug}-{service.name}"
 
         try:
@@ -299,20 +299,18 @@ class ManagedServiceProvisioner:
                 name=everest_name,
                 engine_type=engine_type,
                 tier=tier,
+                namespace=tenant_namespace,
             )
-            logger.info("Everest DB created: %s → %s (%s)", service.name, everest_name, engine_type)
+            logger.info("Everest DB created: %s in %s (%s)", everest_name, tenant_namespace, engine_type)
         except Exception:
             logger.exception("Everest provision failed for %s — falling back to CRD", service.name)
             await self._crd_provision(service, tenant_namespace)
             return
 
-        # Store the Everest-side name for all future API calls
         service.everest_name = everest_name
-        service.service_namespace = EVEREST_NAMESPACE
+        service.service_namespace = tenant_namespace
         service.secret_name = _EVEREST_SECRET_NAME(everest_name)
-        service.connection_hint = _CONNECTION_HINT_MAP[service.service_type](
-            everest_name, EVEREST_NAMESPACE
-        )
+        service.connection_hint = _CONNECTION_HINT_MAP[service.service_type](everest_name, tenant_namespace)
         service.status = ServiceStatus.PROVISIONING
 
     async def _everest_update(
@@ -326,6 +324,7 @@ class ManagedServiceProvisioner:
     ) -> None:
         """Update a database via Everest API."""
         ev_name = service.everest_name or service.name
+        ns = service.service_namespace
         try:
             await self.everest.update_database(
                 ev_name,
@@ -333,19 +332,21 @@ class ManagedServiceProvisioner:
                 storage=storage,
                 cpu=cpu,
                 memory=memory,
+                namespace=ns,
             )
             service.status = ServiceStatus.UPDATING
             service.error_message = None
-            logger.info("Everest DB updated: %s", ev_name)
+            logger.info("Everest DB updated: %s in %s", ev_name, ns)
         except Exception:
             logger.exception("Everest update failed for %s", ev_name)
             service.error_message = "Update request failed"
 
     async def _everest_sync_status(self, service: ManagedService) -> None:
-        """Sync status from Everest API."""
+        """Sync status from Everest API using the service's own namespace."""
         ev_name = service.everest_name or service.name
+        ns = service.service_namespace
         try:
-            status = await self.everest.get_database_status(ev_name)
+            status = await self.everest.get_database_status(ev_name, namespace=ns)
         except Exception:
             logger.exception("Everest status check failed for %s", ev_name)
             return
@@ -353,14 +354,17 @@ class ManagedServiceProvisioner:
         if status == "ready":
             service.status = ServiceStatus.READY
             service.error_message = None
+            if not service.credentials_provisioned:
+                service.credentials_provisioned = True
         elif status in ("error", "failed", "not_found"):
             service.status = ServiceStatus.FAILED
 
     async def _everest_sync_details(self, service: ManagedService) -> dict | None:
         """Sync status and return runtime details for UI enrichment."""
         ev_name = service.everest_name or service.name
+        ns = service.service_namespace
         try:
-            details = await self.everest.get_database_details(ev_name)
+            details = await self.everest.get_database_details(ev_name, namespace=ns)
         except Exception:
             logger.exception("Everest details fetch failed for %s", ev_name)
             return None
@@ -369,6 +373,8 @@ class ManagedServiceProvisioner:
         if ev_status == "ready":
             service.status = ServiceStatus.READY
             service.error_message = None
+            if not service.credentials_provisioned:
+                service.credentials_provisioned = True
         elif ev_status in ("error", "failed", "not_found"):
             service.status = ServiceStatus.FAILED
             service.error_message = details.get("error_message")
@@ -378,9 +384,10 @@ class ManagedServiceProvisioner:
     async def _everest_deprovision(self, service: ManagedService) -> None:
         """Delete a database via Everest API."""
         ev_name = service.everest_name or service.name
+        ns = service.service_namespace
         try:
-            await self.everest.delete_database(ev_name)
-            logger.info("Everest DB deleted: %s", ev_name)
+            await self.everest.delete_database(ev_name, namespace=ns)
+            logger.info("Everest DB deleted: %s from %s", ev_name, ns)
         except Exception:
             logger.exception("Everest deprovision failed for %s", ev_name)
 
@@ -396,7 +403,6 @@ class ManagedServiceProvisioner:
             return
 
         cfg = _CRD_CONFIG[service.service_type]
-        # Pass custom db_name/db_user to CNPG builder
         if service.service_type == ServiceType.POSTGRES:
             body = cfg["body_fn"](service.name, tenant_namespace, service.tier, db_name=service.db_name, db_user=service.db_user)
         else:
@@ -421,7 +427,6 @@ class ManagedServiceProvisioner:
         service.secret_name = _SECRET_NAME_MAP[service.service_type](service.name)
         service.service_namespace = tenant_namespace
         service.connection_hint = _CONNECTION_HINT_MAP[service.service_type](service.name, tenant_namespace)
-        # Override connection_hint with custom db_name for CNPG
         if service.service_type == ServiceType.POSTGRES and service.db_name:
             db_user = service.db_user or (service.db_name + "_user")
             service.connection_hint = (
@@ -466,7 +471,6 @@ class ManagedServiceProvisioner:
                 service.status = ServiceStatus.READY
                 service.error_message = None
             else:
-                # OpsTree Redis operator may not populate CRD status — check pod
                 self._sync_from_pod(service, f"{service.name}-0")
         elif svc_type == ServiceType.MYSQL or svc_type == ServiceType.MONGODB:
             state = k8s_status.get("state", "")
@@ -503,132 +507,11 @@ class ManagedServiceProvisioner:
                 raise
 
     # ------------------------------------------------------------------
-    # Public API — routes to Everest or CRD based on service type
+    # CRD tenant secret helper (Redis/RabbitMQ standardized naming)
     # ------------------------------------------------------------------
 
-    async def sync_status(self, service: ManagedService) -> None:
-        """Check status and update service.status accordingly."""
-        if self._use_everest(service.service_type):
-            await self._everest_sync_status(service)
-        else:
-            await self._crd_sync_status(service)
-
-    async def sync_details(self, service: ManagedService, tenant_namespace: str = "") -> dict | None:
-        """Sync status and return runtime details dict for UI enrichment.
-
-        When an Everest DB transitions to READY for the first time, provisions
-        custom database/user and creates a credentials secret in the tenant namespace.
-        """
-        if self._use_everest(service.service_type):
-            details = await self._everest_sync_details(service)
-
-            # Post-provision: create custom user/db + tenant secret when first READY
-            if (
-                service.status == ServiceStatus.READY
-                and not service.credentials_provisioned
-                and tenant_namespace
-            ):
-                await self._provision_custom_credentials(service, tenant_namespace)
-
-            return details
-
-        # CRD path: sync status only, create standardized secret when ready
-        await self._crd_sync_status(service)
-        if (
-            service.status == ServiceStatus.READY
-            and not service.credentials_provisioned
-            and tenant_namespace
-        ):
-            await self._create_crd_tenant_secret(service, tenant_namespace)
-
-        return None
-
-    async def _provision_custom_credentials(self, service: ManagedService, tenant_namespace: str) -> None:
-        """Create tenant-namespace secret from Everest admin credentials.
-
-        PostgreSQL: connects to PG, creates custom database + user, writes tenant secret.
-        MySQL/MongoDB: reads Everest admin secret, writes directly to tenant namespace
-        (each Everest instance is already per-tenant, no custom user needed).
-        """
-        from app.services.db_provisioner import (
-            create_custom_database,
-            create_tenant_secret,
-            read_admin_credentials,
-            tenant_secret_name,
-        )
-
-        if not service.secret_name:
-            return
-
-        try:
-            target_secret = tenant_secret_name(service.name)
-
-            if service.service_type == ServiceType.POSTGRES:
-                # PG: create custom database + user via asyncpg
-                db_name = service.db_name or service.name.replace("-", "_")
-                db_user = service.db_user or db_name
-
-                credentials = await create_custom_database(
-                    k8s=self.k8s,
-                    everest_secret_name=service.secret_name,
-                    db_name=db_name,
-                    db_user=db_user,
-                )
-                service.db_name = db_name
-                service.db_user = db_user
-                db_url = credentials["DATABASE_URL"]
-                service.connection_hint = db_url.split("@")[0].rsplit(":", 1)[0] + ":***@" + db_url.split("@")[1]
-            else:
-                # MySQL/MongoDB: read Everest admin secret and copy to tenant namespace
-                admin_creds = await read_admin_credentials(self.k8s, service.secret_name)
-
-                # Build connection URL from admin credentials
-                host = admin_creds.get("host", "")
-                port = admin_creds.get("port", "")
-                user = admin_creds.get("user", admin_creds.get("username", ""))
-                password = admin_creds.get("password", "")
-                db_name = service.db_name or service.name.replace("-", "_")
-
-                if service.service_type == ServiceType.MYSQL:
-                    url = f"mysql://{user}:{password}@{host}:{port or '3306'}/{db_name}"
-                    credentials = {
-                        "DATABASE_URL": url,
-                        "MYSQL_URL": url,
-                        "DB_HOST": host,
-                        "DB_PORT": port or "3306",
-                        "DB_USER": user,
-                        "DB_PASSWORD": password,
-                        "DB_NAME": db_name,
-                    }
-                    service.connection_hint = f"mysql://{user}:***@{host}:{port or '3306'}/{db_name}"
-                else:
-                    # MongoDB
-                    url = f"mongodb://{user}:{password}@{host}:{port or '27017'}/{db_name}"
-                    credentials = {
-                        "DATABASE_URL": url,
-                        "MONGODB_URL": url,
-                        "DB_HOST": host,
-                        "DB_PORT": port or "27017",
-                        "DB_USER": user,
-                        "DB_PASSWORD": password,
-                        "DB_NAME": db_name,
-                    }
-                    service.connection_hint = f"mongodb://{user}:***@{host}:{port or '27017'}/{db_name}"
-
-                service.db_name = db_name
-
-            await create_tenant_secret(self.k8s, tenant_namespace, target_secret, credentials)
-
-            service.secret_name = target_secret
-            service.service_namespace = tenant_namespace
-            service.credentials_provisioned = True
-
-            logger.info("Custom credentials provisioned for %s → %s/%s", service.name, tenant_namespace, target_secret)
-        except Exception:
-            logger.exception("Failed to provision custom credentials for %s", service.name)
-
     async def _create_crd_tenant_secret(self, service: ManagedService, tenant_namespace: str) -> None:
-        """Create a standardized secret in tenant namespace for CRD-based services."""
+        """Create a standardized secret in tenant namespace for CRD-based services (Redis/RabbitMQ)."""
         from app.services.db_provisioner import create_tenant_secret, tenant_secret_name
 
         if not service.service_namespace:
@@ -640,12 +523,10 @@ class ManagedServiceProvisioner:
 
             creds: dict[str, str] = {}
 
-            # Redis passwordless: no source secret, just build REDIS_URL
             if service.service_type == ServiceType.REDIS:
                 host = f"{service.name}.{tenant_namespace}.svc"
                 creds["REDIS_URL"] = f"redis://{host}:6379"
             else:
-                # Read the existing CRD secret for other service types
                 if not service.secret_name:
                     return
                 source_secret = self.k8s.core_v1.read_namespaced_secret(
@@ -669,6 +550,37 @@ class ManagedServiceProvisioner:
         except Exception:
             logger.exception("Failed to create CRD tenant secret for %s", service.name)
 
+    # ------------------------------------------------------------------
+    # Public API
+    # ------------------------------------------------------------------
+
+    async def sync_status(self, service: ManagedService) -> None:
+        """Check status and update service.status accordingly."""
+        if self._use_everest(service.service_type):
+            await self._everest_sync_status(service)
+        else:
+            await self._crd_sync_status(service)
+
+    async def sync_details(self, service: ManagedService, tenant_namespace: str = "") -> dict | None:
+        """Sync status and return runtime details dict for UI enrichment.
+
+        Everest: secret is already in tenant namespace — no copy needed.
+        CRD (Redis/RabbitMQ): creates standardized svc-{name} secret when ready.
+        """
+        if self._use_everest(service.service_type):
+            return await self._everest_sync_details(service)
+
+        # CRD path: sync status, create standardized secret when ready
+        await self._crd_sync_status(service)
+        if (
+            service.status == ServiceStatus.READY
+            and not service.credentials_provisioned
+            and tenant_namespace
+        ):
+            await self._create_crd_tenant_secret(service, tenant_namespace)
+
+        return None
+
     async def provision(self, service: ManagedService, tenant_namespace: str, tenant_slug: str = "") -> None:
         """Create the database/service and populate secret_name + connection_hint."""
         slug = tenant_slug or tenant_namespace.removeprefix("tenant-")
@@ -688,7 +600,7 @@ class ManagedServiceProvisioner:
             lifecycle_bus.mark_done(bus_key, success=False, message="Provisioning failed")
         else:
             lifecycle_bus.emit(bus_key, "provision", "done",
-                              f"{service.service_type.value} {service.name} created via {engine}",
+                              f"{service.service_type.value} {service.name} created in {service.service_namespace}",
                               detail={"secret": service.secret_name, "hint": service.connection_hint})
             lifecycle_bus.emit(bus_key, "waiting", "running", "Waiting for service to become ready")
 

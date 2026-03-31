@@ -2,6 +2,9 @@
 
 Manages PostgreSQL, MySQL, and MongoDB via Everest's abstraction layer.
 Redis and RabbitMQ are NOT managed by Everest — use direct K8s CRDs for those.
+
+Databases are created in the TENANT namespace (not a shared "everest" namespace).
+Everest operator has cluster-wide scope and can manage resources in any namespace.
 """
 
 import logging
@@ -96,8 +99,8 @@ class EverestClient:
 
     # ---- Database Engines ----
 
-    async def list_engines(self) -> list[dict]:
-        data = await self._request("GET", f"/v1/namespaces/{EVEREST_NS}/database-engines")
+    async def list_engines(self, namespace: str = EVEREST_NS) -> list[dict]:
+        data = await self._request("GET", f"/v1/namespaces/{namespace}/database-engines")
         return data.get("items", [])
 
     # ---- Database Clusters (CRUD) ----
@@ -108,8 +111,9 @@ class EverestClient:
         engine_type: str,
         tier: str = "dev",
         version: str | None = None,
+        namespace: str = EVEREST_NS,
     ) -> dict:
-        """Create a database cluster via Everest API."""
+        """Create a database cluster in the given namespace via Everest API."""
         engine = ENGINE_MAP.get(engine_type.lower())
         if not engine:
             raise ValueError(f"Unsupported engine type: {engine_type}. Use: postgres, mysql, mongodb")
@@ -142,12 +146,12 @@ class EverestClient:
         if version:
             body["spec"]["engine"]["version"] = version
 
-        logger.info("Creating Everest DB: name=%s engine=%s tier=%s", name, engine, tier)
-        return await self._request("POST", f"/v1/namespaces/{EVEREST_NS}/database-clusters", json=body)
+        logger.info("Creating Everest DB: name=%s engine=%s tier=%s namespace=%s", name, engine, tier, namespace)
+        return await self._request("POST", f"/v1/namespaces/{namespace}/database-clusters", json=body)
 
-    async def get_database_details(self, name: str) -> dict:
+    async def get_database_details(self, name: str, namespace: str = EVEREST_NS) -> dict:
         """Return structured details for UI enrichment."""
-        db = await self.get_database(name)
+        db = await self.get_database(name, namespace=namespace)
         spec = db.get("spec", {})
         status = db.get("status", {})
         engine = spec.get("engine", {})
@@ -165,8 +169,8 @@ class EverestClient:
             "error_message": status.get("message"),
         }
 
-    async def get_database(self, name: str) -> dict:
-        return await self._request("GET", f"/v1/namespaces/{EVEREST_NS}/database-clusters/{name}")
+    async def get_database(self, name: str, namespace: str = EVEREST_NS) -> dict:
+        return await self._request("GET", f"/v1/namespaces/{namespace}/database-clusters/{name}")
 
     async def update_database(
         self,
@@ -176,13 +180,10 @@ class EverestClient:
         storage: str | None = None,
         cpu: str | None = None,
         memory: str | None = None,
+        namespace: str = EVEREST_NS,
     ) -> dict:
-        """Update a database cluster via Everest API (GET → modify → PUT).
-
-        Only provided fields are changed; others keep their current values.
-        Everest requires resourceVersion for optimistic concurrency.
-        """
-        current = await self.get_database(name)
+        """Update a database cluster via Everest API (GET → modify → PUT)."""
+        current = await self.get_database(name, namespace=namespace)
         spec = current["spec"]
 
         if replicas is not None:
@@ -205,37 +206,36 @@ class EverestClient:
             "spec": spec,
         }
 
-        logger.info("Updating Everest DB: name=%s", name)
-        return await self._request("PUT", f"/v1/namespaces/{EVEREST_NS}/database-clusters/{name}", json=body)
+        logger.info("Updating Everest DB: name=%s namespace=%s", name, namespace)
+        return await self._request("PUT", f"/v1/namespaces/{namespace}/database-clusters/{name}", json=body)
 
-    async def delete_database(self, name: str) -> dict:
-        logger.info("Deleting Everest DB: %s", name)
-        return await self._request("DELETE", f"/v1/namespaces/{EVEREST_NS}/database-clusters/{name}")
+    async def delete_database(self, name: str, namespace: str = EVEREST_NS) -> dict:
+        logger.info("Deleting Everest DB: %s (namespace=%s)", name, namespace)
+        return await self._request("DELETE", f"/v1/namespaces/{namespace}/database-clusters/{name}")
 
-    async def list_databases(self) -> list[dict]:
-        data = await self._request("GET", f"/v1/namespaces/{EVEREST_NS}/database-clusters")
+    async def list_databases(self, namespace: str = EVEREST_NS) -> list[dict]:
+        data = await self._request("GET", f"/v1/namespaces/{namespace}/database-clusters")
         return data.get("items", [])
 
     # ---- Status helpers ----
 
-    async def get_database_status(self, name: str) -> str:
+    async def get_database_status(self, name: str, namespace: str = EVEREST_NS) -> str:
         """Return database status: 'initializing', 'ready', 'error', etc."""
         try:
-            db = await self.get_database(name)
+            db = await self.get_database(name, namespace=namespace)
             return db.get("status", {}).get("status", "unknown")
         except httpx.HTTPStatusError as e:
             if e.response.status_code == 404:
                 return "not_found"
             raise
 
-    async def get_credentials(self, name: str) -> dict[str, str]:
+    async def get_credentials(self, name: str, namespace: str = EVEREST_NS) -> dict[str, str]:
         """Get connection credentials from Everest.
 
         Note: Everest API status doesn't include credentials directly.
-        Use K8s secret `everest-secrets-{name}` in the everest namespace instead.
-        This method returns what's available from the API (hostname, port).
+        Use K8s secret `everest-secrets-{name}` in the target namespace instead.
         """
-        db = await self.get_database(name)
+        db = await self.get_database(name, namespace=namespace)
         status = db.get("status", {})
         return {
             "hostname": status.get("hostname", ""),

@@ -85,10 +85,6 @@ _CILIUM_NETPOL_TEMPLATE: dict = {
                 ],
             },
             {
-                # Everest namespace: managed databases (PG, MySQL, MongoDB)
-                "toEndpoints": [{"matchLabels": {"io.kubernetes.pod.namespace": "everest"}}]
-            },
-            {
                 # Internet egress (world entity = external IPs, excludes cluster pods)
                 # This allows apps to reach external APIs, package registries, etc.
                 "toEntities": ["world"]

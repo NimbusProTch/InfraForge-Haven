@@ -44,7 +44,6 @@ from app.models.managed_service import ManagedService, ServiceStatus, ServiceTie
 from app.models.tenant import Tenant
 from app.models.tenant_member import TenantMember  # noqa: F401
 from app.services.managed_service import (
-    EVEREST_NAMESPACE,
     ManagedServiceProvisioner,
     _CONNECTION_HINT_MAP,
     _EVEREST_SECRET_NAME,
@@ -402,11 +401,12 @@ class TestManagedServiceProvisioning:
         data = r.json()
         assert data["service_type"] == "postgres"
         assert data["status"] == "provisioning"
-        assert data["secret_name"] == f"everest-secrets-rotterdam-app-pg"
+        assert data["secret_name"] == "everest-secrets-rotterdam-app-pg"
         mock_ev.create_database.assert_called_once_with(
             name="rotterdam-app-pg",
             engine_type="postgres",
             tier="dev",
+            namespace="tenant-rotterdam",
         )
 
     @pytest.mark.asyncio
@@ -499,6 +499,7 @@ class TestManagedServiceProvisioning:
             name="amsterdam-app-mongo",
             engine_type="mongodb",
             tier="dev",
+            namespace="tenant-amsterdam",
         )
 
     @pytest.mark.asyncio
@@ -544,6 +545,7 @@ class TestManagedServiceProvisioning:
             name="utrecht-app-mysql",
             engine_type="mysql",
             tier="dev",
+            namespace="tenant-utrecht",
         )
 
     @pytest.mark.asyncio
@@ -1237,7 +1239,7 @@ class TestTenantDeletion:
 
             await client.delete("/api/v1/tenants/amsterdam")
 
-        mock_ev.delete_database.assert_called_once_with("amsterdam-mongo-db")
+        mock_ev.delete_database.assert_called_once_with("amsterdam-mongo-db", namespace="tenant-amsterdam")
 
     @pytest.mark.asyncio
     async def test_delete_tenant_deprovisions_crd_services(self, client, db, k8s_mock):
@@ -1337,7 +1339,7 @@ class TestServiceDelete:
 
             r = await client.delete("/api/v1/tenants/amsterdam/services/del-pg")
         assert r.status_code == 204
-        mock_ev.delete_database.assert_called_once_with("amsterdam-del-pg")
+        mock_ev.delete_database.assert_called_once_with("amsterdam-del-pg", namespace="tenant-amsterdam")
 
     @pytest.mark.asyncio
     async def test_delete_nonexistent_service_returns_404(self, client, k8s_mock):

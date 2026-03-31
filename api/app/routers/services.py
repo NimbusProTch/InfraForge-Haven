@@ -16,7 +16,7 @@ from app.schemas.managed_service import (
     ServiceCredentials,
     ServiceRuntimeDetails,
 )
-from app.services.managed_service import EVEREST_NAMESPACE, ManagedServiceProvisioner
+from app.services.managed_service import ManagedServiceProvisioner
 
 _TRANSITIONAL_STATUSES = {ServiceStatus.PROVISIONING, ServiceStatus.UPDATING}
 
@@ -220,8 +220,8 @@ async def get_service_credentials(
     if not k8s.is_available() or k8s.core_v1 is None:
         raise HTTPException(status_code=503, detail="Kubernetes unavailable — cannot read credentials")
 
-    # Read K8s secret — Everest-managed DBs store secrets in the everest namespace
-    secret_namespace = svc.service_namespace or EVEREST_NAMESPACE
+    # Read K8s secret from the service's namespace (always tenant namespace now)
+    secret_namespace = svc.service_namespace
     try:
         secret = k8s.core_v1.read_namespaced_secret(name=svc.secret_name, namespace=secret_namespace)
     except Exception as exc:

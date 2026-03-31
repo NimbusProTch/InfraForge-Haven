@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.k8s.client import K8sClient
-from app.models.managed_service import ManagedService
+from app.models.managed_service import ManagedService, ServiceStatus
 
 logger = logging.getLogger(__name__)
 
@@ -17,11 +17,13 @@ _DEFAULT_APP_PORT = 8000
 
 
 async def get_service_secret_names(db: AsyncSession, tenant_id: object) -> list[str]:
-    """Return secret names of all ready/provisioning managed services for a tenant."""
+    """Return secret names of ready managed services with provisioned credentials."""
     result = await db.execute(
         select(ManagedService.secret_name).where(
             ManagedService.tenant_id == tenant_id,
             ManagedService.secret_name.isnot(None),
+            ManagedService.credentials_provisioned == True,  # noqa: E712
+            ManagedService.status == ServiceStatus.READY,
         )
     )
     return [row[0] for row in result.all()]
