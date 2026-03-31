@@ -22,6 +22,7 @@ from app.routers import (
     deployments,
     domains,
     environments,
+    events,
     gdpr,
     gitea,
     github,
@@ -133,3 +134,4 @@ app.include_router(pvcs.router, prefix=settings.api_prefix)
 app.include_router(clusters.router, prefix=settings.api_prefix)
 app.include_router(gitea.router, prefix=settings.api_prefix)
 app.include_router(queue_status.router, prefix=settings.api_prefix)
+app.include_router(events.router, prefix=settings.api_prefix)

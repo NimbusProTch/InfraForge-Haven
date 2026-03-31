@@ -9,6 +9,7 @@ from app.config import settings
 from app.k8s.client import K8sClient
 from app.models.managed_service import ManagedService, ServiceStatus, ServiceTier, ServiceType
 from app.services.everest_client import EverestClient, everest_client
+from app.services.lifecycle_events import lifecycle_bus
 
 logger = logging.getLogger(__name__)
 
@@ -670,18 +671,29 @@ class ManagedServiceProvisioner:
 
     async def provision(self, service: ManagedService, tenant_namespace: str, tenant_slug: str = "") -> None:
         """Create the database/service and populate secret_name + connection_hint."""
+        slug = tenant_slug or tenant_namespace.removeprefix("tenant-")
+        bus_key = f"service:{slug}:{service.name}"
+        engine = "Everest" if self._use_everest(service.service_type) else "CRD"
+
+        lifecycle_bus.emit(bus_key, "provision", "running",
+                          f"Creating {service.service_type.value} via {engine}",
+                          detail={"type": service.service_type.value, "tier": service.tier.value, "engine": engine})
         if self._use_everest(service.service_type):
-            slug = tenant_slug or tenant_namespace.removeprefix("tenant-")
             await self._everest_provision(service, tenant_namespace, slug)
         else:
             await self._crd_provision(service, tenant_namespace)
-        logger.info(
-            "Service %s (%s) provisioned in %s via %s",
-            service.name,
-            service.service_type,
-            tenant_namespace,
-            "Everest" if self._use_everest(service.service_type) else "CRD",
-        )
+
+        if service.status == ServiceStatus.FAILED:
+            lifecycle_bus.emit(bus_key, "provision", "failed", f"Failed to create {service.name}")
+            lifecycle_bus.mark_done(bus_key, success=False, message="Provisioning failed")
+        else:
+            lifecycle_bus.emit(bus_key, "provision", "done",
+                              f"{service.service_type.value} {service.name} created via {engine}",
+                              detail={"secret": service.secret_name, "hint": service.connection_hint})
+            lifecycle_bus.emit(bus_key, "waiting", "running", "Waiting for service to become ready")
+
+        logger.info("Service %s (%s) provisioned in %s via %s",
+                    service.name, service.service_type, tenant_namespace, engine)
 
     async def update(
         self,
@@ -702,7 +714,12 @@ class ManagedServiceProvisioner:
 
     async def deprovision(self, service: ManagedService) -> None:
         """Delete the database/service."""
+        bus_key = f"service::{service.name}"
+        engine = "Everest" if self._use_everest(service.service_type) else "CRD"
+        lifecycle_bus.emit(bus_key, "deprovision", "running", f"Deleting {service.name} via {engine}")
         if self._use_everest(service.service_type):
             await self._everest_deprovision(service)
         else:
             await self._crd_deprovision(service)
+        lifecycle_bus.emit(bus_key, "deprovision", "done", f"{service.name} deleted")
+        lifecycle_bus.mark_done(bus_key, success=True, message=f"Service {service.name} deprovisioned")

@@ -8,6 +8,7 @@ from kubernetes.client.exceptions import ApiException
 from app.config import settings
 from app.k8s.client import K8sClient
 from app.services.harbor_service import HarborService
+from app.services.lifecycle_events import lifecycle_bus
 
 logger = logging.getLogger(__name__)
 
@@ -128,14 +129,41 @@ class TenantService:
             logger.warning("K8s unavailable — skipping provisioning for tenant %s", slug)
             return
 
+        bus_key = f"tenant:{slug}"
+
+        lifecycle_bus.emit(bus_key, "namespace", "running", f"Creating namespace {namespace}")
         await self._create_namespace(namespace, slug)
+        lifecycle_bus.emit(bus_key, "namespace", "done", f"Namespace {namespace} created")
+
+        lifecycle_bus.emit(bus_key, "quota", "running", "Applying ResourceQuota")
         await self._create_resource_quota(namespace, cpu_limit, memory_limit, storage_limit, tier)
+        lifecycle_bus.emit(bus_key, "quota", "done", f"ResourceQuota applied ({cpu_limit} CPU, {memory_limit})")
+
+        lifecycle_bus.emit(bus_key, "limits", "running", "Applying LimitRange")
         await self._create_limit_range(namespace, tier)
+        lifecycle_bus.emit(bus_key, "limits", "done", "LimitRange applied")
+
+        lifecycle_bus.emit(bus_key, "network", "running", "Creating CiliumNetworkPolicy")
         await self._create_network_policy(namespace)
+        lifecycle_bus.emit(bus_key, "network", "done", "Network isolation policy created")
+
+        lifecycle_bus.emit(bus_key, "rbac", "running", "Creating RBAC roles")
         await self._create_rbac(namespace, slug)
+        lifecycle_bus.emit(bus_key, "rbac", "done", "RBAC roles created (admin, developer, viewer)")
+
+        lifecycle_bus.emit(bus_key, "harbor-secret", "running", "Creating Harbor registry secret")
         await self._create_harbor_registry_secret(namespace)
+        lifecycle_bus.emit(bus_key, "harbor-secret", "done", "Harbor pull secret created")
+
+        lifecycle_bus.emit(bus_key, "harbor-project", "running", "Provisioning Harbor project")
         await self._provision_harbor_project(slug, namespace, tier)
+        lifecycle_bus.emit(bus_key, "harbor-project", "done", f"Harbor project tenant-{slug} created")
+
+        lifecycle_bus.emit(bus_key, "appset", "running", "Creating ArgoCD ApplicationSet")
         await self._create_applicationset(slug)
+        lifecycle_bus.emit(bus_key, "appset", "done", f"ApplicationSet appset-{slug} created")
+
+        lifecycle_bus.mark_done(bus_key, success=True, message=f"Tenant {slug} provisioned")
         logger.info("Tenant %s provisioned in namespace %s (tier=%s)", slug, namespace, tier)
 
     async def deprovision(self, namespace: str, slug: str | None = None) -> None:
@@ -143,23 +171,33 @@ class TenantService:
         if not self.k8s.is_available() or self.k8s.core_v1 is None:
             return
 
-        # Delete ApplicationSet first (triggers ArgoCD to prune all tenant apps)
-        if slug:
-            await self._delete_applicationset(slug)
+        bus_key = f"tenant:{slug or namespace}"
 
+        if slug:
+            lifecycle_bus.emit(bus_key, "appset-delete", "running", f"Deleting ApplicationSet appset-{slug}")
+            await self._delete_applicationset(slug)
+            lifecycle_bus.emit(bus_key, "appset-delete", "done", "ApplicationSet deleted")
+
+        lifecycle_bus.emit(bus_key, "namespace-delete", "running", f"Deleting namespace {namespace}")
         try:
             self.k8s.core_v1.delete_namespace(namespace)
             logger.info("Namespace %s deleted", namespace)
+            lifecycle_bus.emit(bus_key, "namespace-delete", "done", f"Namespace {namespace} deleted")
         except ApiException as e:
             if e.status != 404:
                 raise
+            lifecycle_bus.emit(bus_key, "namespace-delete", "done", f"Namespace {namespace} already deleted")
 
-        # Clean up Harbor project (non-blocking — log on failure, don't abort)
         if slug:
+            lifecycle_bus.emit(bus_key, "harbor-delete", "running", "Deleting Harbor project")
             try:
                 await self.harbor.delete_project(slug)
+                lifecycle_bus.emit(bus_key, "harbor-delete", "done", "Harbor project deleted")
             except Exception as exc:
                 logger.warning("Harbor project deletion failed for tenant %s: %s", slug, exc)
+                lifecycle_bus.emit(bus_key, "harbor-delete", "failed", f"Harbor cleanup failed: {exc}")
+
+        lifecycle_bus.mark_done(bus_key, success=True, message=f"Tenant {slug or namespace} deprovisioned")
 
     # ------------------------------------------------------------------
     # Private helpers
