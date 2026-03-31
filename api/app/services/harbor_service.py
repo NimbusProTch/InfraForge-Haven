@@ -105,6 +105,10 @@ class HarborService:
                     else:
                         logger.warning("Failed to delete repository %s: %s", repo_name, del_resp.text)
 
+            # Clear session cookies before DELETE — Harbor sets a session cookie on GET
+            # which triggers CSRF token validation on subsequent mutating requests
+            client.cookies.clear()
+
             # Delete the project
             resp = await client.delete(f"/projects/{project_name}")
             if resp.status_code == 404:
@@ -145,6 +149,8 @@ class HarborService:
             # Delete existing robot with same name if any (idempotent re-create)
             await self._delete_existing_robot(client, project_name, robot_short_name)
 
+            # Clear session cookies — Harbor CSRF requires token after session cookie set
+            client.cookies.clear()
             resp = await client.post("/robots", json=payload)
             resp.raise_for_status()
             data = resp.json()
