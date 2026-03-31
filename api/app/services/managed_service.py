@@ -543,10 +543,16 @@ class ManagedServiceProvisioner:
         return None
 
     async def _provision_custom_credentials(self, service: ManagedService, tenant_namespace: str) -> None:
-        """Create custom DB user/database and a secret in the tenant namespace."""
+        """Create tenant-namespace secret from Everest admin credentials.
+
+        PostgreSQL: connects to PG, creates custom database + user, writes tenant secret.
+        MySQL/MongoDB: reads Everest admin secret, writes directly to tenant namespace
+        (each Everest instance is already per-tenant, no custom user needed).
+        """
         from app.services.db_provisioner import (
             create_custom_database,
             create_tenant_secret,
+            read_admin_credentials,
             tenant_secret_name,
         )
 
@@ -554,26 +560,66 @@ class ManagedServiceProvisioner:
             return
 
         try:
-            db_name = service.db_name or service.name.replace("-", "_")
-            db_user = service.db_user or db_name
-
-            credentials = await create_custom_database(
-                k8s=self.k8s,
-                everest_secret_name=service.secret_name,
-                db_name=db_name,
-                db_user=db_user,
-            )
-
             target_secret = tenant_secret_name(service.name)
+
+            if service.service_type == ServiceType.POSTGRES:
+                # PG: create custom database + user via asyncpg
+                db_name = service.db_name or service.name.replace("-", "_")
+                db_user = service.db_user or db_name
+
+                credentials = await create_custom_database(
+                    k8s=self.k8s,
+                    everest_secret_name=service.secret_name,
+                    db_name=db_name,
+                    db_user=db_user,
+                )
+                service.db_name = db_name
+                service.db_user = db_user
+                db_url = credentials["DATABASE_URL"]
+                service.connection_hint = db_url.split("@")[0].rsplit(":", 1)[0] + ":***@" + db_url.split("@")[1]
+            else:
+                # MySQL/MongoDB: read Everest admin secret and copy to tenant namespace
+                admin_creds = await read_admin_credentials(self.k8s, service.secret_name)
+
+                # Build connection URL from admin credentials
+                host = admin_creds.get("host", "")
+                port = admin_creds.get("port", "")
+                user = admin_creds.get("user", admin_creds.get("username", ""))
+                password = admin_creds.get("password", "")
+                db_name = service.db_name or service.name.replace("-", "_")
+
+                if service.service_type == ServiceType.MYSQL:
+                    url = f"mysql://{user}:{password}@{host}:{port or '3306'}/{db_name}"
+                    credentials = {
+                        "DATABASE_URL": url,
+                        "MYSQL_URL": url,
+                        "DB_HOST": host,
+                        "DB_PORT": port or "3306",
+                        "DB_USER": user,
+                        "DB_PASSWORD": password,
+                        "DB_NAME": db_name,
+                    }
+                    service.connection_hint = f"mysql://{user}:***@{host}:{port or '3306'}/{db_name}"
+                else:
+                    # MongoDB
+                    url = f"mongodb://{user}:{password}@{host}:{port or '27017'}/{db_name}"
+                    credentials = {
+                        "DATABASE_URL": url,
+                        "MONGODB_URL": url,
+                        "DB_HOST": host,
+                        "DB_PORT": port or "27017",
+                        "DB_USER": user,
+                        "DB_PASSWORD": password,
+                        "DB_NAME": db_name,
+                    }
+                    service.connection_hint = f"mongodb://{user}:***@{host}:{port or '27017'}/{db_name}"
+
+                service.db_name = db_name
+
             await create_tenant_secret(self.k8s, tenant_namespace, target_secret, credentials)
 
-            # Update service to point to the tenant namespace secret
             service.secret_name = target_secret
             service.service_namespace = tenant_namespace
-            service.db_name = db_name
-            service.db_user = db_user
-            db_url = credentials["DATABASE_URL"]
-            service.connection_hint = db_url.split("@")[0].rsplit(":", 1)[0] + ":***@" + db_url.split("@")[1]
             service.credentials_provisioned = True
 
             logger.info("Custom credentials provisioned for %s → %s/%s", service.name, tenant_namespace, target_secret)
