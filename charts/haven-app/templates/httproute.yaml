@@ -1,4 +1,4 @@
-{{- if .Values.httproute.enabled }}
+{{- if and .Values.httproute.enabled .Values.image.repository }}
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
