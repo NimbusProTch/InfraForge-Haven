@@ -207,6 +207,8 @@ class TenantService:
                 labels={
                     "haven.io/tenant": slug,
                     "haven.io/managed": "true",
+                    # Everest: allows Percona Everest to manage databases in this namespace
+                    "app.kubernetes.io/managed-by": "everest",
                     # Pod Security Admission: baseline allows user apps that may not
                     # have full restricted securityContext (no hostPid/hostNet/privilege)
                     "pod-security.kubernetes.io/enforce": "baseline",
