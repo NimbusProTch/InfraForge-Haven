@@ -78,11 +78,9 @@ async def create_custom_database(
     admin_user = admin_creds.get("user", "postgres")
     admin_password = admin_creds.get("password", "")
 
-    # Use HA service endpoint for reliable connections
-    # Everest provides: {name}-primary (headless) and {name}-ha (ClusterIP)
-    # Replace -primary with -ha for stable DNS
-    if admin_host.endswith("-primary.everest.svc"):
-        admin_host = admin_host.replace("-primary.everest.svc", "-ha.everest.svc")
+    # Keep primary endpoint for admin operations (DDL, user creation).
+    # Primary connects directly to PostgreSQL (no PgBouncer), so custom users work.
+    # The returned credentials use the HA endpoint for app connections.
 
     if not db_user:
         db_user = db_name or "app"
@@ -150,11 +148,19 @@ async def create_custom_database(
     finally:
         await conn.close()
 
-    database_url = f"postgresql://{db_user}:{db_password}@{admin_host}:{admin_port}/{db_name or 'postgres'}"
+    # For app connections, prefer HA endpoint (ClusterIP, stable) over primary (headless).
+    # Primary is used only for admin DDL operations above.
+    app_host = admin_host
+    if "-primary." in admin_host:
+        app_host = admin_host.replace("-primary.", "-ha.")
+
+    from urllib.parse import quote as urlquote
+
+    database_url = f"postgresql://{db_user}:{urlquote(db_password, safe='')}@{app_host}:{admin_port}/{db_name or 'postgres'}"
 
     return {
         "DATABASE_URL": database_url,
-        "DB_HOST": admin_host,
+        "DB_HOST": app_host,
         "DB_PORT": str(admin_port),
         "DB_USER": db_user,
         "DB_PASSWORD": db_password,

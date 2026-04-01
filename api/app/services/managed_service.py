@@ -524,6 +524,7 @@ class ManagedServiceProvisioner:
         copying admin secrets directly.
         """
         from app.services.db_provisioner import (
+            create_custom_database,
             create_custom_mongodb_database,
             create_custom_mysql_database,
             create_tenant_secret,
@@ -538,21 +539,26 @@ class ManagedServiceProvisioner:
 
         try:
             if service.service_type == ServiceType.POSTGRES:
-                # Everest PgBouncer only allows admin user in its userlist.
-                # Copy admin creds to tenant namespace instead of creating custom user.
-                # Custom user approach deferred to Phase 2 (requires PgBouncer userlist update).
-                admin_creds = await read_admin_credentials(self.k8s, admin_secret)
-                admin_host = admin_creds.get("host", "")
-                admin_port = admin_creds.get("port", "5432")
-                pg_pass = admin_creds.get("password", "")
-                creds = {
-                    "DATABASE_URL": f"postgresql://postgres:{urlquote(pg_pass, safe='')}@{admin_host}:{admin_port}/postgres",
-                    "DB_HOST": admin_host,
-                    "DB_PORT": admin_port,
-                    "DB_USER": admin_creds.get("user", "postgres"),
-                    "DB_PASSWORD": pg_pass,
-                    "DB_NAME": "postgres",
-                }
+                # Create custom user/db via primary endpoint (bypasses PgBouncer).
+                # App connections use HA endpoint (returned in creds).
+                try:
+                    creds = await create_custom_database(
+                        self.k8s, admin_secret, db_name=db_name, db_user=db_user,
+                    )
+                except Exception:
+                    logger.warning("PG custom user failed for %s — copying admin creds", service.name)
+                    admin_creds = await read_admin_credentials(self.k8s, admin_secret)
+                    admin_host = admin_creds.get("host", "")
+                    admin_port = admin_creds.get("port", "5432")
+                    pg_pass = admin_creds.get("password", "")
+                    creds = {
+                        "DATABASE_URL": f"postgresql://postgres:{urlquote(pg_pass, safe='')}@{admin_host}:{admin_port}/postgres",
+                        "DB_HOST": admin_host,
+                        "DB_PORT": admin_port,
+                        "DB_USER": admin_creds.get("user", "postgres"),
+                        "DB_PASSWORD": pg_pass,
+                        "DB_NAME": "postgres",
+                    }
             elif service.service_type == ServiceType.MYSQL:
                 # Try custom user; fall back to admin creds copy if connection fails.
                 # Everest MySQL secret keys: root (password only), no host/port.
