@@ -15,7 +15,13 @@ class TenantCreate(BaseModel):
     @field_validator("slug")
     @classmethod
     def slug_no_reserved(cls, v: str) -> str:
-        reserved = {"default", "kube-system", "kube-public", "kube-node-lease", "haven-system"}
+        reserved = {
+            "default", "kube-system", "kube-public", "kube-node-lease",
+            "haven-system", "haven-builds", "argocd", "everest", "everest-system",
+            "monitoring", "harbor-system", "gitea-system", "cnpg-system",
+            "redis-system", "rabbitmq-system", "minio-system", "keycloak",
+            "cert-manager", "ingress-nginx", "longhorn-system",
+        }
         if v in reserved:
             raise ValueError(f"Slug '{v}' is reserved")
         return v

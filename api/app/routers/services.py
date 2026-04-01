@@ -177,7 +177,10 @@ async def update_service(
         raise HTTPException(status_code=422, detail="No update fields provided")
 
     provisioner = ManagedServiceProvisioner(k8s)
-    await provisioner.update(svc, **update_fields)
+    try:
+        await provisioner.update(svc, **update_fields)
+    except NotImplementedError as exc:
+        raise HTTPException(status_code=501, detail=str(exc)) from exc
 
     await db.commit()
     await db.refresh(svc)
@@ -199,11 +202,63 @@ async def delete_service(
     if svc is None:
         raise HTTPException(status_code=404, detail="Service not found")
 
+    # Clean up app connections referencing this service
+    apps_result = await db.execute(
+        select(Application).where(Application.tenant_id == tenant.id)
+    )
+    for app_obj in apps_result.scalars():
+        if app_obj.env_from_secrets and any(e.get("service_name") == svc.name for e in app_obj.env_from_secrets):
+            app_obj.env_from_secrets = [e for e in app_obj.env_from_secrets if e.get("service_name") != svc.name]
+            # Clean up injected env vars (DATABASE_URL, MYSQL_URL, etc.)
+            if app_obj.env_vars:
+                for key in list(app_obj.env_vars.keys()):
+                    if app_obj.env_vars[key] == svc.connection_hint:
+                        del app_obj.env_vars[key]
+
+    # Delete tenant-namespace secret (svc-{name})
+    from app.services.db_provisioner import delete_tenant_secret, tenant_secret_name
+
+    if svc.credentials_provisioned and tenant.namespace:
+        await delete_tenant_secret(k8s, tenant.namespace, tenant_secret_name(svc.name))
+
+    # Deprovision K8s/Everest resources
     provisioner = ManagedServiceProvisioner(k8s)
     await provisioner.deprovision(svc)
 
     await db.delete(svc)
     await db.commit()
+
+
+@router.post("/{service_name}/retry", response_model=ManagedServiceResponse)
+async def retry_service(
+    tenant_slug: str, service_name: str, db: DBSession, k8s: K8sDep, current_user: CurrentUser
+) -> ManagedService:
+    """Retry provisioning a failed service."""
+    tenant = await _get_tenant_or_404(tenant_slug, db)
+    result = await db.execute(
+        select(ManagedService).where(
+            ManagedService.tenant_id == tenant.id,
+            ManagedService.name == service_name,
+        )
+    )
+    svc = result.scalar_one_or_none()
+    if svc is None:
+        raise HTTPException(status_code=404, detail="Service not found")
+    if svc.status != ServiceStatus.FAILED:
+        raise HTTPException(status_code=409, detail=f"Only failed services can be retried (current: {svc.status})")
+
+    # Reset state for re-provisioning
+    svc.status = ServiceStatus.PROVISIONING
+    svc.error_message = None
+    svc.credentials_provisioned = False
+
+    # Re-provision
+    provisioner = ManagedServiceProvisioner(k8s)
+    await provisioner.provision(svc, tenant.namespace, tenant_slug=tenant.slug)
+
+    await db.commit()
+    await db.refresh(svc)
+    return svc
 
 
 @router.get("/{service_name}/credentials", response_model=ServiceCredentials)

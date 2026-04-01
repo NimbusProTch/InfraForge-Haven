@@ -782,6 +782,7 @@ class TestServiceConnectDisconnect:
             result = await db.execute(select(ManagedService).where(ManagedService.name == "main-pg"))
             svc = result.scalar_one()
             svc.status = ServiceStatus.READY
+            svc.credentials_provisioned = True
             svc.secret_name = "main-pg-app"
             svc.service_namespace = "tenant-rotterdam"
             svc.connection_hint = "postgresql://main_pg_user@main-pg-rw.tenant-rotterdam.svc:5432/main_pg"
@@ -817,6 +818,7 @@ class TestServiceConnectDisconnect:
             result = await db.execute(select(ManagedService).where(ManagedService.name == "app-cache"))
             svc = result.scalar_one()
             svc.status = ServiceStatus.READY
+            svc.credentials_provisioned = True
             svc.secret_name = "app-cache-redis"
             svc.service_namespace = "tenant-rotterdam"
             svc.connection_hint = "redis://app-cache.tenant-rotterdam.svc:6379"
@@ -850,6 +852,7 @@ class TestServiceConnectDisconnect:
             result = await db.execute(select(ManagedService).where(ManagedService.name == "app-mq"))
             svc = result.scalar_one()
             svc.status = ServiceStatus.READY
+            svc.credentials_provisioned = True
             svc.secret_name = "app-mq-default-user"
             svc.service_namespace = "tenant-utrecht"
             svc.connection_hint = "amqp://app-mq-default-user@app-mq.tenant-utrecht.svc:5672"
@@ -904,6 +907,7 @@ class TestServiceConnectDisconnect:
             result = await db.execute(select(ManagedService).where(ManagedService.name == "my-pg"))
             svc = result.scalar_one()
             svc.status = ServiceStatus.READY
+            svc.credentials_provisioned = True
             svc.secret_name = "my-pg-app"
             svc.service_namespace = "tenant-rotterdam"
             svc.connection_hint = "postgresql://user@my-pg-rw.tenant-rotterdam.svc:5432/my_pg"
@@ -1118,6 +1122,7 @@ class TestServiceCredentials:
             result = await db.execute(select(ManagedService).where(ManagedService.name == "cred-pg"))
             svc = result.scalar_one()
             svc.status = ServiceStatus.READY
+            svc.credentials_provisioned = True
             svc.secret_name = "cred-pg-app"
             svc.service_namespace = "tenant-rotterdam"
             svc.connection_hint = "postgresql://user@host:5432/db"
@@ -1714,6 +1719,7 @@ class TestFullIntegrationScenario:
             all_svcs = await db.execute(select(ManagedService))
             for svc in all_svcs.scalars():
                 svc.status = ServiceStatus.READY
+                svc.credentials_provisioned = True
                 svc.secret_name = svc.secret_name or f"{svc.name}-secret"
                 svc.service_namespace = svc.service_namespace or f"tenant-{ROTTERDAM['slug']}"
                 svc.connection_hint = svc.connection_hint or f"test://{svc.name}"
