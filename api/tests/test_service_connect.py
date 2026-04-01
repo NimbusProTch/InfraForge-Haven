@@ -387,6 +387,117 @@ async def test_connect_mongodb_injects_mongodb_url_and_database_url(async_client
     assert env_vars["DATABASE_URL"] == svc.connection_hint
 
 
+# ---------------------------------------------------------------------------
+# Service retry endpoint
+# ---------------------------------------------------------------------------
+
+
+async def test_retry_failed_service(async_client: AsyncClient, db_session: AsyncSession):
+    """POST /services/{name}/retry must reset FAILED and re-provision."""
+    from unittest.mock import patch, AsyncMock
+
+    tenant = Tenant(
+        id=uuid.uuid4(), slug="retry-tenant", name="Retry", namespace="tenant-retry-tenant",
+        keycloak_realm="retry-tenant", cpu_limit="4", memory_limit="8Gi", storage_limit="50Gi",
+    )
+    db_session.add(tenant)
+    svc = ManagedService(
+        id=uuid.uuid4(), tenant_id=tenant.id, name="fail-pg", service_type=ServiceType.POSTGRES,
+        tier=ServiceTier.DEV, status=ServiceStatus.FAILED, error_message="Timed out",
+    )
+    db_session.add(svc)
+    await db_session.commit()
+
+    with patch("app.routers.services.ManagedServiceProvisioner") as MockProv:
+        MockProv.return_value.provision = AsyncMock()
+        resp = await async_client.post(f"/api/v1/tenants/{tenant.slug}/services/{svc.name}/retry")
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["status"] == "provisioning"
+    assert data["error_message"] is None
+
+
+async def test_retry_non_failed_returns_409(async_client: AsyncClient, tenant_app_service):
+    """Retry on a READY service must return 409."""
+    tenant, _, svc = tenant_app_service
+    resp = await async_client.post(f"/api/v1/tenants/{tenant.slug}/services/{svc.name}/retry")
+    assert resp.status_code == 409
+
+
+async def test_retry_nonexistent_returns_404(async_client: AsyncClient, tenant_app_service):
+    """Retry on nonexistent service must return 404."""
+    tenant, _, _ = tenant_app_service
+    resp = await async_client.post(f"/api/v1/tenants/{tenant.slug}/services/no-such-svc/retry")
+    assert resp.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Service delete → app cleanup
+# ---------------------------------------------------------------------------
+
+
+async def test_delete_service_cleans_app_env_from_secrets(async_client: AsyncClient, db_session: AsyncSession):
+    """Deleting a service must remove it from connected apps' env_from_secrets."""
+    tenant = Tenant(
+        id=uuid.uuid4(), slug="del-tenant", name="Del", namespace="tenant-del-tenant",
+        keycloak_realm="del-tenant", cpu_limit="4", memory_limit="8Gi", storage_limit="50Gi",
+    )
+    db_session.add(tenant)
+
+    app_obj = Application(
+        id=uuid.uuid4(), tenant_id=tenant.id, slug="del-app", name="Del App",
+        repo_url="https://github.com/org/repo", branch="main",
+        env_from_secrets=[{"service_name": "del-pg", "secret_name": "svc-del-pg", "namespace": "tenant-del-tenant"}],
+        env_vars={"DATABASE_URL": "postgresql://..."},
+    )
+    db_session.add(app_obj)
+
+    svc = ManagedService(
+        id=uuid.uuid4(), tenant_id=tenant.id, name="del-pg", service_type=ServiceType.POSTGRES,
+        tier=ServiceTier.DEV, status=ServiceStatus.READY, credentials_provisioned=True,
+        secret_name="svc-del-pg", service_namespace="tenant-del-tenant",
+        connection_hint="postgresql://...",
+    )
+    db_session.add(svc)
+    await db_session.commit()
+
+    resp = await async_client.delete(f"/api/v1/tenants/{tenant.slug}/services/{svc.name}")
+    assert resp.status_code == 204
+
+    # Verify app's env_from_secrets is cleaned
+    await db_session.refresh(app_obj)
+    assert app_obj.env_from_secrets == []
+
+
+async def test_connect_service_rejected_without_credentials(async_client: AsyncClient, db_session: AsyncSession):
+    """connect-service must reject if credentials_provisioned is False."""
+    tenant = Tenant(
+        id=uuid.uuid4(), slug="race-tenant", name="Race", namespace="tenant-race-tenant",
+        keycloak_realm="race-tenant", cpu_limit="4", memory_limit="8Gi", storage_limit="50Gi",
+    )
+    db_session.add(tenant)
+    app_obj = Application(
+        id=uuid.uuid4(), tenant_id=tenant.id, slug="race-app", name="Race App",
+        repo_url="https://github.com/org/repo", branch="main",
+    )
+    db_session.add(app_obj)
+    svc = ManagedService(
+        id=uuid.uuid4(), tenant_id=tenant.id, name="race-pg", service_type=ServiceType.POSTGRES,
+        tier=ServiceTier.DEV, status=ServiceStatus.READY, credentials_provisioned=False,
+        secret_name="svc-race-pg", service_namespace="tenant-race-tenant",
+    )
+    db_session.add(svc)
+    await db_session.commit()
+
+    resp = await async_client.post(
+        f"/api/v1/tenants/{tenant.slug}/apps/{app_obj.slug}/connect-service",
+        json={"service_name": svc.name},
+    )
+    assert resp.status_code == 409
+    assert "credentials are being provisioned" in resp.json()["detail"]
+
+
 async def test_disconnect_mysql_removes_both_urls(async_client: AsyncClient, mysql_service):
     """Disconnect MySQL must remove both MYSQL_URL and DATABASE_URL."""
     tenant, app_obj, svc = mysql_service

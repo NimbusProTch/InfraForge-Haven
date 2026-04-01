@@ -95,8 +95,10 @@ async def _credential_provisioning_tick(session_factory: "async_sessionmaker") -
                     continue
 
                 # Timeout: if stuck in PROVISIONING/UPDATING for too long → FAILED
+                # Use updated_at for UPDATING (reflects when status changed), created_at for PROVISIONING
                 if svc.status in (ServiceStatus.PROVISIONING, ServiceStatus.UPDATING):
-                    age = now - svc.created_at.replace(tzinfo=timezone.utc) if svc.created_at.tzinfo is None else now - svc.created_at
+                    ref_time = svc.updated_at if svc.status == ServiceStatus.UPDATING else svc.created_at
+                    age = now - ref_time.replace(tzinfo=timezone.utc) if ref_time.tzinfo is None else now - ref_time
                     if age > SERVICE_PROVISION_TIMEOUT:
                         svc.status = ServiceStatus.FAILED
                         svc.error_message = f"Service timed out after {int(age.total_seconds() // 60)} minutes"
