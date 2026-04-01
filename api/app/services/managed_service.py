@@ -12,6 +12,8 @@ from kubernetes.client.exceptions import ApiException
 
 from app.k8s.client import K8sClient
 from app.models.managed_service import ManagedService, ServiceStatus, ServiceTier, ServiceType
+from urllib.parse import quote as urlquote
+
 from app.services.everest_client import EVEREST_NS, EverestClient, everest_client
 from app.services.lifecycle_events import lifecycle_bus
 
@@ -536,12 +538,13 @@ class ManagedServiceProvisioner:
                 admin_creds = await read_admin_credentials(self.k8s, admin_secret)
                 admin_host = admin_creds.get("host", "")
                 admin_port = admin_creds.get("port", "5432")
+                pg_pass = admin_creds.get("password", "")
                 creds = {
-                    "DATABASE_URL": f"postgresql://postgres:{admin_creds.get('password', '')}@{admin_host}:{admin_port}/postgres",
+                    "DATABASE_URL": f"postgresql://postgres:{urlquote(pg_pass, safe='')}@{admin_host}:{admin_port}/postgres",
                     "DB_HOST": admin_host,
                     "DB_PORT": admin_port,
                     "DB_USER": admin_creds.get("user", "postgres"),
-                    "DB_PASSWORD": admin_creds.get("password", ""),
+                    "DB_PASSWORD": pg_pass,
                     "DB_NAME": "postgres",
                 }
             elif service.service_type == ServiceType.MYSQL:
@@ -558,7 +561,7 @@ class ManagedServiceProvisioner:
                     mysql_host = f"{everest_name}-haproxy.everest.svc"
                     mysql_pass = raw.get("root", "")
                     creds = {
-                        "DATABASE_URL": f"mysql://root:{mysql_pass}@{mysql_host}:3306/mysql",
+                        "DATABASE_URL": f"mysql://root:{urlquote(mysql_pass, safe='')}@{mysql_host}:3306/mysql",
                         "DB_HOST": mysql_host,
                         "DB_PORT": "3306",
                         "DB_USER": "root",
@@ -580,7 +583,7 @@ class ManagedServiceProvisioner:
                     mongo_user = raw.get("MONGODB_DATABASE_ADMIN_USER", "databaseAdmin")
                     mongo_pass = raw.get("MONGODB_DATABASE_ADMIN_PASSWORD", "")
                     creds = {
-                        "DATABASE_URL": f"mongodb://{mongo_user}:{mongo_pass}@{mongo_host}:27017/admin?authSource=admin",
+                        "DATABASE_URL": f"mongodb://{urlquote(mongo_user, safe='')}:{urlquote(mongo_pass, safe='')}@{mongo_host}:27017/admin?authSource=admin",
                         "DB_HOST": mongo_host,
                         "DB_PORT": "27017",
                         "DB_USER": mongo_user,
