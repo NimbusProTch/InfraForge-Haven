@@ -308,6 +308,12 @@ class ManagedServiceProvisioner:
             logger.info("Everest DB created: %s in %s (%s)", everest_name, EVEREST_NS, engine_type)
         except Exception:
             logger.exception("Everest provision failed for %s — falling back to CRD", service.name)
+            slug = tenant_slug or tenant_namespace.removeprefix("tenant-")
+            lifecycle_bus.emit(
+                f"service:{slug}:{service.name}", "provision", "warning",
+                "Everest unavailable — provisioning via direct CRD (reduced features)",
+            )
+            service.error_message = "Provisioned via CRD fallback (Everest unavailable)"
             await self._crd_provision(service, tenant_namespace)
             return
 
