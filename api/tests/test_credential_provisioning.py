@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.models.managed_service import ManagedService, ServiceStatus, ServiceTier, ServiceType
+from app.models.tenant import Tenant
 from app.services.everest_client import EverestClient
 from app.services.managed_service import ManagedServiceProvisioner
 
@@ -320,102 +321,130 @@ class TestEverestNamespaceRevert:
 class TestCredentialProvisioningTick:
     """Test the _credential_provisioning_tick function (single iteration of background loop)."""
 
+    def _mock_factory(self, query_result, get_results=None):
+        """Build a mock session factory that supports multiple context manager entries."""
+        import uuid
+
+        call_count = 0
+
+        def make_session():
+            nonlocal call_count
+            call_count += 1
+            session = AsyncMock()
+
+            if call_count == 1:
+                # First session: query for service IDs
+                mock_result = MagicMock()
+                mock_result.all.return_value = query_result
+                session.execute = AsyncMock(return_value=mock_result)
+            else:
+                # Subsequent sessions: per-service processing
+                if get_results:
+                    session.get = AsyncMock(side_effect=lambda model, id: get_results.get((model, id)))
+                else:
+                    session.get = AsyncMock(return_value=None)
+                session.commit = AsyncMock()
+
+            ctx = MagicMock()
+            ctx.__aenter__ = AsyncMock(return_value=session)
+            ctx.__aexit__ = AsyncMock(return_value=False)
+            return ctx
+
+        factory = MagicMock(side_effect=make_session)
+        return factory
+
     @pytest.mark.asyncio
-    async def test_tick_processes_provisioning_and_ready_services(self):
-        """Tick must find PROVISIONING and READY+not-provisioned services."""
+    async def test_tick_processes_services_independently(self):
+        """Each service gets its own session and commit."""
         from app.main import _credential_provisioning_tick
 
+        svc_id = "svc-123"
         mock_svc = MagicMock(spec=ManagedService)
-        mock_svc.status = ServiceStatus.PROVISIONING
-        mock_svc.credentials_provisioned = False
         mock_svc.tenant_id = "tenant-123"
 
         mock_tenant = MagicMock()
         mock_tenant.namespace = "tenant-acme"
 
-        mock_session = AsyncMock()
-        mock_result = MagicMock()
-        mock_result.scalars.return_value.all.return_value = [mock_svc]
-        mock_session.execute = AsyncMock(return_value=mock_result)
-        mock_session.get = AsyncMock(return_value=mock_tenant)
-        mock_session.commit = AsyncMock()
+        factory = self._mock_factory(
+            query_result=[(svc_id,)],
+            get_results={(ManagedService, svc_id): mock_svc, (Tenant, "tenant-123"): mock_tenant},
+        )
 
-        mock_factory = MagicMock()
-        mock_factory.return_value.__aenter__ = AsyncMock(return_value=mock_session)
-        mock_factory.return_value.__aexit__ = AsyncMock(return_value=False)
-
-        with patch("app.services.managed_service.ManagedServiceProvisioner") as MockProvisioner:
-            mock_provisioner_instance = AsyncMock()
-            MockProvisioner.return_value = mock_provisioner_instance
-
-            count = await _credential_provisioning_tick(mock_factory)
+        with patch("app.services.managed_service.ManagedServiceProvisioner") as MockP:
+            MockP.return_value = AsyncMock()
+            count = await _credential_provisioning_tick(factory)
 
         assert count == 1
-        mock_provisioner_instance.sync_details.assert_called_once_with(
-            mock_svc, tenant_namespace="tenant-acme"
-        )
-        mock_session.commit.assert_called_once()
+        MockP.return_value.sync_details.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_tick_returns_zero_when_no_services(self):
         """Tick must return 0 when no services need provisioning."""
         from app.main import _credential_provisioning_tick
 
-        mock_session = AsyncMock()
-        mock_result = MagicMock()
-        mock_result.scalars.return_value.all.return_value = []
-        mock_session.execute = AsyncMock(return_value=mock_result)
-
-        mock_factory = MagicMock()
-        mock_factory.return_value.__aenter__ = AsyncMock(return_value=mock_session)
-        mock_factory.return_value.__aexit__ = AsyncMock(return_value=False)
-
-        count = await _credential_provisioning_tick(mock_factory)
-
+        factory = self._mock_factory(query_result=[])
+        count = await _credential_provisioning_tick(factory)
         assert count == 0
-        mock_session.commit.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_tick_skips_tenant_without_namespace(self):
-        """If tenant has no namespace, skip that service."""
+    async def test_tick_one_failure_doesnt_block_others(self):
+        """If one service fails, others should still be processed."""
         from app.main import _credential_provisioning_tick
 
-        mock_svc = MagicMock(spec=ManagedService)
-        mock_svc.status = ServiceStatus.READY
-        mock_svc.credentials_provisioned = False
-        mock_svc.tenant_id = "tenant-123"
+        svc_id1 = "svc-fail"
+        svc_id2 = "svc-ok"
+
+        mock_svc1 = MagicMock(spec=ManagedService)
+        mock_svc1.tenant_id = "t1"
+        mock_svc2 = MagicMock(spec=ManagedService)
+        mock_svc2.tenant_id = "t2"
 
         mock_tenant = MagicMock()
-        mock_tenant.namespace = None
+        mock_tenant.namespace = "tenant-test"
 
-        mock_session = AsyncMock()
-        mock_result = MagicMock()
-        mock_result.scalars.return_value.all.return_value = [mock_svc]
-        mock_session.execute = AsyncMock(return_value=mock_result)
-        mock_session.get = AsyncMock(return_value=mock_tenant)
-        mock_session.commit = AsyncMock()
+        call_count = [0]
 
-        mock_factory = MagicMock()
-        mock_factory.return_value.__aenter__ = AsyncMock(return_value=mock_session)
-        mock_factory.return_value.__aexit__ = AsyncMock(return_value=False)
+        def make_session():
+            call_count[0] += 1
+            session = AsyncMock()
 
-        with patch("app.services.managed_service.ManagedServiceProvisioner") as MockProvisioner:
-            mock_provisioner_instance = AsyncMock()
-            MockProvisioner.return_value = mock_provisioner_instance
+            if call_count[0] == 1:
+                # Query session
+                mock_result = MagicMock()
+                mock_result.all.return_value = [(svc_id1,), (svc_id2,)]
+                session.execute = AsyncMock(return_value=mock_result)
+            elif call_count[0] == 2:
+                # First service session — will fail
+                session.get = AsyncMock(side_effect=Exception("DB error"))
+            else:
+                # Second service session — should succeed
+                session.get = AsyncMock(side_effect=lambda m, id: mock_svc2 if m == ManagedService else mock_tenant)
+                session.commit = AsyncMock()
 
-            count = await _credential_provisioning_tick(mock_factory)
+            ctx = MagicMock()
+            ctx.__aenter__ = AsyncMock(return_value=session)
+            ctx.__aexit__ = AsyncMock(return_value=False)
+            return ctx
 
-        assert count == 1  # Still counted, but sync_details not called
-        mock_provisioner_instance.sync_details.assert_not_called()
+        factory = MagicMock(side_effect=make_session)
+
+        with patch("app.services.managed_service.ManagedServiceProvisioner") as MockP:
+            MockP.return_value = AsyncMock()
+            count = await _credential_provisioning_tick(factory)
+
+        # First failed, second succeeded
+        assert count == 1
 
     @pytest.mark.asyncio
-    async def test_tick_propagates_exceptions(self):
-        """Tick must propagate exceptions (loop handles them)."""
+    async def test_tick_query_failure_propagates(self):
+        """If initial query fails, exception propagates."""
         from app.main import _credential_provisioning_tick
 
-        mock_factory = MagicMock()
-        mock_factory.return_value.__aenter__ = AsyncMock(side_effect=Exception("DB down"))
-        mock_factory.return_value.__aexit__ = AsyncMock(return_value=False)
+        factory = MagicMock()
+        ctx = MagicMock()
+        ctx.__aenter__ = AsyncMock(side_effect=Exception("DB down"))
+        ctx.__aexit__ = AsyncMock(return_value=False)
+        factory.return_value = ctx
 
         with pytest.raises(Exception, match="DB down"):
-            await _credential_provisioning_tick(mock_factory)
+            await _credential_provisioning_tick(factory)

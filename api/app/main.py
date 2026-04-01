@@ -53,6 +53,8 @@ async def _credential_provisioning_tick(session_factory: "async_sessionmaker") -
     Finds services that are either:
     1. PROVISIONING (need status sync from Everest/CRD)
     2. READY but credentials not yet provisioned (need custom user/db/secret)
+
+    Each service is processed independently — one failure doesn't block others.
     """
     from sqlalchemy import or_, select
 
@@ -60,9 +62,10 @@ async def _credential_provisioning_tick(session_factory: "async_sessionmaker") -
     from app.models.tenant import Tenant
     from app.services.managed_service import ManagedServiceProvisioner
 
+    # Fetch service IDs in a read-only session
     async with session_factory() as db:
         result = await db.execute(
-            select(ManagedService).where(
+            select(ManagedService.id).where(
                 or_(
                     ManagedService.status == ServiceStatus.PROVISIONING,
                     ManagedService.status == ServiceStatus.UPDATING,
@@ -71,18 +74,29 @@ async def _credential_provisioning_tick(session_factory: "async_sessionmaker") -
                 )
             )
         )
-        services = list(result.scalars().all())
-        if not services:
-            return 0
+        service_ids = [row[0] for row in result.all()]
 
-        provisioner = ManagedServiceProvisioner(k8s_client)
-        for svc in services:
-            tenant = await db.get(Tenant, svc.tenant_id)
-            if tenant and tenant.namespace:
-                await provisioner.sync_details(svc, tenant_namespace=tenant.namespace)
+    if not service_ids:
+        return 0
 
-        await db.commit()
-        return len(services)
+    # Process each service in its own session + transaction
+    provisioner = ManagedServiceProvisioner(k8s_client)
+    processed = 0
+    for svc_id in service_ids:
+        try:
+            async with session_factory() as db:
+                svc = await db.get(ManagedService, svc_id)
+                if svc is None:
+                    continue
+                tenant = await db.get(Tenant, svc.tenant_id)
+                if tenant and tenant.namespace:
+                    await provisioner.sync_details(svc, tenant_namespace=tenant.namespace)
+                await db.commit()
+                processed += 1
+        except Exception:
+            logger.exception("Credential provisioning failed for service %s", svc_id)
+
+    return processed
 
 
 async def _credential_provisioning_loop() -> None:
