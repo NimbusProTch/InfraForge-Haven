@@ -10,9 +10,9 @@ class Settings(BaseSettings):
     # Keycloak
     keycloak_url: str = "http://keycloak.keycloak.svc.cluster.local:8080"
     keycloak_realm: str = "haven"
-    # Keycloak Admin API credentials (K8s Secret in prod)
-    keycloak_admin_user: str = "admin"
-    keycloak_admin_password: str = "admin"
+    # Keycloak Admin API credentials (MUST be set via env var or K8s Secret)
+    keycloak_admin_user: str = ""
+    keycloak_admin_password: str = ""
     keycloak_admin_client_id: str = "admin-cli"
 
     # Kubernetes
@@ -22,8 +22,8 @@ class Settings(BaseSettings):
     # Harbor
     harbor_url: str = "https://harbor.example.com"
     harbor_project: str = "haven"
-    # Harbor admin password for creating tenant registry pull secrets
-    harbor_admin_password: str = "Harbor12345"
+    # Harbor admin password (MUST be set via env var or K8s Secret)
+    harbor_admin_password: str = ""
     # Harbor registry secret name (pre-created K8s Secret with .dockerconfigjson key)
     harbor_registry_secret: str = "harbor-registry-secret"
 
@@ -68,8 +68,9 @@ class Settings(BaseSettings):
 
     # Percona Everest (DB provisioning for PostgreSQL, MySQL, MongoDB)
     everest_url: str = "http://everest.everest-system.svc.cluster.local:8080"
-    everest_admin_user: str = "admin"
-    everest_admin_password: str = "HavenEverest2026"
+    # Everest admin credentials (MUST be set via env var or K8s Secret)
+    everest_admin_user: str = ""
+    everest_admin_password: str = ""
     everest_namespace: str = "everest"
 
     # CORS allowed origins (comma-separated list)
@@ -79,8 +80,15 @@ class Settings(BaseSettings):
 
     # App
     debug: bool = False
-    secret_key: str = "change-me-in-production"
+    secret_key: str = ""  # MUST be set via env var (used for JWT signing)
     api_prefix: str = "/api/v1"
+
+    # ArgoCD ApplicationSet — cluster-internal Gitea URL (ArgoCD runs inside cluster)
+    # If empty, falls back to gitops_repo_url (which may be localhost for local dev)
+    gitops_argocd_repo_url: str = ""
+
+    # Helm chart repo URL for ArgoCD multi-source (default: InfraForge-Haven GitHub)
+    chart_repo_url: str = ""
 
 
 settings = Settings()

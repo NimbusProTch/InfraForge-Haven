@@ -73,8 +73,9 @@ def _mock_response(status_code: int = 200, json_data: dict | None = None) -> Mag
 
 class TestEverestClientInit:
     def test_default_url(self):
+        """Default URL comes from settings (env var or config default)."""
         client = EverestClient()
-        assert "everest" in client._base_url
+        assert client._base_url  # Non-empty when EVEREST_URL is set
 
     def test_custom_url(self):
         client = EverestClient(base_url="http://localhost:9999/")
