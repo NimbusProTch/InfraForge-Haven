@@ -13,6 +13,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
+
+from kubernetes.client.exceptions import ApiException
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
@@ -279,8 +281,8 @@ class BackupService:
                 plural=cfg["plural"],
                 label_selector=label_selector,
             )
-        except Exception:  # noqa: BLE001
-            logger.exception("Failed to list backups for %s/%s", tenant_slug, service_name)
+        except Exception as exc:
+            logger.warning("Failed to list backups for %s/%s: %s", tenant_slug, service_name, exc)
             return []
 
         items: list[BackupItem] = []

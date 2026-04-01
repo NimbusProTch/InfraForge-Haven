@@ -1,13 +1,13 @@
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, EmailStr, Field
 
 from app.models.tenant_member import MemberRole
 
 
 class TenantMemberInvite(BaseModel):
-    email: str = Field(..., max_length=255)
+    email: EmailStr = Field(..., max_length=255)
     display_name: str | None = Field(default=None, max_length=255)
     role: MemberRole = MemberRole.member
     # Keycloak user_id is resolved server-side; optionally pre-supply it

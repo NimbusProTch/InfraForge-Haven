@@ -109,8 +109,11 @@ class DeployService:
                                 f"Pod {pod.metadata.name}: {cs.state.waiting.reason}"
                                 f" - {cs.state.waiting.message or ''}",
                             )
-            except Exception:  # noqa: BLE001
-                pass
+            except ApiException as e:
+                if e.status != 404:
+                    logger.debug("Deploy wait K8s error: %s", e.reason)
+            except Exception as e:
+                logger.debug("Deploy wait error: %s", e)
             await asyncio.sleep(5)
         return False, f"Deployment not ready after {timeout}s"
 
