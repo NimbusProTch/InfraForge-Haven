@@ -2,6 +2,7 @@ import logging
 
 from fastapi import APIRouter, HTTPException, status
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 
 from app.deps import CurrentUser, DBSession, K8sDep
 from app.models.managed_service import ManagedService
@@ -52,15 +53,21 @@ async def create_tenant(body: TenantCreate, db: DBSession, k8s: K8sDep, current_
     db.add(tenant)
     await db.flush()  # get ID before provisioning
 
+    # Provision K8s resources — rollback DB on failure
     svc = TenantService(k8s)
-    await svc.provision(
-        slug=body.slug,
-        namespace=namespace,
-        cpu_limit=body.cpu_limit,
-        memory_limit=body.memory_limit,
-        storage_limit=body.storage_limit,
-        tier=body.tier,
-    )
+    try:
+        await svc.provision(
+            slug=body.slug,
+            namespace=namespace,
+            cpu_limit=body.cpu_limit,
+            memory_limit=body.memory_limit,
+            storage_limit=body.storage_limit,
+            tier=body.tier,
+        )
+    except Exception as exc:
+        await db.rollback()
+        logger.exception("K8s provisioning failed for tenant %s — rolling back", body.slug)
+        raise HTTPException(status_code=500, detail=f"Tenant provisioning failed: {exc}") from exc
 
     # Create per-tenant Keycloak realm (non-blocking — log on failure, don't abort)
     try:
@@ -71,7 +78,11 @@ async def create_tenant(body: TenantCreate, db: DBSession, k8s: K8sDep, current_
     # GitOps scaffold: create tenant directory in haven-gitops (non-blocking)
     await gitops_scaffold.scaffold_tenant(body.slug)
 
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(status_code=409, detail=f"Tenant '{body.slug}' already exists")
     await db.refresh(tenant)
     return tenant
 
