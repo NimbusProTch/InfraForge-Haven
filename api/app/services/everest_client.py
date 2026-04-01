@@ -3,8 +3,8 @@
 Manages PostgreSQL, MySQL, and MongoDB via Everest's abstraction layer.
 Redis and RabbitMQ are NOT managed by Everest — use direct K8s CRDs for those.
 
-Databases are created in the TENANT namespace (not a shared "everest" namespace).
-Everest operator has cluster-wide scope and can manage resources in any namespace.
+Databases are created in the shared `everest` namespace. Custom credentials
+are provisioned post-creation and stored in the tenant namespace.
 """
 
 import logging
@@ -16,11 +16,11 @@ from app.config import settings
 
 logger = logging.getLogger(__name__)
 
-# Everest in-cluster URL
-EVEREST_URL = getattr(settings, "everest_url", "") or "http://everest.everest-system.svc.cluster.local:8080"
-EVEREST_USER = getattr(settings, "everest_admin_user", "") or "admin"
-EVEREST_PASS = getattr(settings, "everest_admin_password", "") or "HavenEverest2026"
-EVEREST_NS = getattr(settings, "everest_namespace", "") or "everest"
+# Everest configuration — all from settings (env vars), no hardcoded fallbacks
+EVEREST_URL = settings.everest_url
+EVEREST_USER = settings.everest_admin_user
+EVEREST_PASS = settings.everest_admin_password
+EVEREST_NS = settings.everest_namespace
 
 # Engine type mapping
 ENGINE_MAP = {

@@ -560,10 +560,12 @@ class TenantService:
 
     def _build_applicationset_body(self, tenant_slug: str) -> dict:
         """Build per-tenant ApplicationSet manifest. Lives only in K8s, not in git."""
-        gitops_repo_url = getattr(settings, "gitops_repo_url", "") or (
+        gitops_repo_url = settings.gitops_repo_url or (
             f"{settings.gitea_url}/{settings.gitea_org}/{settings.gitea_gitops_repo}.git"
         )
-        chart_repo_url = "https://github.com/NimbusProTch/InfraForge-Haven.git"
+        # ArgoCD runs inside the cluster — use cluster-internal URL for git access
+        appset_gitops_url = settings.gitops_argocd_repo_url or gitops_repo_url
+        chart_repo_url = settings.chart_repo_url or "https://github.com/NimbusProTch/InfraForge-Haven.git"
 
         return {
             "apiVersion": "argoproj.io/v1alpha1",
@@ -583,7 +585,7 @@ class TenantService:
                 "generators": [
                     {
                         "git": {
-                            "repoURL": gitops_repo_url,
+                            "repoURL": appset_gitops_url,
                             "revision": "main",
                             "directories": [
                                 {"path": f"tenants/{tenant_slug}/*"},
@@ -614,7 +616,7 @@ class TenantService:
                                 "helm": {"valueFiles": ["$values/{{ .path.path }}/values.yaml"]},
                             },
                             {
-                                "repoURL": gitops_repo_url,
+                                "repoURL": appset_gitops_url,
                                 "targetRevision": "main",
                                 "ref": "values",
                             },
