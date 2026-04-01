@@ -56,11 +56,15 @@ async def _credential_provisioning_tick(session_factory: "async_sessionmaker") -
 
     Each service is processed independently — one failure doesn't block others.
     """
+    from datetime import datetime, timedelta, timezone
+
     from sqlalchemy import or_, select
 
     from app.models.managed_service import ManagedService, ServiceStatus
     from app.models.tenant import Tenant
     from app.services.managed_service import ManagedServiceProvisioner
+
+    SERVICE_PROVISION_TIMEOUT = timedelta(minutes=10)
 
     # Fetch service IDs in a read-only session
     async with session_factory() as db:
@@ -82,12 +86,27 @@ async def _credential_provisioning_tick(session_factory: "async_sessionmaker") -
     # Process each service in its own session + transaction
     provisioner = ManagedServiceProvisioner(k8s_client)
     processed = 0
+    now = datetime.now(timezone.utc)
     for svc_id in service_ids:
         try:
             async with session_factory() as db:
                 svc = await db.get(ManagedService, svc_id)
                 if svc is None:
                     continue
+
+                # Timeout: if stuck in PROVISIONING/UPDATING for too long → FAILED
+                # Use updated_at for UPDATING (reflects when status changed), created_at for PROVISIONING
+                if svc.status in (ServiceStatus.PROVISIONING, ServiceStatus.UPDATING):
+                    ref_time = svc.updated_at if svc.status == ServiceStatus.UPDATING else svc.created_at
+                    age = now - ref_time.replace(tzinfo=timezone.utc) if ref_time.tzinfo is None else now - ref_time
+                    if age > SERVICE_PROVISION_TIMEOUT:
+                        svc.status = ServiceStatus.FAILED
+                        svc.error_message = f"Service timed out after {int(age.total_seconds() // 60)} minutes"
+                        logger.warning("Service %s timed out (age: %s)", svc.name, age)
+                        await db.commit()
+                        processed += 1
+                        continue
+
                 tenant = await db.get(Tenant, svc.tenant_id)
                 if tenant and tenant.namespace:
                     await provisioner.sync_details(svc, tenant_namespace=tenant.namespace)

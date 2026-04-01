@@ -754,7 +754,7 @@ class ManagedServiceProvisioner:
                 service, replicas=replicas, storage=storage, cpu=cpu, memory=memory
             )
         else:
-            logger.warning("CRD-based update not implemented for %s", service.name)
+            raise NotImplementedError(f"Update not supported for CRD-based service '{service.name}' ({service.service_type.value})")
 
     async def deprovision(self, service: ManagedService) -> None:
         """Delete the database/service."""

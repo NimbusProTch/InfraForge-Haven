@@ -650,15 +650,16 @@ class TestEverestUpdate:
         )
 
     @pytest.mark.asyncio
-    async def test_update_redis_logs_warning(self, mock_k8s_available):
-        """Redis uses CRDs — update not implemented, should just log warning."""
+    async def test_update_redis_raises_not_implemented(self, mock_k8s_available):
+        """Redis uses CRDs — update raises NotImplementedError."""
         everest = AsyncMock(spec=EverestClient)
         everest.is_configured.return_value = True
 
         svc = _make_service(stype=ServiceType.REDIS)
         svc.service_namespace = "tenant-acme"
         p = ManagedServiceProvisioner(mock_k8s_available, everest=everest)
-        await p.update(svc, storage="5Gi")  # should not raise
+        with pytest.raises(NotImplementedError):
+            await p.update(svc, storage="5Gi")
 
         everest.update_database.assert_not_called()
 

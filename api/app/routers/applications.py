@@ -256,6 +256,8 @@ async def connect_service(
         raise HTTPException(status_code=409, detail=f"Service '{svc.name}' is not ready (status: {svc.status})")
     if not svc.secret_name or not svc.service_namespace:
         raise HTTPException(status_code=409, detail="Service has no credentials yet")
+    if not svc.credentials_provisioned:
+        raise HTTPException(status_code=409, detail="Service credentials are being provisioned — try again shortly")
 
     existing: list[dict] = list(app.env_from_secrets or [])
     if not any(e.get("service_name") == svc.name for e in existing):
