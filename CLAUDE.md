@@ -287,6 +287,19 @@ haven-platform/
 - [x] Build + Deploy pipeline E2E: build trigger → BuildKit → Harbor → Gitea values update → ArgoCD sync → Pod Running
 - [x] 752 backend tests (all passing)
 
+### Phase 1 Sprint 3.5: Post-E2E Hardening & Security ✅
+- [x] Hardcoded credential temizliği (.env.example, config default'lar boş) — PR #6
+- [x] DB unique constraints + race condition fix (IntegrityError → 409) — PR #7
+- [x] Background loop per-service isolation (bir hata diğerlerini engellemez) — PR #8
+- [x] Error handling cleanup (bare except fix, EmailStr validation) — PR #9
+- [x] PG custom user via primary endpoint (PgBouncer bypass) — PR #10
+- [x] URL-encode database passwords in DATABASE_URL — PR #5
+- [x] CiliumNetworkPolicy everest egress + ResourceQuota artırma — PR #4
+- [x] Everest namespace revert (everest ns, tenant ns'de secret) — PR #4
+- [x] MySQL/MongoDB custom user provisioning (aiomysql, motor) — PR #4
+- [x] Background credential provisioning loop (UI bağımlılığı kaldırıldı) — PR #4
+- [x] 778 backend tests (all passing)
+
 ### Phase 1 Sprint 4: Monorepo + Smart Detection (SONRAKI)
 - [ ] `dockerfile_path` — Hangi Dockerfile kullanılacak (`backend/Dockerfile`)
 - [ ] `build_context` — Build root dizini (`./backend`)
@@ -492,7 +505,7 @@ haven-builds             → BuildKit daemon + build job pod'ları
 - Build pipeline: tenant'ın `github_token`'ını kullanarak private repo clone yapabiliyor
 
 ### Test Durumu
-- Backend unit testleri: **752** (multi-tenant E2E, all 5 DB types, SSE lifecycle events, connect/disconnect, credentials, status sync, CRD body builders, ApplicationSet CRUD, tenant deletion cascade)
+- Backend unit testleri: **778** (multi-tenant E2E, all 5 DB types, SSE lifecycle events, connect/disconnect, credentials, status sync, CRD body builders, ApplicationSet CRUD, tenant deletion cascade, race condition handling, credential provisioning, background loop isolation)
 - Playwright E2E: **36 test** (5 DB lifecycle + credentials flow + env vars)
 - Real cluster E2E: 3 tenants × (app + 2 services + build + deploy + delete) — all verified
 
@@ -511,13 +524,19 @@ haven-builds             → BuildKit daemon + build job pod'ları
 - **Backup**: DB oluşturulurken backup config default disabled (`pitr.enabled: false`)
 - **Redis passwordless**: OpsTree Redis şifresiz çalışıyor — prod'da güvenlik riski
 - **Gitea tenant manifest**: scaffold_service/delete_service kaldırıldı — DB'ler GitOps ile değil direkt API ile yönetiliyor
-- **DB migration eksik**: Yeni model alanları (error_message, everest_name, db_name, db_user, credentials_provisioned) DB'ye manual ALTER TABLE ile eklendi. Alembic migration henüz yok.
+- **DB migration**: ✅ ÇÖZÜLDÜ — Alembic 0019 migration eklendi (unique constraints). Lokal dev DB'de `create_all()` veya `alembic upgrade head` ile tüm tablolar oluşturulmalı.
 - **GITOPS_GITHUB_TOKEN**: haven-api-secrets'ta `GITOPS_GITHUB_TOKEN` varsa ve GitHub token'ı ise Gitea'ya bağlanamaz. Bu key kaldırılmalı — `GITEA_ADMIN_TOKEN` yeterli.
 - **Helm chart empty image guard**: `image.repository` boşken Deployment/Service/HPA/HTTPRoute oluşturulmamalı. `{{- if .Values.image.repository }}` guard eklendi. Aksi halde `:latest` image → InvalidImageName.
-- **MySQL/MongoDB credential provisioning**: `create_custom_database` sadece PostgreSQL destekliyor (asyncpg). MySQL/MongoDB için Everest admin secret okunup direkt tenant namespace'ine kopyalanıyor — her Everest instance zaten tenant-izole.
+- **MySQL/MongoDB credential provisioning**: ✅ ÇÖZÜLDÜ (PR #4) — `aiomysql` ve `motor` ile custom user/db oluşturuluyor. Fallback: admin creds kopyalama.
 - **ArgoCD auto-sync wipe protection**: Helm chart image guard sonrası tüm resources siliniyor → ArgoCD "auto-sync will wipe out all resources" uyarısı ile auto-sync engelliyor. Manuel sync gerekli.
 - **haven-api image build (ARM64 → AMD64)**: Local Mac'te build edince `exec format error`. `docker build --platform linux/amd64` zorunlu.
 - **Gitea admin password**: `must-change-password` flag'i set edilmiş olabilir. `gitea admin user change-password --must-change-password=false` ile reset gerekli. Güncel: havenAdmin / HavenAdmin2026
 - **Port-forward'lar**: haven-api svc port 80 (not 8000!), keycloak svc `keycloak-keycloakx-http` port 80
-- **CiliumNetworkPolicy everest egress**: Tenant network policy'de everest namespace'e egress gerekli (Everest DB'lere erişim). Kod'da var ama eski image ile oluşturulan policy'lerde eksik olabilir.
+- **CiliumNetworkPolicy everest egress**: ✅ ÇÖZÜLDÜ (PR #4) — Tenant CNP'ye everest namespace egress eklendi. Yeni tenant'larda otomatik.
 - **App port**: rotterdam-api 8080 dinliyor, default 8000 değil. App oluşturulurken doğru port belirtilmeli.
+- **GITOPS_ARGOCD_REPO_URL**: ArgoCD cluster içinde çalışır, lokal `localhost:3030` URL'sine erişemez. `GITOPS_ARGOCD_REPO_URL=http://gitea-http.gitea-system.svc.cluster.local:3000/haven/haven-gitops.git` set edilmeli.
+- **PG custom user**: `create_custom_database()` primary endpoint üzerinden bağlanır (PgBouncer bypass). App credential'larında HA endpoint döner. Lokal dev'de cluster-internal DNS erişilemez → admin creds fallback kullanılır.
+- **Background credential loop**: 15sn aralığı, per-service isolation. Her service kendi session+transaction'ında işlenir. Bir service fail ederse diğerleri etkilenmez.
+- **Config credential default'lar boş**: `keycloak_admin_password`, `harbor_admin_password`, `everest_admin_password`, `secret_key` default `""`. `.env` dosyasında set edilmeli.
+- **DB unique constraints**: `applications(tenant_id, slug)`, `managed_services(tenant_id, name)` compound unique. Concurrent create → IntegrityError → 409.
+- **DB migration**: Alembic 0019 — unique constraint migration. Lokal DB'de `create_all()` ile tablolar oluşturulabilir ama prod'da `alembic upgrade head` gerekli.
