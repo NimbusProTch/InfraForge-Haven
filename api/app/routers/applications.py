@@ -4,6 +4,7 @@ import yaml
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 
 from app.config import settings
 from app.deps import CurrentUser, DBSession, GitQueueDep, K8sDep
@@ -94,7 +95,11 @@ async def create_application(
         volumes=body.volumes,
     )
     db.add(app)
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(status_code=409, detail=f"Application '{body.slug}' already exists in tenant '{tenant_slug}'")
     await db.refresh(app)
 
     # GitOps scaffold: create app values.yaml in haven-gitops (non-blocking)

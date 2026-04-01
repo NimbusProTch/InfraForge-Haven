@@ -2,6 +2,7 @@ import base64
 
 from fastapi import APIRouter, HTTPException, status
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 
 from app.deps import CurrentUser, DBSession, K8sDep
 from app.models.application import Application
@@ -76,12 +77,20 @@ async def create_service(
         db_user=body.db_user,
     )
     db.add(svc)
-    await db.flush()
+    try:
+        await db.flush()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(status_code=409, detail=f"Service '{body.name}' already exists in tenant '{tenant_slug}'")
 
     provisioner = ManagedServiceProvisioner(k8s)
     await provisioner.provision(svc, tenant.namespace, tenant_slug=tenant.slug)
 
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(status_code=409, detail=f"Service '{body.name}' already exists in tenant '{tenant_slug}'")
     await db.refresh(svc)
     return svc
 
