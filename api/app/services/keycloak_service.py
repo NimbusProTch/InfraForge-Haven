@@ -42,6 +42,26 @@ class KeycloakService:
             return resp.json()["access_token"]
 
     # ------------------------------------------------------------------
+    # Master realm configuration
+    # ------------------------------------------------------------------
+
+    async def enable_self_registration(self, realm: str = "") -> None:
+        """Enable self-service registration on a realm.
+
+        If realm is empty, uses the platform master realm from settings.
+        """
+        target_realm = realm or settings.keycloak_realm
+        token = await self._get_admin_token()
+        async with httpx.AsyncClient(timeout=15) as client:
+            resp = await client.put(
+                f"{self._base_url}/admin/realms/{target_realm}",
+                json={"registrationAllowed": True},
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            resp.raise_for_status()
+        logger.info("Enabled self-registration on realm: %s", target_realm)
+
+    # ------------------------------------------------------------------
     # Realm lifecycle
     # ------------------------------------------------------------------
 
