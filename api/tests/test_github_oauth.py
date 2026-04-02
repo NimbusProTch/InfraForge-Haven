@@ -470,3 +470,90 @@ async def test_list_repo_tree(async_client):
     assert len(items) == 3
     assert items[0]["path"] == "README.md"
     assert items[1]["type"] == "tree"
+
+
+# ---------------------------------------------------------------------------
+# GitHub status endpoint
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_github_status_not_connected(async_client, db_session):
+    """GET /github/status/{slug} returns connected=false when no token."""
+    tenant = await _make_tenant(db_session)
+    response = await async_client.get(f"/api/v1/github/status/{tenant.slug}")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["connected"] is False
+    assert data["github_user"] is None
+    assert data["needs_reauth"] is False
+
+
+@pytest.mark.asyncio
+async def test_github_status_connected_valid_token(async_client, db_session):
+    """GET /github/status/{slug} returns connected=true with valid token."""
+    tenant = await _make_tenant(db_session)
+    tenant.github_token = "ghp_valid_token"
+    await db_session.commit()
+
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.is_success = True
+    mock_response.json.return_value = {"login": "testuser", "id": 123}
+
+    mock_http = AsyncMock()
+    mock_http.get = AsyncMock(return_value=mock_response)
+    mock_http.__aenter__ = AsyncMock(return_value=mock_http)
+    mock_http.__aexit__ = AsyncMock(return_value=False)
+
+    with patch("app.routers.github.httpx.AsyncClient", return_value=mock_http):
+        response = await async_client.get(f"/api/v1/github/status/{tenant.slug}")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["connected"] is True
+    assert data["github_user"] == "testuser"
+    assert data["needs_reauth"] is False
+
+
+@pytest.mark.asyncio
+async def test_github_status_expired_token(async_client, db_session):
+    """GET /github/status/{slug} returns needs_reauth=true when token is expired."""
+    tenant = await _make_tenant(db_session)
+    tenant.github_token = "ghp_expired_token"
+    await db_session.commit()
+
+    mock_response = MagicMock()
+    mock_response.status_code = 401
+    mock_response.is_success = False
+
+    mock_http = AsyncMock()
+    mock_http.get = AsyncMock(return_value=mock_response)
+    mock_http.__aenter__ = AsyncMock(return_value=mock_http)
+    mock_http.__aexit__ = AsyncMock(return_value=False)
+
+    with patch("app.routers.github.httpx.AsyncClient", return_value=mock_http):
+        response = await async_client.get(f"/api/v1/github/status/{tenant.slug}")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["connected"] is False
+    assert data["needs_reauth"] is True
+
+
+@pytest.mark.asyncio
+async def test_github_status_404_tenant(async_client):
+    """GET /github/status/{slug} returns 404 for unknown tenant."""
+    response = await async_client.get("/api/v1/github/status/no-such-tenant")
+    assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_tenant_response_includes_github_connected(async_client, db_session):
+    """GET /tenants/{slug} response includes github_connected field."""
+    tenant = await _make_tenant(db_session)
+    response = await async_client.get(f"/api/v1/tenants/{tenant.slug}")
+    assert response.status_code == 200
+    data = response.json()
+    assert "github_connected" in data
+    assert data["github_connected"] is False

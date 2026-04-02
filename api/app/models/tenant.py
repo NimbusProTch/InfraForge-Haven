@@ -37,6 +37,11 @@ class Tenant(Base, TimestampMixin):
     # GitHub OAuth token for private repo access during builds
     github_token: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
+    @property
+    def github_connected(self) -> bool:
+        """True if a GitHub token is stored for this tenant."""
+        return bool(self.github_token)
+
     applications: Mapped[list["Application"]] = relationship(back_populates="tenant", cascade="all, delete-orphan")
     services: Mapped[list["ManagedService"]] = relationship(back_populates="tenant", cascade="all, delete-orphan")
     members: Mapped[list["TenantMember"]] = relationship(back_populates="tenant", cascade="all, delete-orphan")
