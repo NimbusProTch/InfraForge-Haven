@@ -150,8 +150,9 @@ async def update_application(
     await db.commit()
     await db.refresh(app)
 
-    # Enqueue values.yaml update for any config change
-    if queue is not None and updated_fields:
+    # Enqueue values.yaml update for any config change.
+    # Skip if no image_tag yet (first build hasn't run) — prevents wiping existing deployment.
+    if queue is not None and updated_fields and app.image_tag:
         gitops_fields = {
             "env_vars",
             "replicas",

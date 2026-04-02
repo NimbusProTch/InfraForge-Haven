@@ -190,6 +190,10 @@ async def run_pipeline(
     if use_gitops and argocd:
         # Wait for ArgoCD to sync and report healthy
         ready, msg = await argocd.wait_for_healthy(f"{tenant_slug}-{app_slug}")
+        if not ready:
+            # Fallback: ArgoCD may be unreachable but pod might be running via auto-sync
+            logger.warning("ArgoCD wait failed (%s) — falling back to K8s check", msg)
+            ready, msg = await deploy_svc.wait_for_ready(namespace, app_slug, timeout=60)
     else:
         # Direct K8s mode: wait for deployment ready replicas
         ready, msg = await deploy_svc.wait_for_ready(namespace, app_slug)

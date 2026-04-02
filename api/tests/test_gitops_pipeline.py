@@ -392,6 +392,7 @@ async def test_applications_router_enqueue_path_no_gitops_prefix(async_client, s
         name="Path Test",
         repo_url="https://github.com/org/repo",
         branch="main",
+        image_tag="harbor.example.com/haven/tenant-test/path-test:abc123",
     )
     db_session.add(app_obj)
     await db_session.commit()

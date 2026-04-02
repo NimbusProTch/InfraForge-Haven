@@ -505,7 +505,7 @@ haven-builds             → BuildKit daemon + build job pod'ları
 - Build pipeline: tenant'ın `github_token`'ını kullanarak private repo clone yapabiliyor
 
 ### Test Durumu
-- Backend unit testleri: **778** (multi-tenant E2E, all 5 DB types, SSE lifecycle events, connect/disconnect, credentials, status sync, CRD body builders, ApplicationSet CRUD, tenant deletion cascade, race condition handling, credential provisioning, background loop isolation)
+- Backend unit testleri: **809** (multi-tenant E2E, all 5 DB types, SSE lifecycle events, connect/disconnect, credentials, status sync, CRD body builders, ApplicationSet CRUD, tenant deletion cascade, race condition handling, credential provisioning, background loop isolation, Vault+ESO integration, service timeout, GitHub status, self-service onboarding)
 - Playwright E2E: **36 test** (5 DB lifecycle + credentials flow + env vars)
 - Real cluster E2E: 3 tenants × (app + 2 services + build + deploy + delete) — all verified
 
@@ -540,3 +540,7 @@ haven-builds             → BuildKit daemon + build job pod'ları
 - **Config credential default'lar boş**: `keycloak_admin_password`, `harbor_admin_password`, `everest_admin_password`, `secret_key` default `""`. `.env` dosyasında set edilmeli.
 - **DB unique constraints**: `applications(tenant_id, slug)`, `managed_services(tenant_id, name)` compound unique. Concurrent create → IntegrityError → 409.
 - **DB migration**: Alembic 0019 — unique constraint migration. Lokal DB'de `create_all()` ile tablolar oluşturulabilir ama prod'da `alembic upgrade head` gerekli.
+- **PATCH image_tag guard**: PATCH /apps image_tag None ise GitOps values.yaml güncellenmez (boş image yazıp Deployment'ı silmeyi engeller). İlk build sonrası image_tag set olur.
+- **ArgoCD deploy fallback**: ArgoCD API erişilemezse pipeline K8s Deployment'ı direkt kontrol eder (60sn timeout). Pod Running ise status=RUNNING olur.
+- **Vault prod**: Vault dev mode cluster'da çalışıyor. Prod için HA mode + persistent storage + auto-unseal gerekli.
+- **haven-api image stale**: `platform/manifests/haven-api/deployment.yaml` image tag manual güncellenmeli. Her PR sonrası `docker build + push + image tag update` gerekli.
