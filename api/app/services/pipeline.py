@@ -126,6 +126,11 @@ async def run_pipeline(
 
         secret_names = await get_service_secret_names(db, tenant_id)
 
+    # Always include app-level env secret (Vault or K8s Secret for sensitive vars)
+    app_env_secret = f"{app_slug}-env-secrets"
+    if app_env_secret not in secret_names:
+        secret_names.append(app_env_secret)
+
     # Choose deployment mode: GitOps or Direct K8s API
     use_gitops = _use_gitops() and gitops is not None
 
