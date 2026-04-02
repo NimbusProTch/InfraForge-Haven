@@ -284,8 +284,9 @@ async def get_service_credentials(
     if not k8s.is_available() or k8s.core_v1 is None:
         raise HTTPException(status_code=503, detail="Kubernetes unavailable — cannot read credentials")
 
-    # Read K8s secret from the service's namespace (always tenant namespace now)
-    secret_namespace = svc.service_namespace
+    # Credentials provisioned by Haven → secret is in tenant namespace (svc-{name}).
+    # Non-provisioned (fallback) → secret is in service_namespace (everest or tenant).
+    secret_namespace = tenant.namespace if svc.credentials_provisioned else svc.service_namespace
     try:
         secret = k8s.core_v1.read_namespaced_secret(name=svc.secret_name, namespace=secret_namespace)
     except Exception as exc:

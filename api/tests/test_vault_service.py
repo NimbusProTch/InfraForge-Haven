@@ -184,3 +184,84 @@ class TestSecretServiceVaultPath:
         svc._ensure_external_secret("tenant-test", "my-app", "test")
 
         k8s.custom_objects.replace_namespaced_custom_object.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# PUT /secrets and GET /secrets API endpoint tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_put_secrets_endpoint_vault_path(async_client, db_session):
+    """PUT /apps/{slug}/secrets writes to Vault when configured."""
+    import uuid
+
+    from app.models.application import Application
+    from app.models.tenant import Tenant
+
+    tenant = Tenant(
+        id=uuid.uuid4(), slug="vault-tenant", name="Vault Test",
+        namespace="tenant-vault-tenant", keycloak_realm="vault-tenant",
+        cpu_limit="4", memory_limit="8Gi", storage_limit="50Gi",
+    )
+    db_session.add(tenant)
+    app_obj = Application(
+        id=uuid.uuid4(), tenant_id=tenant.id, slug="vault-app", name="Vault App",
+        repo_url="https://github.com/org/repo", branch="main",
+    )
+    db_session.add(app_obj)
+    await db_session.commit()
+
+    with patch("app.services.secret_service.SecretService") as MockSvc:
+        mock_instance = MagicMock()
+        mock_instance.upsert_sensitive_vars = AsyncMock(return_value=True)
+        mock_instance.uses_vault.return_value = True
+        MockSvc.return_value = mock_instance
+
+        resp = await async_client.put(
+            f"/api/v1/tenants/{tenant.slug}/apps/{app_obj.slug}/secrets",
+            json={"secrets": {"DB_PASSWORD": "test123", "API_KEY": "abc"}},
+        )
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert sorted(data["keys"]) == ["API_KEY", "DB_PASSWORD"]
+
+
+@pytest.mark.asyncio
+async def test_get_secrets_endpoint_lists_keys(async_client, db_session):
+    """GET /apps/{slug}/secrets returns key list (no values)."""
+    import uuid
+
+    from app.models.application import Application
+    from app.models.tenant import Tenant
+
+    tenant = Tenant(
+        id=uuid.uuid4(), slug="keys-tenant", name="Keys Test",
+        namespace="tenant-keys-tenant", keycloak_realm="keys-tenant",
+        cpu_limit="4", memory_limit="8Gi", storage_limit="50Gi",
+    )
+    db_session.add(tenant)
+    app_obj = Application(
+        id=uuid.uuid4(), tenant_id=tenant.id, slug="keys-app", name="Keys App",
+        repo_url="https://github.com/org/repo", branch="main",
+    )
+    db_session.add(app_obj)
+    await db_session.commit()
+
+    with (
+        patch("app.services.secret_service.SecretService") as MockSvc,
+        patch("app.services.vault_service.vault_service") as mock_vault,
+    ):
+        mock_instance = MagicMock()
+        mock_instance.uses_vault.return_value = True
+        MockSvc.return_value = mock_instance
+        mock_vault.list_keys = AsyncMock(return_value=["DB_PASSWORD", "API_KEY"])
+
+        resp = await async_client.get(
+            f"/api/v1/tenants/{tenant.slug}/apps/{app_obj.slug}/secrets",
+        )
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert sorted(data["keys"]) == ["API_KEY", "DB_PASSWORD"]

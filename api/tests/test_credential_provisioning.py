@@ -448,3 +448,44 @@ class TestCredentialProvisioningTick:
 
         with pytest.raises(Exception, match="DB down"):
             await _credential_provisioning_tick(factory)
+
+    @pytest.mark.asyncio
+    async def test_tick_timeout_marks_stuck_service_failed(self):
+        """Service stuck in PROVISIONING for >10min must be marked FAILED."""
+        from datetime import datetime, timedelta, timezone
+
+        from app.main import _credential_provisioning_tick
+
+        svc_id = "svc-timeout"
+        mock_svc = MagicMock(spec=ManagedService)
+        mock_svc.name = "stuck-pg"
+        mock_svc.status = ServiceStatus.PROVISIONING
+        mock_svc.credentials_provisioned = False
+        # Created 15 minutes ago — exceeds 10min timeout
+        mock_svc.created_at = datetime.now(timezone.utc) - timedelta(minutes=15)
+
+        call_count = [0]
+
+        def make_session():
+            call_count[0] += 1
+            session = AsyncMock()
+            if call_count[0] == 1:
+                mock_result = MagicMock()
+                mock_result.all.return_value = [(svc_id,)]
+                session.execute = AsyncMock(return_value=mock_result)
+            else:
+                session.get = AsyncMock(return_value=mock_svc)
+                session.commit = AsyncMock()
+            ctx = MagicMock()
+            ctx.__aenter__ = AsyncMock(return_value=session)
+            ctx.__aexit__ = AsyncMock(return_value=False)
+            return ctx
+
+        factory = MagicMock(side_effect=make_session)
+
+        with patch("app.services.managed_service.ManagedServiceProvisioner"):
+            count = await _credential_provisioning_tick(factory)
+
+        assert count == 1
+        assert mock_svc.status == ServiceStatus.FAILED
+        assert "timed out" in mock_svc.error_message.lower()
