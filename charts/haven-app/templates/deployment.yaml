@@ -50,6 +50,7 @@ spec:
             {{- range .Values.envSecrets }}
             - secretRef:
                 name: {{ . }}
+                optional: true
             {{- end }}
           {{- if .Values.containerSecurityContext.enabled }}
           securityContext:
