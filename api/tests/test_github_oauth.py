@@ -557,3 +557,84 @@ async def test_tenant_response_includes_github_connected(async_client, db_sessio
     data = response.json()
     assert "github_connected" in data
     assert data["github_connected"] is False
+
+
+# ---------------------------------------------------------------------------
+# Self-service onboarding: /tenants/me + auto-add creator as owner
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_my_tenants_empty_for_new_user(async_client):
+    """GET /tenants/me returns empty list when user has no tenants."""
+    response = await async_client.get("/api/v1/tenants/me")
+    assert response.status_code == 200
+    assert response.json() == []
+
+
+@pytest.mark.asyncio
+async def test_my_tenants_returns_owned_tenants(async_client, db_session):
+    """GET /tenants/me returns tenants where user is a member."""
+    from app.models.tenant_member import MemberRole, TenantMember
+
+    tenant = await _make_tenant(db_session)
+    # Add current user as member (mock user has sub="test-user-id")
+    member = TenantMember(
+        tenant_id=tenant.id,
+        user_id="test-user",  # matches conftest mock: {"sub": "test-user"}
+        email="test@example.com",
+        role=MemberRole.owner,
+    )
+    db_session.add(member)
+    await db_session.commit()
+
+    response = await async_client.get("/api/v1/tenants/me")
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data) == 1
+    assert data[0]["slug"] == tenant.slug
+
+
+@pytest.mark.asyncio
+async def test_create_tenant_adds_creator_as_owner(async_client):
+    """POST /tenants must auto-add creator → GET /tenants/me returns it."""
+    response = await async_client.post("/api/v1/tenants", json={
+        "name": "Auto Owner Test", "slug": "auto-owner-test",
+    })
+    assert response.status_code == 201
+    slug = response.json()["slug"]
+
+    # Creator should now see this tenant in /tenants/me
+    me_response = await async_client.get("/api/v1/tenants/me")
+    assert me_response.status_code == 200
+    my_tenants = me_response.json()
+    assert any(t["slug"] == slug for t in my_tenants)
+
+
+@pytest.mark.asyncio
+async def test_keycloak_enable_self_registration():
+    """enable_self_registration calls correct Keycloak API."""
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    from app.services.keycloak_service import KeycloakService
+
+    svc = KeycloakService()
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.raise_for_status = MagicMock()
+
+    with (
+        patch.object(svc, "_get_admin_token", new_callable=AsyncMock, return_value="admin-token"),
+        patch("app.services.keycloak_service.httpx.AsyncClient") as mock_httpx,
+    ):
+        mock_http = AsyncMock()
+        mock_http.put = AsyncMock(return_value=mock_response)
+        mock_httpx.return_value.__aenter__ = AsyncMock(return_value=mock_http)
+        mock_httpx.return_value.__aexit__ = AsyncMock(return_value=False)
+
+        await svc.enable_self_registration("haven")
+
+        mock_http.put.assert_called_once()
+        call_args = mock_http.put.call_args
+        assert "haven" in call_args.args[0]
+        assert call_args.kwargs["json"]["registrationAllowed"] is True

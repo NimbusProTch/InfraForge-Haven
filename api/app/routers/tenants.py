@@ -7,7 +7,7 @@ from sqlalchemy.exc import IntegrityError
 from app.deps import CurrentUser, DBSession, K8sDep
 from app.models.managed_service import ManagedService
 from app.models.tenant import Tenant
-from app.models.tenant_member import TenantMember
+from app.models.tenant_member import MemberRole, TenantMember
 from app.schemas.tenant import TenantCreate, TenantResponse, TenantUpdate
 from app.services.gitops_scaffold import gitops_scaffold
 from app.services.keycloak_service import keycloak_service
@@ -98,8 +98,6 @@ async def create_tenant(body: TenantCreate, db: DBSession, k8s: K8sDep, current_
     await gitops_scaffold.scaffold_tenant(body.slug)
 
     # Auto-add creator as tenant owner
-    from app.models.tenant_member import MemberRole
-
     creator_member = TenantMember(
         tenant_id=tenant.id,
         user_id=current_user.get("sub", ""),
