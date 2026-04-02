@@ -174,19 +174,25 @@ async def create_custom_mysql_database(
     db_name: str | None = None,
     db_user: str | None = None,
     db_password: str | None = None,
+    everest_db_name: str = "",
 ) -> dict[str, str]:
     """Connect to Everest MySQL with admin creds, create custom database + user.
 
     Same pattern as create_custom_database (PostgreSQL) but uses aiomysql.
+    Everest MySQL secret has no `host` key — host is derived from DB name.
     """
     import aiomysql
 
     admin_creds = await read_admin_credentials(k8s, everest_secret_name)
 
+    # Everest MySQL secret: keys are role names (root, monitor, etc.) with passwords as values.
+    # No host/port/user keys. Host = {db_name}-haproxy.everest.svc
     admin_host = admin_creds.get("host", "")
+    if not admin_host and everest_db_name:
+        admin_host = f"{everest_db_name}-haproxy.everest.svc"
     admin_port = int(admin_creds.get("port", "3306"))
     admin_user = admin_creds.get("user", "root")
-    admin_password = admin_creds.get("password", "")
+    admin_password = admin_creds.get("password", "") or admin_creds.get("root", "")
 
     if not db_user:
         db_user = db_name or "app"
@@ -242,19 +248,26 @@ async def create_custom_mongodb_database(
     db_name: str | None = None,
     db_user: str | None = None,
     db_password: str | None = None,
+    everest_db_name: str = "",
 ) -> dict[str, str]:
     """Connect to Everest MongoDB with admin creds, create custom database + user.
 
     Same pattern as create_custom_database (PostgreSQL) but uses motor (async pymongo).
+    Everest MongoDB secret has no `host` key — host is derived from DB name.
     """
     import motor.motor_asyncio
 
     admin_creds = await read_admin_credentials(k8s, everest_secret_name)
 
+    # Everest MongoDB secret: keys are MONGODB_DATABASE_ADMIN_USER/PASSWORD etc.
+    # No host/port keys. Host = {db_name}-mongos.everest.svc
     admin_host = admin_creds.get("host", "")
+    if not admin_host and everest_db_name:
+        # Percona MongoDB with sharding=false uses rs0 headless service, not mongos
+        admin_host = f"{everest_db_name}-rs0.everest.svc"
     admin_port = int(admin_creds.get("port", "27017"))
-    admin_user = admin_creds.get("user", "")
-    admin_password = admin_creds.get("password", "")
+    admin_user = admin_creds.get("user", "") or admin_creds.get("MONGODB_DATABASE_ADMIN_USER", "databaseAdmin")
+    admin_password = admin_creds.get("password", "") or admin_creds.get("MONGODB_DATABASE_ADMIN_PASSWORD", "")
 
     if not db_user:
         db_user = db_name or "app"

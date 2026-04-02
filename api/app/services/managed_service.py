@@ -566,9 +566,10 @@ class ManagedServiceProvisioner:
                 try:
                     creds = await create_custom_mysql_database(
                         self.k8s, admin_secret, db_name=db_name, db_user=db_user,
+                        everest_db_name=everest_name,
                     )
                 except Exception:
-                    logger.warning("MySQL custom user failed for %s — copying admin creds", service.name)
+                    logger.exception("MySQL custom user failed for %s — copying admin creds", service.name)
                     raw = await read_admin_credentials(self.k8s, admin_secret)
                     mysql_host = f"{everest_name}-haproxy.everest.svc"
                     mysql_pass = raw.get("root", "")
@@ -587,11 +588,12 @@ class ManagedServiceProvisioner:
                 try:
                     creds = await create_custom_mongodb_database(
                         self.k8s, admin_secret, db_name=db_name, db_user=db_user,
+                        everest_db_name=everest_name,
                     )
                 except Exception:
-                    logger.warning("MongoDB custom user failed for %s — copying admin creds", service.name)
+                    logger.exception("MongoDB custom user failed for %s — copying admin creds", service.name)
                     raw = await read_admin_credentials(self.k8s, admin_secret)
-                    mongo_host = f"{everest_name}-mongos.everest.svc"
+                    mongo_host = f"{everest_name}-rs0.everest.svc"
                     mongo_user = raw.get("MONGODB_DATABASE_ADMIN_USER", "databaseAdmin")
                     mongo_pass = raw.get("MONGODB_DATABASE_ADMIN_PASSWORD", "")
                     creds = {
