@@ -117,9 +117,11 @@ def test_render_app_values_service_secrets_extracted():
 
 
 def test_render_app_values_no_env_from_secrets():
+    """Even without service secrets, app-level env secret is always included."""
     app = _make_app(env_from_secrets=None)
     result = render_app_values(app, "gemeente-a")
-    assert result["envSecrets"] == []
+    # App-level sensitive env var secret always included for Vault/K8s Secret support
+    assert f"{app.slug}-env-secrets" in result["envSecrets"]
 
 
 def test_render_app_values_resources():
