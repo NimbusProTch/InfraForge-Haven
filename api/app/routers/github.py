@@ -140,6 +140,48 @@ async def disconnect_github(
     return {"status": "disconnected", "tenant_slug": tenant_slug}
 
 
+# ---- Tenant GitHub connection status ----
+
+
+@router.get("/status/{tenant_slug}")
+async def github_status(
+    tenant_slug: str,
+    db: DBSession,
+    current_user: CurrentUser,
+) -> dict:
+    """Check if a tenant has a valid GitHub token connected.
+
+    Returns: connected (bool), github_user (login if valid), needs_reauth (if token expired).
+    UI uses this to show/hide the "Connect GitHub" banner on tenant dashboard.
+    """
+    result = await db.execute(select(Tenant).where(Tenant.slug == tenant_slug))
+    tenant = result.scalar_one_or_none()
+    if tenant is None:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+
+    if not tenant.github_token:
+        return {"connected": False, "github_user": None, "needs_reauth": False}
+
+    # Validate token by calling GitHub API
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                f"{GITHUB_API}/user",
+                headers=_auth_headers(tenant.github_token),
+                timeout=10.0,
+            )
+        if response.status_code == 401:
+            return {"connected": False, "github_user": None, "needs_reauth": True}
+        if response.is_success:
+            user = response.json()
+            return {"connected": True, "github_user": user.get("login"), "needs_reauth": False}
+    except Exception:
+        logger.warning("GitHub API unreachable when checking token for %s", tenant_slug)
+
+    # Can't reach GitHub — assume connected (token exists)
+    return {"connected": True, "github_user": None, "needs_reauth": False}
+
+
 # ---- GitHub API proxy endpoints ----
 
 

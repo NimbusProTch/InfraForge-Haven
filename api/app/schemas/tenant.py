@@ -45,6 +45,7 @@ class TenantResponse(BaseModel):
     namespace: str
     keycloak_realm: str
     tier: str
+    github_connected: bool = False
     cpu_limit: str
     memory_limit: str
     storage_limit: str
