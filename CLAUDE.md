@@ -505,7 +505,7 @@ haven-builds             → BuildKit daemon + build job pod'ları
 - Build pipeline: tenant'ın `github_token`'ını kullanarak private repo clone yapabiliyor
 
 ### Test Durumu
-- Backend unit testleri: **809** (multi-tenant E2E, all 5 DB types, SSE lifecycle events, connect/disconnect, credentials, status sync, CRD body builders, ApplicationSet CRUD, tenant deletion cascade, race condition handling, credential provisioning, background loop isolation, Vault+ESO integration, service timeout, GitHub status, self-service onboarding)
+- Backend unit testleri: **813** (multi-tenant E2E, all 5 DB types, SSE lifecycle events, connect/disconnect, credentials, status sync, CRD body builders, ApplicationSet CRUD, tenant deletion cascade, race condition handling, credential provisioning, background loop isolation, Vault+ESO integration, service timeout, GitHub status, self-service onboarding, ArgoCD fallback, image_tag guard)
 - Playwright E2E: **36 test** (5 DB lifecycle + credentials flow + env vars)
 - Real cluster E2E: 3 tenants × (app + 2 services + build + deploy + delete) — all verified
 
