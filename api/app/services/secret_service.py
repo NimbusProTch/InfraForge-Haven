@@ -1,15 +1,19 @@
-"""Secret service: manages K8s Secrets for sensitive environment variables.
+"""Secret service: manages sensitive environment variables.
 
 Design:
   - Non-sensitive env vars → GitOps values.yaml (plaintext, version-controlled).
-  - Sensitive env vars → K8s Secret in tenant namespace, referenced via envFrom.
+  - Sensitive env vars → Vault (when configured) or K8s Secret (fallback).
+
+When Vault is configured (VAULT_URL + VAULT_TOKEN):
+  - Sensitive vars written to Vault KV v2: haven/tenants/{tenant}/apps/{app}/secrets
+  - ESO (External Secrets Operator) syncs Vault → K8s Secret automatically
+  - Pod reads via envFrom.secretRef (same as before)
+
+When Vault is NOT configured:
+  - Falls back to direct K8s Secret management (legacy behavior)
 
 K8s Secret naming convention:
   {app_slug}-env-secrets  (e.g. "my-api-env-secrets")
-
-The secret uses stringData so values are stored as UTF-8 strings.
-ArgoCD/Helm does NOT touch these secrets — they are managed exclusively by
-the Haven API and live outside the GitOps repo.
 """
 
 import base64
@@ -50,10 +54,93 @@ def _build_secret_body(namespace: str, app_slug: str, data: dict[str, str]) -> d
 
 
 class SecretService:
-    """Creates, updates, and deletes K8s Secrets for sensitive env vars."""
+    """Creates, updates, and deletes secrets for sensitive env vars.
+
+    Uses Vault when configured (VAULT_URL set), falls back to direct K8s Secrets.
+    """
 
     def __init__(self, k8s: K8sClient) -> None:
         self._k8s = k8s
+        from app.services.vault_service import vault_service
+
+        self._vault = vault_service
+
+    def uses_vault(self) -> bool:
+        """Return True if Vault is configured and will be used for secret storage."""
+        return self._vault.is_configured()
+
+    async def upsert_sensitive_vars(
+        self, namespace: str, app_slug: str, tenant_slug: str, data: dict[str, str],
+    ) -> bool:
+        """Write sensitive env vars. Uses Vault if configured, K8s Secret otherwise.
+
+        When using Vault, also creates an ExternalSecret CRD so ESO syncs to K8s.
+        Returns True on success.
+        """
+        if self.uses_vault():
+            await self._vault.write_secrets(tenant_slug, app_slug, data)
+            self._ensure_external_secret(namespace, app_slug, tenant_slug)
+            return True
+        return self.upsert_secret(namespace, app_slug, data)
+
+    async def delete_sensitive_vars(self, namespace: str, app_slug: str, tenant_slug: str) -> bool:
+        """Delete sensitive env vars from Vault or K8s Secret."""
+        if self.uses_vault():
+            await self._vault.delete_secrets(tenant_slug, app_slug)
+            self._delete_external_secret(namespace, app_slug)
+            return True
+        return self.delete_secret(namespace, app_slug)
+
+    def _ensure_external_secret(self, namespace: str, app_slug: str, tenant_slug: str) -> None:
+        """Create/update ExternalSecret CRD so ESO syncs Vault → K8s Secret."""
+        if not self._k8s.is_available() or self._k8s.custom_objects is None:
+            return
+
+        body = {
+            "apiVersion": "external-secrets.io/v1",
+            "kind": "ExternalSecret",
+            "metadata": {
+                "name": _secret_name(app_slug),
+                "namespace": namespace,
+                "labels": {
+                    "app.kubernetes.io/managed-by": _LABEL_MANAGED_BY,
+                    "haven.io/app": app_slug,
+                },
+            },
+            "spec": {
+                "refreshInterval": "30s",
+                "secretStoreRef": {"name": "haven-vault", "kind": "ClusterSecretStore"},
+                "target": {"name": _secret_name(app_slug), "creationPolicy": "Owner"},
+                "dataFrom": [{"extract": {"key": f"tenants/{tenant_slug}/apps/{app_slug}/secrets"}}],
+            },
+        }
+
+        try:
+            self._k8s.custom_objects.create_namespaced_custom_object(
+                group="external-secrets.io", version="v1", namespace=namespace,
+                plural="externalsecrets", body=body,
+            )
+        except ApiException as e:
+            if e.status == 409:
+                self._k8s.custom_objects.replace_namespaced_custom_object(
+                    group="external-secrets.io", version="v1", namespace=namespace,
+                    plural="externalsecrets", name=_secret_name(app_slug), body=body,
+                )
+            else:
+                raise
+
+    def _delete_external_secret(self, namespace: str, app_slug: str) -> None:
+        """Delete ExternalSecret CRD."""
+        if not self._k8s.is_available() or self._k8s.custom_objects is None:
+            return
+        try:
+            self._k8s.custom_objects.delete_namespaced_custom_object(
+                group="external-secrets.io", version="v1", namespace=namespace,
+                plural="externalsecrets", name=_secret_name(app_slug),
+            )
+        except ApiException as e:
+            if e.status != 404:
+                raise
 
     def _core(self):
         return self._k8s.core_v1

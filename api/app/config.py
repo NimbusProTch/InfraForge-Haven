@@ -90,5 +90,10 @@ class Settings(BaseSettings):
     # Helm chart repo URL for ArgoCD multi-source (default: InfraForge-Haven GitHub)
     chart_repo_url: str = ""
 
+    # HashiCorp Vault (sensitive env var storage)
+    # Set VAULT_URL + VAULT_TOKEN to enable Vault; empty = direct K8s Secrets fallback
+    vault_url: str = ""
+    vault_token: str = ""
+
 
 settings = Settings()

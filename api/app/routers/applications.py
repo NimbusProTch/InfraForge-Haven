@@ -173,6 +173,64 @@ async def update_application(
     return app
 
 
+class _SecretVarsBody(BaseModel):
+    """Request body for PUT /secrets — key-value pairs for sensitive env vars."""
+
+    secrets: dict[str, str]
+
+
+@router.put("/{app_slug}/secrets", response_model=dict)
+async def upsert_secrets(
+    tenant_slug: str,
+    app_slug: str,
+    body: _SecretVarsBody,
+    db: DBSession,
+    k8s: K8sDep,
+    current_user: CurrentUser,
+) -> dict:
+    """Write sensitive env vars to Vault (or K8s Secret fallback).
+
+    These are injected into the pod via envFrom.secretRef and never stored in GitOps.
+    """
+    tenant = await _get_tenant_or_404(tenant_slug, db)
+    app = await _get_app_or_404(tenant.id, app_slug, db)
+
+    from app.services.secret_service import SecretService
+
+    svc = SecretService(k8s)
+    await svc.upsert_sensitive_vars(
+        namespace=tenant.namespace,
+        app_slug=app.slug,
+        tenant_slug=tenant.slug,
+        data=body.secrets,
+    )
+    return {"status": "ok", "keys": list(body.secrets.keys()), "vault": svc.uses_vault()}
+
+
+@router.get("/{app_slug}/secrets", response_model=dict)
+async def list_secret_keys(
+    tenant_slug: str,
+    app_slug: str,
+    db: DBSession,
+    k8s: K8sDep,
+    current_user: CurrentUser,
+) -> dict:
+    """List sensitive env var keys (values never returned via API)."""
+    tenant = await _get_tenant_or_404(tenant_slug, db)
+    app = await _get_app_or_404(tenant.id, app_slug, db)
+
+    from app.services.secret_service import SecretService
+
+    svc = SecretService(k8s)
+    if svc.uses_vault():
+        from app.services.vault_service import vault_service
+
+        keys = await vault_service.list_keys(tenant.slug, app.slug)
+    else:
+        keys = svc.list_secret_keys(tenant.namespace, app.slug)
+    return {"keys": keys, "vault": svc.uses_vault()}
+
+
 @router.delete("/{app_slug}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_application(
     tenant_slug: str, app_slug: str, db: DBSession, k8s: K8sDep, current_user: CurrentUser
