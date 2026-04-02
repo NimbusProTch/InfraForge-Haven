@@ -89,6 +89,12 @@ def render_app_values(app: Application, tenant_slug: str) -> dict:
     Namespace is derived as tenant-{tenant_slug}.
     """
     secret_names = [e.get("secret_name", "") for e in (app.env_from_secrets or []) if e.get("secret_name")]
+
+    # Include Vault/K8s sensitive env var secret if it exists
+    app_env_secret = f"{app.slug}-env-secrets"
+    if app_env_secret not in secret_names:
+        secret_names.append(app_env_secret)
+
     return build_app_values(
         tenant_slug=tenant_slug,
         app_slug=app.slug,
