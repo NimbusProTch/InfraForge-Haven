@@ -177,6 +177,7 @@ async def test_patch_app_enqueues_update_on_replicas_change(async_client, sample
         name="Patch Test",
         repo_url="https://github.com/org/repo",
         branch="main",
+        image_tag="harbor.example.com/haven/tenant-test/patch-test:abc123",
     )
     db_session.add(app_obj)
     await db_session.commit()
