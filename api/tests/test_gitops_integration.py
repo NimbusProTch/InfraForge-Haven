@@ -266,6 +266,44 @@ async def test_patch_app_no_enqueue_for_non_gitops_fields(async_client, sample_t
         fastapi_app.dependency_overrides.pop(get_git_queue, None)
 
 
+@pytest.mark.asyncio
+async def test_patch_app_no_enqueue_when_image_tag_none(async_client, sample_tenant, db_session):
+    """PATCH with gitops fields must NOT enqueue if app has no image_tag (never built).
+
+    This prevents wiping an existing Deployment by writing empty image to values.yaml.
+    """
+    from app.deps import get_git_queue
+    from app.main import app as fastapi_app
+    from app.models.application import Application as AppModel
+
+    app_obj = AppModel(
+        id=uuid.uuid4(),
+        tenant_id=sample_tenant.id,
+        slug="no-image-app",
+        name="No Image App",
+        repo_url="https://github.com/org/repo",
+        branch="main",
+        image_tag=None,  # Never built — no image tag
+    )
+    db_session.add(app_obj)
+    await db_session.commit()
+
+    mock_queue = _make_queue_mock()
+    fastapi_app.dependency_overrides[get_git_queue] = lambda: mock_queue
+
+    try:
+        resp = await async_client.patch(
+            f"/api/v1/tenants/{sample_tenant.slug}/apps/no-image-app",
+            json={"replicas": 5},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["replicas"] == 5
+        # Must NOT enqueue — image_tag is None, would wipe deployment
+        mock_queue.enqueue.assert_not_awaited()
+    finally:
+        fastapi_app.dependency_overrides.pop(get_git_queue, None)
+
+
 # ---------------------------------------------------------------------------
 # pipeline enqueue — unit test
 # ---------------------------------------------------------------------------

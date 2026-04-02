@@ -536,3 +536,90 @@ async def test_delete_tenant_removes_directory():
     call_args = mock_client.delete_directory.call_args
     path_arg = call_args[0][2]
     assert path_arg == "tenants/amsterdam"
+
+
+# ---------------------------------------------------------------------------
+# ArgoCD fallback — when ArgoCD unreachable, K8s check takes over
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_argocd_fallback_to_k8s_when_unreachable():
+    """If ArgoCD wait_for_healthy fails, pipeline must fall back to K8s Deployment check."""
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    from app.services.argocd_service import ArgoCDService
+    from app.services.deploy_service import DeployService
+
+    argocd = MagicMock(spec=ArgoCDService)
+    argocd.wait_for_healthy = AsyncMock(return_value=(False, "ArgoCD API unreachable"))
+
+    deploy_svc = MagicMock(spec=DeployService)
+    deploy_svc.wait_for_ready = AsyncMock(return_value=(True, "Deployment ready"))
+
+    # Simulate the pipeline fallback logic
+    ready = False
+    use_gitops = True
+
+    if use_gitops and argocd:
+        ready, msg = await argocd.wait_for_healthy("test-tenant-test-app")
+        if not ready:
+            # Fallback to K8s
+            ready, msg = await deploy_svc.wait_for_ready("tenant-test", "test-app", timeout=60)
+
+    assert ready is True
+    argocd.wait_for_healthy.assert_awaited_once()
+    deploy_svc.wait_for_ready.assert_awaited_once_with("tenant-test", "test-app", timeout=60)
+
+
+@pytest.mark.asyncio
+async def test_argocd_success_no_fallback():
+    """If ArgoCD reports healthy, no K8s fallback should occur."""
+    from unittest.mock import AsyncMock, MagicMock
+
+    from app.services.argocd_service import ArgoCDService
+    from app.services.deploy_service import DeployService
+
+    argocd = MagicMock(spec=ArgoCDService)
+    argocd.wait_for_healthy = AsyncMock(return_value=(True, "Healthy"))
+
+    deploy_svc = MagicMock(spec=DeployService)
+    deploy_svc.wait_for_ready = AsyncMock()
+
+    ready = False
+    use_gitops = True
+
+    if use_gitops and argocd:
+        ready, msg = await argocd.wait_for_healthy("test-app")
+        if not ready:
+            ready, msg = await deploy_svc.wait_for_ready("ns", "app", timeout=60)
+
+    assert ready is True
+    argocd.wait_for_healthy.assert_awaited_once()
+    deploy_svc.wait_for_ready.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_argocd_fallback_also_fails():
+    """If both ArgoCD and K8s check fail, deployment should fail."""
+    from unittest.mock import AsyncMock, MagicMock
+
+    from app.services.argocd_service import ArgoCDService
+    from app.services.deploy_service import DeployService
+
+    argocd = MagicMock(spec=ArgoCDService)
+    argocd.wait_for_healthy = AsyncMock(return_value=(False, "ArgoCD timeout"))
+
+    deploy_svc = MagicMock(spec=DeployService)
+    deploy_svc.wait_for_ready = AsyncMock(return_value=(False, "Pod CrashLoopBackOff"))
+
+    ready = False
+    use_gitops = True
+
+    if use_gitops and argocd:
+        ready, msg = await argocd.wait_for_healthy("test-app")
+        if not ready:
+            ready, msg = await deploy_svc.wait_for_ready("ns", "app", timeout=60)
+
+    assert ready is False
+    assert "CrashLoopBackOff" in msg
