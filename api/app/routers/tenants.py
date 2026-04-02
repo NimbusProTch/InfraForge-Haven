@@ -7,6 +7,7 @@ from sqlalchemy.exc import IntegrityError
 from app.deps import CurrentUser, DBSession, K8sDep
 from app.models.managed_service import ManagedService
 from app.models.tenant import Tenant
+from app.models.tenant_member import MemberRole, TenantMember
 from app.schemas.tenant import TenantCreate, TenantResponse, TenantUpdate
 from app.services.gitops_scaffold import gitops_scaffold
 from app.services.keycloak_service import keycloak_service
@@ -26,8 +27,26 @@ async def _get_tenant_or_404(tenant_slug: str, db: DBSession) -> Tenant:
     return tenant
 
 
+@router.get("/me", response_model=list[TenantResponse])
+async def my_tenants(db: DBSession, current_user: CurrentUser) -> list[Tenant]:
+    """List tenants the current user is a member of.
+
+    Used by UI after login to show "Your Projects" or redirect to onboarding.
+    Returns empty list if user has no tenants → UI shows "Create your first project".
+    """
+    user_id = current_user.get("sub", "")
+    result = await db.execute(
+        select(Tenant)
+        .join(TenantMember, TenantMember.tenant_id == Tenant.id)
+        .where(TenantMember.user_id == user_id)
+        .order_by(Tenant.created_at.desc())
+    )
+    return list(result.scalars().all())
+
+
 @router.get("", response_model=list[TenantResponse])
 async def list_tenants(db: DBSession, current_user: CurrentUser) -> list[Tenant]:
+    """List all tenants (admin view). For user-specific list, use GET /tenants/me."""
     result = await db.execute(select(Tenant).order_by(Tenant.created_at.desc()))
     return list(result.scalars().all())
 
@@ -77,6 +96,16 @@ async def create_tenant(body: TenantCreate, db: DBSession, k8s: K8sDep, current_
 
     # GitOps scaffold: create tenant directory in haven-gitops (non-blocking)
     await gitops_scaffold.scaffold_tenant(body.slug)
+
+    # Auto-add creator as tenant owner
+    creator_member = TenantMember(
+        tenant_id=tenant.id,
+        user_id=current_user.get("sub", ""),
+        email=current_user.get("email", current_user.get("preferred_username", "")),
+        display_name=current_user.get("name", ""),
+        role=MemberRole.owner,
+    )
+    db.add(creator_member)
 
     try:
         await db.commit()
