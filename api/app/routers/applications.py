@@ -343,7 +343,7 @@ async def connect_service(
         await db.commit()
         await db.refresh(app)
 
-    if queue is not None:
+    if queue is not None and app.image_tag:
         await _enqueue_app_values_update(queue, tenant_slug, app, f"connect service {svc.name}")
 
     return app
@@ -383,5 +383,5 @@ async def disconnect_service(
     await db.commit()
     await db.refresh(app)
 
-    if queue is not None:
+    if queue is not None and app.image_tag:
         await _enqueue_app_values_update(queue, tenant_slug, app, f"disconnect service {service_name}")
