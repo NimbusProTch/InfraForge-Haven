@@ -10,7 +10,7 @@ Tests:
 
 import uuid
 from collections.abc import AsyncGenerator
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 import pytest_asyncio
@@ -23,7 +23,6 @@ from app.main import app
 from app.models.application import Application
 from app.models.deployment import Deployment, DeploymentStatus
 from app.models.tenant import Tenant
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -94,7 +93,7 @@ def _mock_k8s_with_pods(pods: list[dict] | None = None) -> MagicMock:
 
     # Build pod objects
     pod_items = []
-    for p in (pods or []):
+    for p in pods or []:
         pod = MagicMock()
         pod.metadata.name = p["name"]
         pod.status.phase = p.get("phase", "Running")
@@ -111,10 +110,12 @@ def _mock_k8s_with_pods(pods: list[dict] | None = None) -> MagicMock:
 @pytest_asyncio.fixture
 async def deploy_client(db_session: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
     """Client with K8s available and mock pods."""
-    mock_k8s = _mock_k8s_with_pods([
-        {"name": "test-api-abc-111", "phase": "Running"},
-        {"name": "test-api-abc-222", "phase": "Running"},
-    ])
+    mock_k8s = _mock_k8s_with_pods(
+        [
+            {"name": "test-api-abc-111", "phase": "Running"},
+            {"name": "test-api-abc-222", "phase": "Running"},
+        ]
+    )
 
     async def _override_db() -> AsyncGenerator[AsyncSession, None]:
         yield db_session
@@ -158,8 +159,8 @@ async def test_list_deployments(deploy_client, db_session):
     """GET /deployments returns list of deployments."""
     tenant = await _make_tenant(db_session)
     application = await _make_app(db_session, tenant)
-    d1 = await _make_deployment(db_session, application, DeploymentStatus.RUNNING)
-    d2 = await _make_deployment(db_session, application, DeploymentStatus.FAILED, error_message="OOM")
+    await _make_deployment(db_session, application, DeploymentStatus.RUNNING)
+    await _make_deployment(db_session, application, DeploymentStatus.FAILED, error_message="OOM")
 
     resp = await deploy_client.get(f"/api/v1/tenants/{tenant.slug}/apps/{application.slug}/deployments")
     assert resp.status_code == 200
@@ -174,9 +175,7 @@ async def test_get_single_deployment(deploy_client, db_session):
     application = await _make_app(db_session, tenant)
     deployment = await _make_deployment(db_session, application, image_tag="harbor.io/test:abc")
 
-    resp = await deploy_client.get(
-        f"/api/v1/tenants/{tenant.slug}/apps/{application.slug}/deployments/{deployment.id}"
-    )
+    resp = await deploy_client.get(f"/api/v1/tenants/{tenant.slug}/apps/{application.slug}/deployments/{deployment.id}")
     assert resp.status_code == 200
     data = resp.json()
     assert data["id"] == str(deployment.id)
@@ -191,9 +190,7 @@ async def test_get_deployment_404(deploy_client, db_session):
     application = await _make_app(db_session, tenant)
     await _make_deployment(db_session, application)
 
-    resp = await deploy_client.get(
-        f"/api/v1/tenants/{tenant.slug}/apps/{application.slug}/deployments/{uuid.uuid4()}"
-    )
+    resp = await deploy_client.get(f"/api/v1/tenants/{tenant.slug}/apps/{application.slug}/deployments/{uuid.uuid4()}")
     assert resp.status_code == 404
 
 
@@ -221,9 +218,7 @@ async def test_failed_deployment_has_error_message(deploy_client, db_session):
         db_session, application, DeploymentStatus.FAILED, error_message="CrashLoopBackOff: OOMKilled"
     )
 
-    resp = await deploy_client.get(
-        f"/api/v1/tenants/{tenant.slug}/apps/{application.slug}/deployments/{deployment.id}"
-    )
+    resp = await deploy_client.get(f"/api/v1/tenants/{tenant.slug}/apps/{application.slug}/deployments/{deployment.id}")
     data = resp.json()
     assert data["status"] == "failed"
     assert "OOMKilled" in data["error_message"]
@@ -241,9 +236,7 @@ async def test_log_streaming_multi_replica(deploy_client, db_session):
     application = await _make_app(db_session, tenant)
     await _make_deployment(db_session, application, DeploymentStatus.RUNNING)
 
-    resp = await deploy_client.get(
-        f"/api/v1/tenants/{tenant.slug}/apps/{application.slug}/logs"
-    )
+    resp = await deploy_client.get(f"/api/v1/tenants/{tenant.slug}/apps/{application.slug}/logs")
     assert resp.status_code == 200
     assert resp.headers["content-type"].startswith("text/event-stream")
     body = resp.text
@@ -260,9 +253,7 @@ async def test_log_streaming_single_pod_filter(deploy_client, db_session):
     application = await _make_app(db_session, tenant)
     await _make_deployment(db_session, application, DeploymentStatus.RUNNING)
 
-    resp = await deploy_client.get(
-        f"/api/v1/tenants/{tenant.slug}/apps/{application.slug}/logs?pod=test-api-abc-111"
-    )
+    resp = await deploy_client.get(f"/api/v1/tenants/{tenant.slug}/apps/{application.slug}/logs?pod=test-api-abc-111")
     body = resp.text
     # Single pod filter: no prefix
     assert "test-api-abc-111" in body
@@ -276,9 +267,7 @@ async def test_log_streaming_k8s_unavailable(deploy_client_no_k8s, db_session):
     application = await _make_app(db_session, tenant)
     await _make_deployment(db_session, application, DeploymentStatus.RUNNING)
 
-    resp = await deploy_client_no_k8s.get(
-        f"/api/v1/tenants/{tenant.slug}/apps/{application.slug}/logs"
-    )
+    resp = await deploy_client_no_k8s.get(f"/api/v1/tenants/{tenant.slug}/apps/{application.slug}/logs")
     body = resp.text
     assert "not available" in body.lower() or "end" in body
 
@@ -315,13 +304,9 @@ async def test_log_streaming_building_status(deploy_client, db_session):
     """GET /logs shows build progress for BUILDING status."""
     tenant = await _make_tenant(db_session, "build-log")
     application = await _make_app(db_session, tenant)
-    await _make_deployment(
-        db_session, application, DeploymentStatus.BUILDING, build_job_name="build-test-api-123"
-    )
+    await _make_deployment(db_session, application, DeploymentStatus.BUILDING, build_job_name="build-test-api-123")
 
-    resp = await deploy_client.get(
-        f"/api/v1/tenants/{tenant.slug}/apps/{application.slug}/logs"
-    )
+    resp = await deploy_client.get(f"/api/v1/tenants/{tenant.slug}/apps/{application.slug}/logs")
     body = resp.text
     assert "build in progress" in body.lower()
     assert "build-test-api-123" in body
@@ -335,6 +320,7 @@ async def test_log_streaming_building_status(deploy_client, db_session):
 def test_build_containers_use_buildctl():
     """Build log streaming uses buildctl container name (not kaniko)."""
     import inspect
+
     from app.routers import deployments
 
     source = inspect.getsource(deployments.stream_logs)

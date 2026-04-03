@@ -31,7 +31,6 @@ from app.services.backup_service import (
     _mysql_restore_body,
 )
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -333,9 +332,7 @@ async def test_restore_k8s_unavailable_503(k8s_client_no_k8s, db_session):
     tenant = await _make_tenant(db_session, "nok8s-restore")
     await _make_service(db_session, tenant, "app-pg", ModelServiceType.POSTGRES)
 
-    response = await k8s_client_no_k8s.post(
-        f"/api/v1/tenants/{tenant.slug}/services/app-pg/restore/backup-20260401"
-    )
+    response = await k8s_client_no_k8s.post(f"/api/v1/tenants/{tenant.slug}/services/app-pg/restore/backup-20260401")
     assert response.status_code == 503
 
 
