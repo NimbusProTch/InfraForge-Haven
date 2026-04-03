@@ -17,7 +17,9 @@ logger = logging.getLogger("rotterdam-api")
 DATABASE_URL = os.getenv("DATABASE_URL", "")
 REDIS_URL = os.getenv("REDIS_URL", "")
 RABBITMQ_URL = os.getenv("RABBITMQ_URL", "")
-MONGODB_URL = os.getenv("MONGODB_URL", "") or os.getenv("MONGO_URL", "")
+# MongoDB URL: prefer DATABASE_URL if it starts with mongodb://, then MONGODB_URL
+_db_url = os.getenv("DATABASE_URL", "")
+MONGODB_URL = (_db_url if _db_url.startswith("mongodb://") else "") or os.getenv("MONGODB_URL", "") or os.getenv("MONGO_URL", "")
 MYSQL_URL = os.getenv("MYSQL_URL", "")
 # MySQL individual fields (fallback if MYSQL_URL not set)
 MYSQL_HOST = os.getenv("DB_HOST", "")
@@ -124,8 +126,15 @@ async def check_mysql():
 async def lifespan(app: FastAPI):
     logging.basicConfig(level=logging.INFO)
     logger.info("Rotterdam API starting on port %d", PORT)
-    await asyncio.gather(check_postgres(), check_redis(), check_rabbitmq(), check_mongodb(), check_mysql())
+    # Run checks in background — don't block startup (liveness probe needs fast start)
+    asyncio.create_task(_run_checks())
     yield
+
+
+async def _run_checks():
+    """Run connectivity checks after startup (non-blocking)."""
+    await asyncio.sleep(2)  # Let server start first
+    await asyncio.gather(check_postgres(), check_redis(), check_rabbitmq(), check_mongodb(), check_mysql())
 
 
 app = FastAPI(title="Rotterdam API", lifespan=lifespan)
