@@ -335,6 +335,7 @@ async def stream_logs(
     k8s: K8sDep,
     current_user: CurrentUser,
     tail_lines: int = 100,
+    pod: str | None = None,
     token: str | None = None,  # noqa: ARG001 — accepted for EventSource auth (validated upstream)
 ) -> StreamingResponse:
     """Stream pod logs (or build logs if building) via SSE.
@@ -390,7 +391,7 @@ async def stream_logs(
                             yield f"data: [build pod: {build_pod} ({phase})]\n\n"
                             if phase in ("Running", "Succeeded", "Failed"):
                                 # Try each container in order
-                                for container in ("git-clone", "nixpacks", "kaniko"):
+                                for container in ("git-clone", "nixpacks", "buildctl"):
                                     try:
                                         blog: str = await asyncio.to_thread(
                                             k8s.core_v1.read_namespaced_pod_log,
@@ -430,18 +431,34 @@ async def stream_logs(
                 yield "data: [end]\n\n"
                 return
 
-            pod_name: str = pods.items[0].metadata.name
-            phase = pods.items[0].status.phase
-            yield f"data: [pod: {pod_name} ({phase})]\n\n"
+            # Filter by specific pod or stream all replicas
+            ready_pods = [
+                p for p in pods.items
+                if p.status.phase in ("Running", "Succeeded", "Failed")
+                and (pod is None or p.metadata.name == pod)
+            ]
+            if not ready_pods:
+                yield "data: [no ready pods found]\n\n"
+                yield "data: [end]\n\n"
+                return
 
-            logs: str = await asyncio.to_thread(
-                k8s.core_v1.read_namespaced_pod_log,
-                name=pod_name,
-                namespace=namespace,
-                tail_lines=tail_lines,
-            )
-            for line in logs.splitlines():
-                yield f"data: {line}\n\n"
+            multi = len(ready_pods) > 1
+            for p in ready_pods:
+                pod_name = p.metadata.name
+                phase = p.status.phase
+                prefix = f"[{pod_name}] " if multi else ""
+                yield f"data: {prefix}[pod: {pod_name} ({phase})]\n\n"
+                try:
+                    logs: str = await asyncio.to_thread(
+                        k8s.core_v1.read_namespaced_pod_log,
+                        name=pod_name,
+                        namespace=namespace,
+                        tail_lines=tail_lines,
+                    )
+                    for line in logs.splitlines():
+                        yield f"data: {prefix}{line}\n\n"
+                except Exception as exc:  # noqa: BLE001
+                    yield f"data: {prefix}[error reading logs: {exc}]\n\n"
             yield "data: [end]\n\n"
         except Exception as exc:  # noqa: BLE001
             logger.exception("Log streaming error for %s/%s", namespace, app_slug)
