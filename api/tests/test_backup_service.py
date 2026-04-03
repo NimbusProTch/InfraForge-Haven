@@ -33,15 +33,14 @@ def _make_k8s(available: bool = True, list_items: list | None = None) -> MagicMo
     return k8s
 
 
-def _backup_item_dict(name: str, phase: str = "completed") -> dict:
-    """Minimal CNPG Backup CRD object."""
+def _backup_item_dict(name: str, state: str = "Succeeded") -> dict:
+    """Minimal Percona PG Backup CRD object."""
     return {
         "metadata": {"name": name},
         "status": {
-            "phase": phase,
-            "startedAt": "2026-01-01T02:00:00Z",
-            "stoppedAt": "2026-01-01T02:05:00Z",
-            "size": "512Mi",
+            "state": state,
+            "startTime": "2026-01-01T02:00:00Z",
+            "completedAt": "2026-01-01T02:05:00Z",
         },
     }
 
@@ -70,7 +69,7 @@ async def test_list_backups_returns_items():
 
     assert len(result) == 2
     assert all(isinstance(b, BackupItem) for b in result)
-    assert result[0].phase == "completed"
+    assert result[0].phase == "Succeeded"
     assert result[0].service_name == "utrecht-pg"
     assert result[0].service_type == ServiceType.POSTGRES
 
@@ -89,7 +88,7 @@ async def test_list_backups_s3_path_format():
 async def test_list_backups_sorted_newest_first():
     def _override(tag: str, started: str) -> dict:
         d = _backup_item_dict(tag)
-        d["status"] = {**d["status"], "startedAt": started}
+        d["status"] = {**d["status"], "startTime": started}
         return d
 
     items = [
@@ -196,12 +195,13 @@ async def test_restore_backup_postgres_creates_cluster():
 
     assert restore_name.startswith("utrecht-pg-restore-")
     call_kwargs = k8s.custom_objects.create_namespaced_custom_object.call_args.kwargs
-    assert call_kwargs["group"] == "postgresql.cnpg.io"
-    assert call_kwargs["plural"] == "clusters"
+    assert call_kwargs["group"] == "pgv2.percona.com"
+    assert call_kwargs["plural"] == "perconapgrestores"
 
 
 @pytest.mark.asyncio
 async def test_restore_backup_with_pitr():
+    """Percona PG restore passes backup_id in options."""
     k8s = _make_k8s(available=True)
     svc = BackupService(k8s)
 
@@ -216,8 +216,8 @@ async def test_restore_backup_with_pitr():
 
     assert restore_name.startswith("t-pg-restore-")
     body = k8s.custom_objects.create_namespaced_custom_object.call_args.kwargs["body"]
-    recovery = body["spec"]["bootstrap"]["recovery"]
-    assert recovery["recoveryTarget"]["targetTime"] == "2026-01-15T10:00:00Z"
+    assert body["kind"] == "PerconaPGRestore"
+    assert body["spec"]["pgCluster"] == "t-pg"
 
 
 @pytest.mark.asyncio

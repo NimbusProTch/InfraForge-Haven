@@ -186,11 +186,11 @@ def _mongodb_restore_body(restore_name: str, cluster_name: str, namespace: str, 
 
 _BACKUP_CRD = {
     ServiceType.POSTGRES: {
-        "group": "postgresql.cnpg.io",
-        "version": "v1",
-        "plural": "backups",
-        "namespace_fn": lambda _tenant: _CNPG_BACKUP_NAMESPACE,
-        "body_fn": _cnpg_backup_body,
+        "group": "pgv2.percona.com",
+        "version": "v2",
+        "plural": "perconapgbackups",
+        "namespace_fn": lambda _tenant: "everest",
+        "body_fn": _percona_pg_backup_body,
     },
     ServiceType.MYSQL: {
         "group": "pxc.percona.com",
@@ -208,7 +208,28 @@ _BACKUP_CRD = {
     },
 }
 
+def _percona_pg_restore_body(restore_name: str, cluster_name: str, namespace: str, backup_id: str) -> dict:
+    """Percona PG restore manifest."""
+    return {
+        "apiVersion": "pgv2.percona.com/v2",
+        "kind": "PerconaPGRestore",
+        "metadata": {"name": restore_name, "namespace": namespace},
+        "spec": {
+            "pgCluster": cluster_name,
+            "repoName": "repo1",
+            "options": [f"--set={backup_id}"],
+        },
+    }
+
+
 _RESTORE_CRD = {
+    ServiceType.POSTGRES: {
+        "group": "pgv2.percona.com",
+        "version": "v2",
+        "plural": "perconapgrestores",
+        "namespace_fn": lambda _tenant: "everest",
+        "body_fn": _percona_pg_restore_body,
+    },
     ServiceType.MYSQL: {
         "group": "pxc.percona.com",
         "version": "v1",
@@ -227,15 +248,15 @@ _RESTORE_CRD = {
 
 _LIST_CRD = {
     ServiceType.POSTGRES: {
-        "group": "postgresql.cnpg.io",
-        "version": "v1",
-        "plural": "backups",
-        "namespace_fn": lambda _tenant: _CNPG_BACKUP_NAMESPACE,
-        "label_fn": lambda cluster: f"cnpg.io/cluster={cluster}",
-        "phase_key": "phase",
-        "started_key": "startedAt",
-        "finished_key": "stoppedAt",
-        "size_key": "size",
+        "group": "pgv2.percona.com",
+        "version": "v2",
+        "plural": "perconapgbackups",
+        "namespace_fn": lambda _tenant: "everest",
+        "label_fn": lambda cluster: f"pg.percona.com/cluster={cluster}",
+        "phase_key": "state",
+        "started_key": "startTime",
+        "finished_key": "completedAt",
+        "size_key": None,
     },
     ServiceType.MYSQL: {
         "group": "pxc.percona.com",
@@ -418,30 +439,7 @@ class BackupService:
         now = datetime.now(UTC)
         restore_name = f"{request.service_name}-restore-{now.strftime('%Y%m%d-%H%M%S')}"
 
-        if request.service_type == ServiceType.POSTGRES:
-            namespace = _CNPG_BACKUP_NAMESPACE
-            body = _cnpg_restore_body(
-                cluster_name=restore_name,
-                namespace=namespace,
-                source_cluster=request.backup_id,
-                tenant_slug=request.tenant_slug,
-                service_name=request.service_name,
-                target_time=request.target_time,
-            )
-            try:
-                await asyncio.to_thread(
-                    self.k8s.custom_objects.create_namespaced_custom_object,
-                    group="postgresql.cnpg.io",
-                    version="v1",
-                    namespace=namespace,
-                    plural="clusters",
-                    body=body,
-                )
-            except Exception as exc:  # noqa: BLE001
-                logger.exception("CNPG restore failed for %s", request.service_name)
-                raise RuntimeError(f"Restore failed: {exc}") from exc
-
-        elif request.service_type in _RESTORE_CRD:
+        if request.service_type in _RESTORE_CRD:
             cfg = _RESTORE_CRD[request.service_type]
             namespace = cfg["namespace_fn"](request.tenant_slug)
             body = cfg["body_fn"](restore_name, request.service_name, namespace, request.backup_id)
@@ -474,6 +472,86 @@ class BackupService:
     # ------------------------------------------------------------------
     # s3_path
     # ------------------------------------------------------------------
+
+    # ------------------------------------------------------------------
+    # Everest-based backup (unified API for all Everest-managed DBs)
+    # ------------------------------------------------------------------
+
+    async def trigger_everest_backup(self, cluster_name: str, backup_storage: str = "minio-backup") -> str:
+        """Trigger backup via Everest DatabaseClusterBackup CRD.
+
+        This is the preferred method for Everest-managed databases (PG, MySQL, MongoDB).
+        Everest translates the unified CRD to the correct operator-specific backup.
+        """
+        if not self.k8s.is_available():
+            raise RuntimeError("Kubernetes cluster not available")
+
+        now = datetime.now(UTC)
+        backup_name = f"backup-{cluster_name}-{now.strftime('%Y%m%d-%H%M%S')}"
+
+        body = {
+            "apiVersion": "everest.percona.com/v1alpha1",
+            "kind": "DatabaseClusterBackup",
+            "metadata": {"name": backup_name, "namespace": "everest"},
+            "spec": {
+                "dbClusterName": cluster_name,
+                "backupStorageName": backup_storage,
+            },
+        }
+
+        try:
+            await asyncio.to_thread(
+                self.k8s.custom_objects.create_namespaced_custom_object,
+                group="everest.percona.com",
+                version="v1alpha1",
+                namespace="everest",
+                plural="databaseclusterbackups",
+                body=body,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("Everest backup trigger failed for %s", cluster_name)
+            raise RuntimeError(f"Backup trigger failed: {exc}") from exc
+
+        logger.info("Everest backup triggered: cluster=%s name=%s", cluster_name, backup_name)
+        return backup_name
+
+    async def list_everest_backups(self, cluster_name: str) -> list[BackupItem]:
+        """List backups via Everest DatabaseClusterBackup CRDs."""
+        if not self.k8s.is_available():
+            return []
+
+        try:
+            result = await asyncio.to_thread(
+                self.k8s.custom_objects.list_namespaced_custom_object,
+                group="everest.percona.com",
+                version="v1alpha1",
+                namespace="everest",
+                plural="databaseclusterbackups",
+                label_selector=f"clusterName={cluster_name}",
+            )
+        except Exception as exc:
+            logger.warning("Failed to list Everest backups for %s: %s", cluster_name, exc)
+            return []
+
+        items: list[BackupItem] = []
+        for obj in result.get("items", []):
+            meta = obj.get("metadata", {})
+            status = obj.get("status", {})
+            items.append(
+                BackupItem(
+                    backup_id=meta.get("name", ""),
+                    service_name=cluster_name,
+                    service_type=ServiceType.POSTGRES,  # Everest doesn't expose type in backup
+                    phase=status.get("state", "unknown"),
+                    started_at=status.get("created"),
+                    finished_at=status.get("completed"),
+                    size=None,
+                    s3_path=status.get("destination"),
+                )
+            )
+
+        items.sort(key=lambda b: b.started_at or "", reverse=True)
+        return items
 
     @staticmethod
     def s3_path(tenant_slug: str, service_type: ServiceType, service_name: str) -> str:

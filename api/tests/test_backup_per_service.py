@@ -97,10 +97,10 @@ async def k8s_client_with_backups(db_session: AsyncSession) -> AsyncGenerator[As
             {
                 "metadata": {"name": "backup-app-pg-20260401-020000"},
                 "status": {
-                    "phase": "completed",
-                    "startedAt": "2026-04-01T02:00:00Z",
-                    "stoppedAt": "2026-04-01T02:05:00Z",
-                    "size": "256Mi",
+                    "state": "Succeeded",
+                    "created": "2026-04-01T02:00:00Z",
+                    "completed": "2026-04-01T02:05:00Z",
+                    "destination": "s3://haven-backups/test/pg",
                 },
             },
         ],
@@ -155,7 +155,7 @@ async def test_list_pg_backups(k8s_client_with_backups, db_session):
     assert data["service_name"] == "app-pg"
     assert data["k8s_available"] is True
     assert len(data["backups"]) == 1
-    assert data["backups"][0]["phase"] == "completed"
+    assert data["backups"][0]["phase"] == "Succeeded"
 
 
 @pytest.mark.asyncio

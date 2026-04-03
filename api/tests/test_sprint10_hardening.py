@@ -136,10 +136,9 @@ async def test_backup_list_with_k8s(async_client, mock_k8s, sample_tenant):
             {
                 "metadata": {"name": "backup-test-20260328-020000"},
                 "status": {
-                    "phase": "completed",
-                    "startedAt": "2026-03-28T02:00:00Z",
-                    "stoppedAt": "2026-03-28T02:01:30Z",
-                    "size": "42Mb",
+                    "state": "Succeeded",
+                    "startTime": "2026-03-28T02:00:00Z",
+                    "completedAt": "2026-03-28T02:01:30Z",
                 },
             }
         ]
@@ -150,8 +149,7 @@ async def test_backup_list_with_k8s(async_client, mock_k8s, sample_tenant):
     data = resp.json()
     assert data["k8s_available"] is True
     assert len(data["backups"]) == 1
-    assert data["backups"][0]["phase"] == "completed"
-    assert data["backups"][0]["size"] == "42Mb"
+    assert data["backups"][0]["phase"] == "Succeeded"
 
 
 @pytest.mark.asyncio

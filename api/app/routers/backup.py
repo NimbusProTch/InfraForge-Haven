@@ -127,10 +127,10 @@ async def list_service_backups(
     """List backups for a specific managed service."""
     svc = await _get_service_or_404(tenant_slug, service_name, db)
     backup_svc = BackupService(k8s)
-    backup_type = _SERVICE_TYPE_MAP[svc.service_type]
     cluster_name = svc.everest_name or _everest_name(tenant_slug, service_name)
 
-    items = await backup_svc.list_backups(tenant_slug, cluster_name, backup_type)
+    # Use Everest unified backup API for Everest-managed DBs
+    items = await backup_svc.list_everest_backups(cluster_name)
 
     return BackupListResponse(
         tenant_slug=tenant_slug,
@@ -171,11 +171,10 @@ async def trigger_service_backup(
         raise HTTPException(status_code=503, detail="Kubernetes cluster not available")
 
     backup_svc = BackupService(k8s)
-    backup_type = _SERVICE_TYPE_MAP[svc.service_type]
     cluster_name = svc.everest_name or _everest_name(tenant_slug, service_name)
 
     try:
-        backup_name = await backup_svc.trigger_backup(tenant_slug, cluster_name, backup_type)
+        backup_name = await backup_svc.trigger_everest_backup(cluster_name)
     except RuntimeError as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
