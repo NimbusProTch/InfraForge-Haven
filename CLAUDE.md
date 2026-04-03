@@ -505,9 +505,24 @@ haven-builds             → BuildKit daemon + build job pod'ları
 - Build pipeline: tenant'ın `github_token`'ını kullanarak private repo clone yapabiliyor
 
 ### Test Durumu
-- Backend unit testleri: **813** (multi-tenant E2E, all 5 DB types, SSE lifecycle events, connect/disconnect, credentials, status sync, CRD body builders, ApplicationSet CRUD, tenant deletion cascade, race condition handling, credential provisioning, background loop isolation, Vault+ESO integration, service timeout, GitHub status, self-service onboarding, ArgoCD fallback, image_tag guard)
+- Backend unit testleri: **929** (E1-E8 sprint'leri + H1-H3 enterprise hardening: RBAC enforcement, per-service backup/restore, multi-replica log streaming, Redis/RabbitMQ scale, signup flow, observability, GitOps verification, full regression lifecycle, tenant/app/service CRUD)
 - Playwright E2E: **36 test** (5 DB lifecycle + credentials flow + env vars)
 - Real cluster E2E: 3 tenants × (app + 2 services + build + deploy + delete) — all verified
+- CI/CD: GitHub Actions → Lint ✅ → Test (929) ✅ → Docker Build ✅ → Harbor Push ✅ → Manifest Update ✅ → ArgoCD Sync ✅
+
+### CI/CD Pipeline
+- **GitHub Actions**: `api-ci.yml` (lint → test → build → push → manifest update)
+- **Image**: `harbor.46.225.42.2.sslip.io/library/haven-api:{git-sha}`
+- **ArgoCD**: `haven-api` Application auto-syncs from `platform/manifests/haven-api/`
+- **Swagger docs**: `https://api.46.225.42.2.sslip.io/api/docs`
+- **ReDoc**: `https://api.46.225.42.2.sslip.io/api/redoc`
+
+### Enterprise Hardening (Sprint H1-H3)
+- **RBAC**: `require_role("owner", "admin")` decorator, POST /members enforced
+- **Container security**: Non-root (USER 1000), drop ALL capabilities, startup probe
+- **Request logging**: X-Request-ID correlation header, latency logging
+- **Config validation**: Missing SECRET_KEY/DATABASE_URL warning at startup
+- **Backup**: MinIO S3 HTTPS, Everest DatabaseClusterBackup, MongoDB/MySQL/PG verified
 
 ### Bilinen Sorunlar / Gotcha'lar
 - **Redis connection_hint**: OpsTree operator service adı `{name}` (NOT `{name}-redis`) → fix edildi
@@ -515,7 +530,7 @@ haven-builds             → BuildKit daemon + build job pod'ları
 - **Everest PG default DB**: `postgres` (custom DB adı oluşturmuyor, connection_hint'teki DB adı yanlış olabilir)
 - **Harbor URL**: Build pipeline'da `HARBOR_URL` env var set edilmeli, docker config secret'taki host ile match etmeli
 - **apptype enum**: DB'de yoksa manual oluştur: `CREATE TYPE apptype AS ENUM ('web', 'worker', 'cron')`
-- **MySQL memory**: PXC 8.4 + Galera minimum 2Gi RAM, 5Gi storage gerekli (default 512Mi OOMKill eder)
+- **MySQL memory**: PXC 8.4 + Galera minimum **3Gi** RAM for backup SST (2Gi OOMKill during xtrabackup), 5Gi storage
 - **Redis fsGroup**: OpsTree Redis Operator CRD'deki `securityContext.fsGroup` alanını StatefulSet'e **aktarmıyor**. Çözüm: Dev tier'da persistent storage kaldırıldı (ephemeral Redis). Prod tier'da init container veya volume ownership fix gerekli.
 - **Redis passwordless tenant secret**: OpsTree Redis secret oluşturmuyor. `_create_crd_tenant_secret` sadece `REDIS_URL` ile secret yaratır.
 - **ArgoCD per-tenant AppSet**: Global ApplicationSet kaldırıldı. Her tenant için `appset-{slug}` K8s API ile oluşturuluyor (tenant_service.py). haven-platform sadece haven-api + haven-ui yönetiyor.
