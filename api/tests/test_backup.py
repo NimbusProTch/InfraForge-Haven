@@ -119,4 +119,4 @@ async def test_trigger_backup_response_structure(k8s_client, db_session):
     assert isinstance(data["backup_name"], str)
     assert len(data["backup_name"]) > 0
     assert isinstance(data["triggered_at"], str)
-    assert data["backup_name"].startswith("backup-bkp-tenant-")
+    assert data["backup_name"].startswith("backup-haven-bkp-tenant-")

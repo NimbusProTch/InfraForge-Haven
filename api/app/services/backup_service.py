@@ -154,6 +154,32 @@ def _mongodb_backup_body(backup_name: str, cluster_name: str, namespace: str) ->
     }
 
 
+def _mysql_restore_body(restore_name: str, cluster_name: str, namespace: str, backup_id: str) -> dict:
+    """Percona XtraDB restore manifest."""
+    return {
+        "apiVersion": "pxc.percona.com/v1",
+        "kind": "PerconaXtraDBClusterRestore",
+        "metadata": {"name": restore_name, "namespace": namespace},
+        "spec": {
+            "pxcCluster": cluster_name,
+            "backupName": backup_id,
+        },
+    }
+
+
+def _mongodb_restore_body(restore_name: str, cluster_name: str, namespace: str, backup_id: str) -> dict:
+    """Percona MongoDB restore manifest."""
+    return {
+        "apiVersion": "psmdb.percona.com/v1",
+        "kind": "PerconaServerMongoDBRestore",
+        "metadata": {"name": restore_name, "namespace": namespace},
+        "spec": {
+            "clusterName": cluster_name,
+            "backupName": backup_id,
+        },
+    }
+
+
 # ---------------------------------------------------------------------------
 # CRD config table
 # ---------------------------------------------------------------------------
@@ -170,15 +196,32 @@ _BACKUP_CRD = {
         "group": "pxc.percona.com",
         "version": "v1",
         "plural": "perconaxtradbclusterbackups",
-        "namespace_fn": lambda tenant: f"tenant-{tenant}",
+        "namespace_fn": lambda _tenant: "everest",
         "body_fn": _mysql_backup_body,
     },
     ServiceType.MONGODB: {
         "group": "psmdb.percona.com",
         "version": "v1",
-        "plural": "perconaservermongodbbkps",
-        "namespace_fn": lambda tenant: f"tenant-{tenant}",
+        "plural": "perconaservermongodbbackups",
+        "namespace_fn": lambda _tenant: "everest",
         "body_fn": _mongodb_backup_body,
+    },
+}
+
+_RESTORE_CRD = {
+    ServiceType.MYSQL: {
+        "group": "pxc.percona.com",
+        "version": "v1",
+        "plural": "perconaxtradbclusterrestores",
+        "namespace_fn": lambda tenant: "everest",
+        "body_fn": _mysql_restore_body,
+    },
+    ServiceType.MONGODB: {
+        "group": "psmdb.percona.com",
+        "version": "v1",
+        "plural": "perconaservermongodbrestores",
+        "namespace_fn": lambda tenant: "everest",
+        "body_fn": _mongodb_restore_body,
     },
 }
 
@@ -198,7 +241,7 @@ _LIST_CRD = {
         "group": "pxc.percona.com",
         "version": "v1",
         "plural": "perconaxtradbclusterbackups",
-        "namespace_fn": lambda tenant: f"tenant-{tenant}",
+        "namespace_fn": lambda _tenant: "everest",
         "label_fn": lambda cluster: f"pxc.percona.com/cluster={cluster}",
         "phase_key": "state",
         "started_key": "startTime",
@@ -208,8 +251,8 @@ _LIST_CRD = {
     ServiceType.MONGODB: {
         "group": "psmdb.percona.com",
         "version": "v1",
-        "plural": "perconaservermongodbbkps",
-        "namespace_fn": lambda tenant: f"tenant-{tenant}",
+        "plural": "perconaservermongodbbackups",
+        "namespace_fn": lambda _tenant: "everest",
         "label_fn": lambda cluster: f"psmdb.percona.com/cluster={cluster}",
         "phase_key": "state",
         "started_key": "startTime",
@@ -398,14 +441,26 @@ class BackupService:
                 logger.exception("CNPG restore failed for %s", request.service_name)
                 raise RuntimeError(f"Restore failed: {exc}") from exc
 
+        elif request.service_type in _RESTORE_CRD:
+            cfg = _RESTORE_CRD[request.service_type]
+            namespace = cfg["namespace_fn"](request.tenant_slug)
+            body = cfg["body_fn"](restore_name, request.service_name, namespace, request.backup_id)
+
+            try:
+                await asyncio.to_thread(
+                    self.k8s.custom_objects.create_namespaced_custom_object,
+                    group=cfg["group"],
+                    version=cfg["version"],
+                    namespace=namespace,
+                    plural=cfg["plural"],
+                    body=body,
+                )
+            except Exception as exc:  # noqa: BLE001
+                logger.exception("Restore failed for %s/%s", request.tenant_slug, request.service_name)
+                raise RuntimeError(f"Restore failed: {exc}") from exc
+
         else:
-            # MySQL / MongoDB: create a restore CRD (operator-specific)
-            # For now we log a warning — full implementation requires
-            # operator-specific restore CRDs (PerconaXtraDBClusterRestore, etc.)
-            logger.warning(
-                "Restore for %s not yet fully implemented via CRD — trigger manually.",
-                request.service_type,
-            )
+            raise RuntimeError(f"Restore not supported for service type: {request.service_type}")
 
         logger.info(
             "Restore initiated: %s/%s backup_id=%s restore=%s",

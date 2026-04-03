@@ -173,7 +173,7 @@ async def test_backup_trigger_success(async_client, mock_k8s, sample_tenant):
     assert resp.status_code == 202
     data = resp.json()
     assert "backup_name" in data
-    assert data["backup_name"].startswith(f"backup-{sample_tenant.slug}-")
+    assert data["backup_name"].startswith(f"backup-haven-{sample_tenant.slug}-")
     assert "triggered_at" in data
 
 
