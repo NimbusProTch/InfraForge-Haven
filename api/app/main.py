@@ -2,6 +2,7 @@ import asyncio
 import logging
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
+from datetime import UTC
 
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -47,7 +48,7 @@ logger = logging.getLogger(__name__)
 limiter = Limiter(key_func=get_remote_address, default_limits=["200/minute"])
 
 
-async def _credential_provisioning_tick(session_factory: "async_sessionmaker") -> int:
+async def _credential_provisioning_tick(session_factory: object) -> int:
     """Single tick of the credential provisioning loop. Returns count of services processed.
 
     Finds services that are either:
@@ -56,7 +57,7 @@ async def _credential_provisioning_tick(session_factory: "async_sessionmaker") -
 
     Each service is processed independently — one failure doesn't block others.
     """
-    from datetime import datetime, timedelta, timezone
+    from datetime import datetime, timedelta
 
     from sqlalchemy import or_, select
 
@@ -64,7 +65,7 @@ async def _credential_provisioning_tick(session_factory: "async_sessionmaker") -
     from app.models.tenant import Tenant
     from app.services.managed_service import ManagedServiceProvisioner
 
-    SERVICE_PROVISION_TIMEOUT = timedelta(minutes=10)
+    service_provision_timeout = timedelta(minutes=10)
 
     # Fetch service IDs in a read-only session
     async with session_factory() as db:
@@ -73,8 +74,7 @@ async def _credential_provisioning_tick(session_factory: "async_sessionmaker") -
                 or_(
                     ManagedService.status == ServiceStatus.PROVISIONING,
                     ManagedService.status == ServiceStatus.UPDATING,
-                    (ManagedService.status == ServiceStatus.READY)
-                    & (ManagedService.credentials_provisioned == False),  # noqa: E712
+                    (ManagedService.status == ServiceStatus.READY) & (ManagedService.credentials_provisioned == False),  # noqa: E712
                 )
             )
         )
@@ -86,7 +86,7 @@ async def _credential_provisioning_tick(session_factory: "async_sessionmaker") -
     # Process each service in its own session + transaction
     provisioner = ManagedServiceProvisioner(k8s_client)
     processed = 0
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     for svc_id in service_ids:
         try:
             async with session_factory() as db:
@@ -98,8 +98,8 @@ async def _credential_provisioning_tick(session_factory: "async_sessionmaker") -
                 # Use updated_at for UPDATING (reflects when status changed), created_at for PROVISIONING
                 if svc.status in (ServiceStatus.PROVISIONING, ServiceStatus.UPDATING):
                     ref_time = svc.updated_at if svc.status == ServiceStatus.UPDATING else svc.created_at
-                    age = now - ref_time.replace(tzinfo=timezone.utc) if ref_time.tzinfo is None else now - ref_time
-                    if age > SERVICE_PROVISION_TIMEOUT:
+                    age = now - ref_time.replace(tzinfo=UTC) if ref_time.tzinfo is None else now - ref_time
+                    if age > service_provision_timeout:
                         svc.status = ServiceStatus.FAILED
                         svc.error_message = f"Service timed out after {int(age.total_seconds() // 60)} minutes"
                         logger.warning("Service %s timed out (age: %s)", svc.name, age)

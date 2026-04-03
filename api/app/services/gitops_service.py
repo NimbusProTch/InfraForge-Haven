@@ -19,6 +19,7 @@ from app.config import settings
 
 logger = logging.getLogger(__name__)
 
+
 class GitOpsService:
     """Manages tenant deployment manifests in the haven-gitops Gitea repo."""
 

@@ -43,7 +43,7 @@ TIER_CONFIG = {
 # Engine-specific overrides (MySQL XtraDB 8.4 needs more memory + storage than PG/MongoDB)
 _ENGINE_OVERRIDES: dict[str, dict[str, dict[str, str]]] = {
     "pxc": {
-        "dev": {"memory": "2Gi", "storage": "5Gi"},     # MySQL 8.4 + Galera: 2Gi RAM, 5Gi disk minimum
+        "dev": {"memory": "2Gi", "storage": "5Gi"},  # MySQL 8.4 + Galera: 2Gi RAM, 5Gi disk minimum
         "prod": {"memory": "4Gi", "storage": "20Gi"},
     },
 }

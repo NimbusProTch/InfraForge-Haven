@@ -17,7 +17,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.auth.jwt import verify_token
 from app.deps import get_db, get_k8s
@@ -88,16 +88,21 @@ def _patch_externals():
         patch("app.routers.tenants.gitops_scaffold.delete_tenant", new_callable=AsyncMock),
         patch("app.routers.applications.gitops_scaffold.scaffold_app", new_callable=AsyncMock),
         patch("app.routers.applications.gitops_scaffold.delete_app", new_callable=AsyncMock),
-        patch("app.services.tenant_service.HarborService", return_value=MagicMock(
-            create_project=AsyncMock(),
-            delete_project=AsyncMock(),
-            create_robot_account=AsyncMock(return_value={"name": "robot", "secret": "pass"}),
-            build_imagepull_secret=MagicMock(return_value={
-                "metadata": {"name": "harbor-registry-secret"},
-                "type": "kubernetes.io/dockerconfigjson",
-                "data": {".dockerconfigjson": "e30="},
-            }),
-        )),
+        patch(
+            "app.services.tenant_service.HarborService",
+            return_value=MagicMock(
+                create_project=AsyncMock(),
+                delete_project=AsyncMock(),
+                create_robot_account=AsyncMock(return_value={"name": "robot", "secret": "pass"}),
+                build_imagepull_secret=MagicMock(
+                    return_value={
+                        "metadata": {"name": "harbor-registry-secret"},
+                        "type": "kubernetes.io/dockerconfigjson",
+                        "data": {".dockerconfigjson": "e30="},
+                    }
+                ),
+            ),
+        ),
     ]
 
 
@@ -359,17 +364,26 @@ class TestTenantProvisionEvents:
         # Clear any leftover
         lifecycle_bus._channels.pop("tenant:event-test", None)
 
-        with _patch_externals()[0], _patch_externals()[1], _patch_externals()[2], \
-             _patch_externals()[3], _patch_externals()[4], _patch_externals()[5], \
-             _patch_externals()[6]:
-            r = await client.post("/api/v1/tenants", json={
-                "slug": "event-test",
-                "name": "Event Test Tenant",
-                "tier": "starter",
-                "cpu_limit": "4",
-                "memory_limit": "8Gi",
-                "storage_limit": "50Gi",
-            })
+        with (
+            _patch_externals()[0],
+            _patch_externals()[1],
+            _patch_externals()[2],
+            _patch_externals()[3],
+            _patch_externals()[4],
+            _patch_externals()[5],
+            _patch_externals()[6],
+        ):
+            r = await client.post(
+                "/api/v1/tenants",
+                json={
+                    "slug": "event-test",
+                    "name": "Event Test Tenant",
+                    "tier": "starter",
+                    "cpu_limit": "4",
+                    "memory_limit": "8Gi",
+                    "storage_limit": "50Gi",
+                },
+            )
         assert r.status_code == 201
 
         ch = lifecycle_bus.get("tenant:event-test")
@@ -398,13 +412,26 @@ class TestTenantProvisionEvents:
     async def test_provision_events_have_running_and_done(self, client, k8s_mock):
         lifecycle_bus._channels.pop("tenant:step-test", None)
 
-        with _patch_externals()[0], _patch_externals()[1], _patch_externals()[2], \
-             _patch_externals()[3], _patch_externals()[4], _patch_externals()[5], \
-             _patch_externals()[6]:
-            await client.post("/api/v1/tenants", json={
-                "slug": "step-test", "name": "Step Test", "tier": "free",
-                "cpu_limit": "4", "memory_limit": "8Gi", "storage_limit": "50Gi",
-            })
+        with (
+            _patch_externals()[0],
+            _patch_externals()[1],
+            _patch_externals()[2],
+            _patch_externals()[3],
+            _patch_externals()[4],
+            _patch_externals()[5],
+            _patch_externals()[6],
+        ):
+            await client.post(
+                "/api/v1/tenants",
+                json={
+                    "slug": "step-test",
+                    "name": "Step Test",
+                    "tier": "free",
+                    "cpu_limit": "4",
+                    "memory_limit": "8Gi",
+                    "storage_limit": "50Gi",
+                },
+            )
 
         ch = lifecycle_bus.get("tenant:step-test")
         step_events = [e for e in ch.events if isinstance(e, LifecycleEvent)]
@@ -418,13 +445,26 @@ class TestTenantProvisionEvents:
     async def test_provision_events_streamable(self, client, k8s_mock):
         lifecycle_bus._channels.pop("tenant:stream-test", None)
 
-        with _patch_externals()[0], _patch_externals()[1], _patch_externals()[2], \
-             _patch_externals()[3], _patch_externals()[4], _patch_externals()[5], \
-             _patch_externals()[6]:
-            await client.post("/api/v1/tenants", json={
-                "slug": "stream-test", "name": "Stream Test", "tier": "free",
-                "cpu_limit": "4", "memory_limit": "8Gi", "storage_limit": "50Gi",
-            })
+        with (
+            _patch_externals()[0],
+            _patch_externals()[1],
+            _patch_externals()[2],
+            _patch_externals()[3],
+            _patch_externals()[4],
+            _patch_externals()[5],
+            _patch_externals()[6],
+        ):
+            await client.post(
+                "/api/v1/tenants",
+                json={
+                    "slug": "stream-test",
+                    "name": "Stream Test",
+                    "tier": "free",
+                    "cpu_limit": "4",
+                    "memory_limit": "8Gi",
+                    "storage_limit": "50Gi",
+                },
+            )
 
         async with client.stream("GET", "/api/v1/tenants/stream-test/events") as r:
             assert r.status_code == 200
@@ -447,18 +487,36 @@ class TestServiceProvisionEvents:
     async def test_redis_provision_emits_events(self, client, k8s_mock):
         lifecycle_bus._channels.pop("service:svc-evt:app-redis", None)
 
-        with _patch_externals()[0], _patch_externals()[1], _patch_externals()[2], \
-             _patch_externals()[3], _patch_externals()[4], _patch_externals()[5], \
-             _patch_externals()[6], \
-             patch("app.services.managed_service.everest_client") as mock_ev:
+        with (
+            _patch_externals()[0],
+            _patch_externals()[1],
+            _patch_externals()[2],
+            _patch_externals()[3],
+            _patch_externals()[4],
+            _patch_externals()[5],
+            _patch_externals()[6],
+            patch("app.services.managed_service.everest_client") as mock_ev,
+        ):
             mock_ev.is_configured.return_value = False
-            await client.post("/api/v1/tenants", json={
-                "slug": "svc-evt", "name": "Svc Event Test", "tier": "free",
-                "cpu_limit": "4", "memory_limit": "8Gi", "storage_limit": "50Gi",
-            })
-            r = await client.post("/api/v1/tenants/svc-evt/services", json={
-                "name": "app-redis", "service_type": "redis", "tier": "dev",
-            })
+            await client.post(
+                "/api/v1/tenants",
+                json={
+                    "slug": "svc-evt",
+                    "name": "Svc Event Test",
+                    "tier": "free",
+                    "cpu_limit": "4",
+                    "memory_limit": "8Gi",
+                    "storage_limit": "50Gi",
+                },
+            )
+            r = await client.post(
+                "/api/v1/tenants/svc-evt/services",
+                json={
+                    "name": "app-redis",
+                    "service_type": "redis",
+                    "tier": "dev",
+                },
+            )
         assert r.status_code == 201
 
         ch = lifecycle_bus.get("service:svc-evt:app-redis")
@@ -470,19 +528,37 @@ class TestServiceProvisionEvents:
     async def test_everest_provision_emits_events(self, client, k8s_mock):
         lifecycle_bus._channels.pop("service:ev-test:app-pg", None)
 
-        with _patch_externals()[0], _patch_externals()[1], _patch_externals()[2], \
-             _patch_externals()[3], _patch_externals()[4], _patch_externals()[5], \
-             _patch_externals()[6], \
-             patch("app.services.managed_service.everest_client") as mock_ev:
+        with (
+            _patch_externals()[0],
+            _patch_externals()[1],
+            _patch_externals()[2],
+            _patch_externals()[3],
+            _patch_externals()[4],
+            _patch_externals()[5],
+            _patch_externals()[6],
+            patch("app.services.managed_service.everest_client") as mock_ev,
+        ):
             mock_ev.is_configured.return_value = True
             mock_ev.create_database = AsyncMock()
-            await client.post("/api/v1/tenants", json={
-                "slug": "ev-test", "name": "Everest Event Test", "tier": "free",
-                "cpu_limit": "4", "memory_limit": "8Gi", "storage_limit": "50Gi",
-            })
-            r = await client.post("/api/v1/tenants/ev-test/services", json={
-                "name": "app-pg", "service_type": "postgres", "tier": "dev",
-            })
+            await client.post(
+                "/api/v1/tenants",
+                json={
+                    "slug": "ev-test",
+                    "name": "Everest Event Test",
+                    "tier": "free",
+                    "cpu_limit": "4",
+                    "memory_limit": "8Gi",
+                    "storage_limit": "50Gi",
+                },
+            )
+            r = await client.post(
+                "/api/v1/tenants/ev-test/services",
+                json={
+                    "name": "app-pg",
+                    "service_type": "postgres",
+                    "tier": "dev",
+                },
+            )
         assert r.status_code == 201
 
         ch = lifecycle_bus.get("service:ev-test:app-pg")
@@ -497,18 +573,36 @@ class TestServiceProvisionEvents:
     async def test_service_events_streamable(self, client, k8s_mock):
         lifecycle_bus._channels.pop("service:str-test:my-redis", None)
 
-        with _patch_externals()[0], _patch_externals()[1], _patch_externals()[2], \
-             _patch_externals()[3], _patch_externals()[4], _patch_externals()[5], \
-             _patch_externals()[6], \
-             patch("app.services.managed_service.everest_client") as mock_ev:
+        with (
+            _patch_externals()[0],
+            _patch_externals()[1],
+            _patch_externals()[2],
+            _patch_externals()[3],
+            _patch_externals()[4],
+            _patch_externals()[5],
+            _patch_externals()[6],
+            patch("app.services.managed_service.everest_client") as mock_ev,
+        ):
             mock_ev.is_configured.return_value = False
-            await client.post("/api/v1/tenants", json={
-                "slug": "str-test", "name": "Stream Svc Test", "tier": "free",
-                "cpu_limit": "4", "memory_limit": "8Gi", "storage_limit": "50Gi",
-            })
-            await client.post("/api/v1/tenants/str-test/services", json={
-                "name": "my-redis", "service_type": "redis", "tier": "dev",
-            })
+            await client.post(
+                "/api/v1/tenants",
+                json={
+                    "slug": "str-test",
+                    "name": "Stream Svc Test",
+                    "tier": "free",
+                    "cpu_limit": "4",
+                    "memory_limit": "8Gi",
+                    "storage_limit": "50Gi",
+                },
+            )
+            await client.post(
+                "/api/v1/tenants/str-test/services",
+                json={
+                    "name": "my-redis",
+                    "service_type": "redis",
+                    "tier": "dev",
+                },
+            )
 
         # Service provision channel has events but NOT marked done (waiting for ready)
         # So we read the channel directly instead of streaming
@@ -526,15 +620,28 @@ class TestServiceProvisionEvents:
 class TestTenantDeprovisionEvents:
     @pytest.mark.asyncio
     async def test_deprovision_emits_delete_steps(self, client, k8s_mock):
-        with _patch_externals()[0], _patch_externals()[1], _patch_externals()[2], \
-             _patch_externals()[3], _patch_externals()[4], _patch_externals()[5], \
-             _patch_externals()[6], \
-             patch("app.services.managed_service.everest_client") as mock_ev:
+        with (
+            _patch_externals()[0],
+            _patch_externals()[1],
+            _patch_externals()[2],
+            _patch_externals()[3],
+            _patch_externals()[4],
+            _patch_externals()[5],
+            _patch_externals()[6],
+            patch("app.services.managed_service.everest_client") as mock_ev,
+        ):
             mock_ev.is_configured.return_value = False
-            await client.post("/api/v1/tenants", json={
-                "slug": "del-evt", "name": "Del Event Test", "tier": "free",
-                "cpu_limit": "4", "memory_limit": "8Gi", "storage_limit": "50Gi",
-            })
+            await client.post(
+                "/api/v1/tenants",
+                json={
+                    "slug": "del-evt",
+                    "name": "Del Event Test",
+                    "tier": "free",
+                    "cpu_limit": "4",
+                    "memory_limit": "8Gi",
+                    "storage_limit": "50Gi",
+                },
+            )
 
             # Clear provision events to focus on deprovision
             lifecycle_bus._channels.pop("tenant:del-evt", None)

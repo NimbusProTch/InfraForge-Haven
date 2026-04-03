@@ -280,9 +280,7 @@ async def test_connect_service_postgres_uses_database_url_key(async_client: Asyn
     assert env_keys.count("DATABASE_URL") == 1
 
 
-async def test_disconnect_service_removes_database_url_from_env_vars(
-    async_client: AsyncClient, tenant_app_service
-):
+async def test_disconnect_service_removes_database_url_from_env_vars(async_client: AsyncClient, tenant_app_service):
     """disconnect-service should also remove DATABASE_URL from env_vars."""
     tenant, app_obj, svc = tenant_app_service
     # First connect
@@ -394,16 +392,27 @@ async def test_connect_mongodb_injects_mongodb_url_and_database_url(async_client
 
 async def test_retry_failed_service(async_client: AsyncClient, db_session: AsyncSession):
     """POST /services/{name}/retry must reset FAILED and re-provision."""
-    from unittest.mock import patch, AsyncMock
+    from unittest.mock import AsyncMock, patch
 
     tenant = Tenant(
-        id=uuid.uuid4(), slug="retry-tenant", name="Retry", namespace="tenant-retry-tenant",
-        keycloak_realm="retry-tenant", cpu_limit="4", memory_limit="8Gi", storage_limit="50Gi",
+        id=uuid.uuid4(),
+        slug="retry-tenant",
+        name="Retry",
+        namespace="tenant-retry-tenant",
+        keycloak_realm="retry-tenant",
+        cpu_limit="4",
+        memory_limit="8Gi",
+        storage_limit="50Gi",
     )
     db_session.add(tenant)
     svc = ManagedService(
-        id=uuid.uuid4(), tenant_id=tenant.id, name="fail-pg", service_type=ServiceType.POSTGRES,
-        tier=ServiceTier.DEV, status=ServiceStatus.FAILED, error_message="Timed out",
+        id=uuid.uuid4(),
+        tenant_id=tenant.id,
+        name="fail-pg",
+        service_type=ServiceType.POSTGRES,
+        tier=ServiceTier.DEV,
+        status=ServiceStatus.FAILED,
+        error_message="Timed out",
     )
     db_session.add(svc)
     await db_session.commit()
@@ -440,23 +449,39 @@ async def test_retry_nonexistent_returns_404(async_client: AsyncClient, tenant_a
 async def test_delete_service_cleans_app_env_from_secrets(async_client: AsyncClient, db_session: AsyncSession):
     """Deleting a service must remove it from connected apps' env_from_secrets."""
     tenant = Tenant(
-        id=uuid.uuid4(), slug="del-tenant", name="Del", namespace="tenant-del-tenant",
-        keycloak_realm="del-tenant", cpu_limit="4", memory_limit="8Gi", storage_limit="50Gi",
+        id=uuid.uuid4(),
+        slug="del-tenant",
+        name="Del",
+        namespace="tenant-del-tenant",
+        keycloak_realm="del-tenant",
+        cpu_limit="4",
+        memory_limit="8Gi",
+        storage_limit="50Gi",
     )
     db_session.add(tenant)
 
     app_obj = Application(
-        id=uuid.uuid4(), tenant_id=tenant.id, slug="del-app", name="Del App",
-        repo_url="https://github.com/org/repo", branch="main",
+        id=uuid.uuid4(),
+        tenant_id=tenant.id,
+        slug="del-app",
+        name="Del App",
+        repo_url="https://github.com/org/repo",
+        branch="main",
         env_from_secrets=[{"service_name": "del-pg", "secret_name": "svc-del-pg", "namespace": "tenant-del-tenant"}],
         env_vars={"DATABASE_URL": "postgresql://..."},
     )
     db_session.add(app_obj)
 
     svc = ManagedService(
-        id=uuid.uuid4(), tenant_id=tenant.id, name="del-pg", service_type=ServiceType.POSTGRES,
-        tier=ServiceTier.DEV, status=ServiceStatus.READY, credentials_provisioned=True,
-        secret_name="svc-del-pg", service_namespace="tenant-del-tenant",
+        id=uuid.uuid4(),
+        tenant_id=tenant.id,
+        name="del-pg",
+        service_type=ServiceType.POSTGRES,
+        tier=ServiceTier.DEV,
+        status=ServiceStatus.READY,
+        credentials_provisioned=True,
+        secret_name="svc-del-pg",
+        service_namespace="tenant-del-tenant",
         connection_hint="postgresql://...",
     )
     db_session.add(svc)
@@ -473,19 +498,35 @@ async def test_delete_service_cleans_app_env_from_secrets(async_client: AsyncCli
 async def test_connect_service_rejected_without_credentials(async_client: AsyncClient, db_session: AsyncSession):
     """connect-service must reject if credentials_provisioned is False."""
     tenant = Tenant(
-        id=uuid.uuid4(), slug="race-tenant", name="Race", namespace="tenant-race-tenant",
-        keycloak_realm="race-tenant", cpu_limit="4", memory_limit="8Gi", storage_limit="50Gi",
+        id=uuid.uuid4(),
+        slug="race-tenant",
+        name="Race",
+        namespace="tenant-race-tenant",
+        keycloak_realm="race-tenant",
+        cpu_limit="4",
+        memory_limit="8Gi",
+        storage_limit="50Gi",
     )
     db_session.add(tenant)
     app_obj = Application(
-        id=uuid.uuid4(), tenant_id=tenant.id, slug="race-app", name="Race App",
-        repo_url="https://github.com/org/repo", branch="main",
+        id=uuid.uuid4(),
+        tenant_id=tenant.id,
+        slug="race-app",
+        name="Race App",
+        repo_url="https://github.com/org/repo",
+        branch="main",
     )
     db_session.add(app_obj)
     svc = ManagedService(
-        id=uuid.uuid4(), tenant_id=tenant.id, name="race-pg", service_type=ServiceType.POSTGRES,
-        tier=ServiceTier.DEV, status=ServiceStatus.READY, credentials_provisioned=False,
-        secret_name="svc-race-pg", service_namespace="tenant-race-tenant",
+        id=uuid.uuid4(),
+        tenant_id=tenant.id,
+        name="race-pg",
+        service_type=ServiceType.POSTGRES,
+        tier=ServiceTier.DEV,
+        status=ServiceStatus.READY,
+        credentials_provisioned=False,
+        secret_name="svc-race-pg",
+        service_namespace="tenant-race-tenant",
     )
     db_session.add(svc)
     await db_session.commit()

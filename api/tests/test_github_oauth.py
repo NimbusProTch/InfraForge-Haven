@@ -598,9 +598,13 @@ async def test_my_tenants_returns_owned_tenants(async_client, db_session):
 @pytest.mark.asyncio
 async def test_create_tenant_adds_creator_as_owner(async_client):
     """POST /tenants must auto-add creator → GET /tenants/me returns it."""
-    response = await async_client.post("/api/v1/tenants", json={
-        "name": "Auto Owner Test", "slug": "auto-owner-test",
-    })
+    response = await async_client.post(
+        "/api/v1/tenants",
+        json={
+            "name": "Auto Owner Test",
+            "slug": "auto-owner-test",
+        },
+    )
     assert response.status_code == 201
     slug = response.json()["slug"]
 

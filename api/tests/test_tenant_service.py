@@ -8,10 +8,9 @@ Covers:
   - Tenant delete cascade: managed services deprovision
 """
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-import yaml
 from kubernetes.client.exceptions import ApiException
 
 from app.services.tenant_service import TenantService
@@ -35,11 +34,13 @@ def _make_harbor_mock() -> MagicMock:
     harbor.create_project = AsyncMock()
     harbor.delete_project = AsyncMock()
     harbor.create_robot_account = AsyncMock(return_value={"name": "robot", "secret": "pass"})
-    harbor.build_imagepull_secret = MagicMock(return_value={
-        "metadata": {"name": "harbor-registry-secret"},
-        "type": "kubernetes.io/dockerconfigjson",
-        "data": {".dockerconfigjson": "e30="},
-    })
+    harbor.build_imagepull_secret = MagicMock(
+        return_value={
+            "metadata": {"name": "harbor-registry-secret"},
+            "type": "kubernetes.io/dockerconfigjson",
+            "data": {".dockerconfigjson": "e30="},
+        }
+    )
     return harbor
 
 

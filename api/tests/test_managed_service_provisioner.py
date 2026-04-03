@@ -1,6 +1,6 @@
 """Unit tests for ManagedServiceProvisioner and CRD body builders."""
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from kubernetes.client.exceptions import ApiException
@@ -812,7 +812,9 @@ class TestEverestPostgresConnectionDetails:
 # ---------------------------------------------------------------------------
 
 
-def _mock_pod(phase: str = "Running", ready: bool = True, restart_reason: str | None = None, waiting_reason: str | None = None):
+def _mock_pod(
+    phase: str = "Running", ready: bool = True, restart_reason: str | None = None, waiting_reason: str | None = None
+):
     """Build a mock K8s Pod object with configurable status."""
     pod = MagicMock()
     pod.status.phase = phase
@@ -848,9 +850,7 @@ class TestSyncFromPod:
     @pytest.mark.asyncio
     async def test_pod_running_and_ready_sets_ready(self, mock_k8s_available):
         """Pod Running + all containers ready → service READY."""
-        mock_k8s_available.core_v1.read_namespaced_pod.return_value = _mock_pod(
-            phase="Running", ready=True
-        )
+        mock_k8s_available.core_v1.read_namespaced_pod.return_value = _mock_pod(phase="Running", ready=True)
 
         svc = _make_service(name="my-redis", stype=ServiceType.REDIS)
         svc.service_namespace = "tenant-test"
@@ -928,9 +928,7 @@ class TestSyncFromPod:
             "spec": {},
         }
         # Pod is running and ready
-        mock_k8s_available.core_v1.read_namespaced_pod.return_value = _mock_pod(
-            phase="Running", ready=True
-        )
+        mock_k8s_available.core_v1.read_namespaced_pod.return_value = _mock_pod(phase="Running", ready=True)
 
         svc = _make_service(name="my-redis", stype=ServiceType.REDIS)
         svc.service_namespace = "tenant-test"

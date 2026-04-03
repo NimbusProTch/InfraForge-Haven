@@ -21,8 +21,6 @@ Covers:
   - GitOps scaffold per tenant (non-blocking)
 """
 
-import asyncio
-import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -30,7 +28,7 @@ import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from kubernetes.client.exceptions import ApiException
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.auth.jwt import verify_token
 from app.deps import get_db, get_k8s
@@ -41,20 +39,18 @@ from app.models.base import Base
 from app.models.cluster import Cluster  # noqa: F401
 from app.models.cronjob import CronJob  # noqa: F401
 from app.models.managed_service import ManagedService, ServiceStatus, ServiceTier, ServiceType
-from app.models.tenant import Tenant
 from app.models.tenant_member import TenantMember  # noqa: F401
 from app.services.managed_service import (
-    ManagedServiceProvisioner,
     _CONNECTION_HINT_MAP,
     _EVEREST_SECRET_NAME,
     _SECRET_NAME_MAP,
+    ManagedServiceProvisioner,
     _cnpg_cluster_body,
     _mongodb_body,
     _mysql_body,
     _rabbitmq_body,
     _redis_body,
 )
-from app.services.tenant_service import TenantService
 
 TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
 
@@ -100,11 +96,13 @@ def harbor_mock():
     harbor.create_project = AsyncMock()
     harbor.delete_project = AsyncMock()
     harbor.create_robot_account = AsyncMock(return_value={"name": "robot", "secret": "pass"})
-    harbor.build_imagepull_secret = MagicMock(return_value={
-        "metadata": {"name": "harbor-registry-secret"},
-        "type": "kubernetes.io/dockerconfigjson",
-        "data": {".dockerconfigjson": "e30="},
-    })
+    harbor.build_imagepull_secret = MagicMock(
+        return_value={
+            "metadata": {"name": "harbor-registry-secret"},
+            "type": "kubernetes.io/dockerconfigjson",
+            "data": {".dockerconfigjson": "e30="},
+        }
+    )
     return harbor
 
 
@@ -139,16 +137,21 @@ def _patch_externals():
         patch("app.routers.tenants.gitops_scaffold.delete_tenant", new_callable=AsyncMock),
         patch("app.routers.applications.gitops_scaffold.scaffold_app", new_callable=AsyncMock),
         patch("app.routers.applications.gitops_scaffold.delete_app", new_callable=AsyncMock),
-        patch("app.services.tenant_service.HarborService", return_value=MagicMock(
-            create_project=AsyncMock(),
-            delete_project=AsyncMock(),
-            create_robot_account=AsyncMock(return_value={"name": "robot", "secret": "pass"}),
-            build_imagepull_secret=MagicMock(return_value={
-                "metadata": {"name": "harbor-registry-secret"},
-                "type": "kubernetes.io/dockerconfigjson",
-                "data": {".dockerconfigjson": "e30="},
-            }),
-        )),
+        patch(
+            "app.services.tenant_service.HarborService",
+            return_value=MagicMock(
+                create_project=AsyncMock(),
+                delete_project=AsyncMock(),
+                create_robot_account=AsyncMock(return_value={"name": "robot", "secret": "pass"}),
+                build_imagepull_secret=MagicMock(
+                    return_value={
+                        "metadata": {"name": "harbor-registry-secret"},
+                        "type": "kubernetes.io/dockerconfigjson",
+                        "data": {".dockerconfigjson": "e30="},
+                    }
+                ),
+            ),
+        ),
     ]
 
 
@@ -198,9 +201,15 @@ class TestMultiTenantLifecycle:
 
     @pytest.mark.asyncio
     async def test_create_rotterdam_tenant(self, client, k8s_mock):
-        with _patch_externals()[0], _patch_externals()[1], _patch_externals()[2], \
-             _patch_externals()[3], _patch_externals()[4], _patch_externals()[5], \
-             _patch_externals()[6]:
+        with (
+            _patch_externals()[0],
+            _patch_externals()[1],
+            _patch_externals()[2],
+            _patch_externals()[3],
+            _patch_externals()[4],
+            _patch_externals()[5],
+            _patch_externals()[6],
+        ):
             r = await client.post("/api/v1/tenants", json=ROTTERDAM)
         assert r.status_code == 201
         data = r.json()
@@ -210,9 +219,15 @@ class TestMultiTenantLifecycle:
 
     @pytest.mark.asyncio
     async def test_create_amsterdam_tenant(self, client, k8s_mock):
-        with _patch_externals()[0], _patch_externals()[1], _patch_externals()[2], \
-             _patch_externals()[3], _patch_externals()[4], _patch_externals()[5], \
-             _patch_externals()[6]:
+        with (
+            _patch_externals()[0],
+            _patch_externals()[1],
+            _patch_externals()[2],
+            _patch_externals()[3],
+            _patch_externals()[4],
+            _patch_externals()[5],
+            _patch_externals()[6],
+        ):
             r = await client.post("/api/v1/tenants", json=AMSTERDAM)
         assert r.status_code == 201
         data = r.json()
@@ -222,9 +237,15 @@ class TestMultiTenantLifecycle:
 
     @pytest.mark.asyncio
     async def test_create_utrecht_tenant(self, client, k8s_mock):
-        with _patch_externals()[0], _patch_externals()[1], _patch_externals()[2], \
-             _patch_externals()[3], _patch_externals()[4], _patch_externals()[5], \
-             _patch_externals()[6]:
+        with (
+            _patch_externals()[0],
+            _patch_externals()[1],
+            _patch_externals()[2],
+            _patch_externals()[3],
+            _patch_externals()[4],
+            _patch_externals()[5],
+            _patch_externals()[6],
+        ):
             r = await client.post("/api/v1/tenants", json=UTRECHT)
         assert r.status_code == 201
         data = r.json()
@@ -233,18 +254,30 @@ class TestMultiTenantLifecycle:
 
     @pytest.mark.asyncio
     async def test_duplicate_tenant_slug_rejected(self, client, k8s_mock):
-        with _patch_externals()[0], _patch_externals()[1], _patch_externals()[2], \
-             _patch_externals()[3], _patch_externals()[4], _patch_externals()[5], \
-             _patch_externals()[6]:
+        with (
+            _patch_externals()[0],
+            _patch_externals()[1],
+            _patch_externals()[2],
+            _patch_externals()[3],
+            _patch_externals()[4],
+            _patch_externals()[5],
+            _patch_externals()[6],
+        ):
             await client.post("/api/v1/tenants", json=ROTTERDAM)
             r = await client.post("/api/v1/tenants", json=ROTTERDAM)
         assert r.status_code == 409
 
     @pytest.mark.asyncio
     async def test_list_tenants_returns_all(self, client, k8s_mock):
-        with _patch_externals()[0], _patch_externals()[1], _patch_externals()[2], \
-             _patch_externals()[3], _patch_externals()[4], _patch_externals()[5], \
-             _patch_externals()[6]:
+        with (
+            _patch_externals()[0],
+            _patch_externals()[1],
+            _patch_externals()[2],
+            _patch_externals()[3],
+            _patch_externals()[4],
+            _patch_externals()[5],
+            _patch_externals()[6],
+        ):
             await client.post("/api/v1/tenants", json=ROTTERDAM)
             await client.post("/api/v1/tenants", json=AMSTERDAM)
             await client.post("/api/v1/tenants", json=UTRECHT)
@@ -259,17 +292,26 @@ class TestMultiTenantLifecycle:
 
     @pytest.mark.asyncio
     async def test_create_app_for_rotterdam(self, client, k8s_mock):
-        with _patch_externals()[0], _patch_externals()[1], _patch_externals()[2], \
-             _patch_externals()[3], _patch_externals()[4], _patch_externals()[5], \
-             _patch_externals()[6]:
+        with (
+            _patch_externals()[0],
+            _patch_externals()[1],
+            _patch_externals()[2],
+            _patch_externals()[3],
+            _patch_externals()[4],
+            _patch_externals()[5],
+            _patch_externals()[6],
+        ):
             await client.post("/api/v1/tenants", json=ROTTERDAM)
-            r = await client.post("/api/v1/tenants/rotterdam/apps", json={
-                "name": "Rotterdam API",
-                "slug": "rotterdam-api",
-                "repo_url": "https://github.com/NimbusProTch/rotterdam-api",
-                "branch": "main",
-                "port": 8080,
-            })
+            r = await client.post(
+                "/api/v1/tenants/rotterdam/apps",
+                json={
+                    "name": "Rotterdam API",
+                    "slug": "rotterdam-api",
+                    "repo_url": "https://github.com/NimbusProTch/rotterdam-api",
+                    "branch": "main",
+                    "port": 8080,
+                },
+            )
         assert r.status_code == 201
         data = r.json()
         assert data["slug"] == "rotterdam-api"
@@ -277,42 +319,66 @@ class TestMultiTenantLifecycle:
 
     @pytest.mark.asyncio
     async def test_create_app_for_amsterdam(self, client, k8s_mock):
-        with _patch_externals()[0], _patch_externals()[1], _patch_externals()[2], \
-             _patch_externals()[3], _patch_externals()[4], _patch_externals()[5], \
-             _patch_externals()[6]:
+        with (
+            _patch_externals()[0],
+            _patch_externals()[1],
+            _patch_externals()[2],
+            _patch_externals()[3],
+            _patch_externals()[4],
+            _patch_externals()[5],
+            _patch_externals()[6],
+        ):
             await client.post("/api/v1/tenants", json=AMSTERDAM)
-            r = await client.post("/api/v1/tenants/amsterdam/apps", json={
-                "name": "Amsterdam Portal",
-                "slug": "amsterdam-portal",
-                "repo_url": "https://github.com/NimbusProTch/amsterdam-portal",
-                "branch": "main",
-                "port": 3000,
-            })
+            r = await client.post(
+                "/api/v1/tenants/amsterdam/apps",
+                json={
+                    "name": "Amsterdam Portal",
+                    "slug": "amsterdam-portal",
+                    "repo_url": "https://github.com/NimbusProTch/amsterdam-portal",
+                    "branch": "main",
+                    "port": 3000,
+                },
+            )
         assert r.status_code == 201
         assert r.json()["slug"] == "amsterdam-portal"
 
     @pytest.mark.asyncio
     async def test_create_app_for_utrecht(self, client, k8s_mock):
-        with _patch_externals()[0], _patch_externals()[1], _patch_externals()[2], \
-             _patch_externals()[3], _patch_externals()[4], _patch_externals()[5], \
-             _patch_externals()[6]:
+        with (
+            _patch_externals()[0],
+            _patch_externals()[1],
+            _patch_externals()[2],
+            _patch_externals()[3],
+            _patch_externals()[4],
+            _patch_externals()[5],
+            _patch_externals()[6],
+        ):
             await client.post("/api/v1/tenants", json=UTRECHT)
-            r = await client.post("/api/v1/tenants/utrecht/apps", json={
-                "name": "Utrecht Worker",
-                "slug": "utrecht-worker",
-                "repo_url": "https://github.com/NimbusProTch/utrecht-worker",
-                "branch": "main",
-                "port": 8080,
-                "app_type": "worker",
-            })
+            r = await client.post(
+                "/api/v1/tenants/utrecht/apps",
+                json={
+                    "name": "Utrecht Worker",
+                    "slug": "utrecht-worker",
+                    "repo_url": "https://github.com/NimbusProTch/utrecht-worker",
+                    "branch": "main",
+                    "port": 8080,
+                    "app_type": "worker",
+                },
+            )
         assert r.status_code == 201
         assert r.json()["app_type"] == "worker"
 
     @pytest.mark.asyncio
     async def test_app_slug_unique_per_tenant(self, client, k8s_mock):
-        with _patch_externals()[0], _patch_externals()[1], _patch_externals()[2], \
-             _patch_externals()[3], _patch_externals()[4], _patch_externals()[5], \
-             _patch_externals()[6]:
+        with (
+            _patch_externals()[0],
+            _patch_externals()[1],
+            _patch_externals()[2],
+            _patch_externals()[3],
+            _patch_externals()[4],
+            _patch_externals()[5],
+            _patch_externals()[6],
+        ):
             await client.post("/api/v1/tenants", json=ROTTERDAM)
             app_payload = {
                 "name": "My App",
@@ -327,9 +393,15 @@ class TestMultiTenantLifecycle:
     @pytest.mark.asyncio
     async def test_same_app_slug_different_tenants_allowed(self, client, k8s_mock):
         """Same app slug is allowed in different tenants (namespace isolation)."""
-        with _patch_externals()[0], _patch_externals()[1], _patch_externals()[2], \
-             _patch_externals()[3], _patch_externals()[4], _patch_externals()[5], \
-             _patch_externals()[6]:
+        with (
+            _patch_externals()[0],
+            _patch_externals()[1],
+            _patch_externals()[2],
+            _patch_externals()[3],
+            _patch_externals()[4],
+            _patch_externals()[5],
+            _patch_externals()[6],
+        ):
             await client.post("/api/v1/tenants", json=ROTTERDAM)
             await client.post("/api/v1/tenants", json=AMSTERDAM)
             app_payload = {
@@ -346,20 +418,44 @@ class TestMultiTenantLifecycle:
     @pytest.mark.asyncio
     async def test_list_apps_scoped_to_tenant(self, client, k8s_mock):
         """Apps are scoped to their tenant — listing returns only that tenant's apps."""
-        with _patch_externals()[0], _patch_externals()[1], _patch_externals()[2], \
-             _patch_externals()[3], _patch_externals()[4], _patch_externals()[5], \
-             _patch_externals()[6]:
+        with (
+            _patch_externals()[0],
+            _patch_externals()[1],
+            _patch_externals()[2],
+            _patch_externals()[3],
+            _patch_externals()[4],
+            _patch_externals()[5],
+            _patch_externals()[6],
+        ):
             await client.post("/api/v1/tenants", json=ROTTERDAM)
             await client.post("/api/v1/tenants", json=AMSTERDAM)
-            await client.post("/api/v1/tenants/rotterdam/apps", json={
-                "name": "App A", "slug": "app-aaa", "repo_url": "https://github.com/a/b", "branch": "main",
-            })
-            await client.post("/api/v1/tenants/rotterdam/apps", json={
-                "name": "App B", "slug": "app-bbb", "repo_url": "https://github.com/a/c", "branch": "main",
-            })
-            await client.post("/api/v1/tenants/amsterdam/apps", json={
-                "name": "App C", "slug": "app-ccc", "repo_url": "https://github.com/a/d", "branch": "main",
-            })
+            await client.post(
+                "/api/v1/tenants/rotterdam/apps",
+                json={
+                    "name": "App A",
+                    "slug": "app-aaa",
+                    "repo_url": "https://github.com/a/b",
+                    "branch": "main",
+                },
+            )
+            await client.post(
+                "/api/v1/tenants/rotterdam/apps",
+                json={
+                    "name": "App B",
+                    "slug": "app-bbb",
+                    "repo_url": "https://github.com/a/c",
+                    "branch": "main",
+                },
+            )
+            await client.post(
+                "/api/v1/tenants/amsterdam/apps",
+                json={
+                    "name": "App C",
+                    "slug": "app-ccc",
+                    "repo_url": "https://github.com/a/d",
+                    "branch": "main",
+                },
+            )
             r_rot = await client.get("/api/v1/tenants/rotterdam/apps")
             r_ams = await client.get("/api/v1/tenants/amsterdam/apps")
 
@@ -383,20 +479,29 @@ class TestManagedServiceProvisioning:
 
     @pytest.mark.asyncio
     async def test_provision_postgres_via_everest(self, client, k8s_mock):
-        with _patch_externals()[0], _patch_externals()[1], _patch_externals()[2], \
-             _patch_externals()[3], _patch_externals()[4], _patch_externals()[5], \
-             _patch_externals()[6], \
-             patch("app.services.managed_service.everest_client") as mock_ev:
+        with (
+            _patch_externals()[0],
+            _patch_externals()[1],
+            _patch_externals()[2],
+            _patch_externals()[3],
+            _patch_externals()[4],
+            _patch_externals()[5],
+            _patch_externals()[6],
+            patch("app.services.managed_service.everest_client") as mock_ev,
+        ):
             mock_ev.is_configured.return_value = True
             mock_ev.create_database = AsyncMock()
             await client.post("/api/v1/tenants", json=ROTTERDAM)
-            r = await client.post("/api/v1/tenants/rotterdam/services", json={
-                "name": "app-pg",
-                "service_type": "postgres",
-                "tier": "dev",
-                "db_name": "rotterdam_db",
-                "db_user": "rotterdam_user",
-            })
+            r = await client.post(
+                "/api/v1/tenants/rotterdam/services",
+                json={
+                    "name": "app-pg",
+                    "service_type": "postgres",
+                    "tier": "dev",
+                    "db_name": "rotterdam_db",
+                    "db_user": "rotterdam_user",
+                },
+            )
         assert r.status_code == 201
         data = r.json()
         assert data["service_type"] == "postgres"
@@ -412,19 +517,28 @@ class TestManagedServiceProvisioning:
     @pytest.mark.asyncio
     async def test_provision_postgres_via_crd_fallback(self, client, k8s_mock):
         """If Everest is not configured, fall back to CNPG CRD."""
-        with _patch_externals()[0], _patch_externals()[1], _patch_externals()[2], \
-             _patch_externals()[3], _patch_externals()[4], _patch_externals()[5], \
-             _patch_externals()[6], \
-             patch("app.services.managed_service.everest_client") as mock_ev:
+        with (
+            _patch_externals()[0],
+            _patch_externals()[1],
+            _patch_externals()[2],
+            _patch_externals()[3],
+            _patch_externals()[4],
+            _patch_externals()[5],
+            _patch_externals()[6],
+            patch("app.services.managed_service.everest_client") as mock_ev,
+        ):
             mock_ev.is_configured.return_value = False
             await client.post("/api/v1/tenants", json=ROTTERDAM)
-            r = await client.post("/api/v1/tenants/rotterdam/services", json={
-                "name": "app-pg",
-                "service_type": "postgres",
-                "tier": "dev",
-                "db_name": "mydb",
-                "db_user": "myuser",
-            })
+            r = await client.post(
+                "/api/v1/tenants/rotterdam/services",
+                json={
+                    "name": "app-pg",
+                    "service_type": "postgres",
+                    "tier": "dev",
+                    "db_name": "mydb",
+                    "db_user": "myuser",
+                },
+            )
         assert r.status_code == 201
         data = r.json()
         assert data["status"] == "provisioning"
@@ -439,17 +553,26 @@ class TestManagedServiceProvisioning:
 
     @pytest.mark.asyncio
     async def test_provision_redis_crd(self, client, k8s_mock):
-        with _patch_externals()[0], _patch_externals()[1], _patch_externals()[2], \
-             _patch_externals()[3], _patch_externals()[4], _patch_externals()[5], \
-             _patch_externals()[6], \
-             patch("app.services.managed_service.everest_client") as mock_ev:
+        with (
+            _patch_externals()[0],
+            _patch_externals()[1],
+            _patch_externals()[2],
+            _patch_externals()[3],
+            _patch_externals()[4],
+            _patch_externals()[5],
+            _patch_externals()[6],
+            patch("app.services.managed_service.everest_client") as mock_ev,
+        ):
             mock_ev.is_configured.return_value = True  # Even with Everest, Redis uses CRD
             await client.post("/api/v1/tenants", json=ROTTERDAM)
-            r = await client.post("/api/v1/tenants/rotterdam/services", json={
-                "name": "app-redis",
-                "service_type": "redis",
-                "tier": "dev",
-            })
+            r = await client.post(
+                "/api/v1/tenants/rotterdam/services",
+                json={
+                    "name": "app-redis",
+                    "service_type": "redis",
+                    "tier": "dev",
+                },
+            )
         assert r.status_code == 201
         data = r.json()
         assert data["service_type"] == "redis"
@@ -478,18 +601,27 @@ class TestManagedServiceProvisioning:
 
     @pytest.mark.asyncio
     async def test_provision_mongodb_via_everest(self, client, k8s_mock):
-        with _patch_externals()[0], _patch_externals()[1], _patch_externals()[2], \
-             _patch_externals()[3], _patch_externals()[4], _patch_externals()[5], \
-             _patch_externals()[6], \
-             patch("app.services.managed_service.everest_client") as mock_ev:
+        with (
+            _patch_externals()[0],
+            _patch_externals()[1],
+            _patch_externals()[2],
+            _patch_externals()[3],
+            _patch_externals()[4],
+            _patch_externals()[5],
+            _patch_externals()[6],
+            patch("app.services.managed_service.everest_client") as mock_ev,
+        ):
             mock_ev.is_configured.return_value = True
             mock_ev.create_database = AsyncMock()
             await client.post("/api/v1/tenants", json=AMSTERDAM)
-            r = await client.post("/api/v1/tenants/amsterdam/services", json={
-                "name": "app-mongo",
-                "service_type": "mongodb",
-                "tier": "dev",
-            })
+            r = await client.post(
+                "/api/v1/tenants/amsterdam/services",
+                json={
+                    "name": "app-mongo",
+                    "service_type": "mongodb",
+                    "tier": "dev",
+                },
+            )
         assert r.status_code == 201
         data = r.json()
         assert data["service_type"] == "mongodb"
@@ -504,17 +636,26 @@ class TestManagedServiceProvisioning:
 
     @pytest.mark.asyncio
     async def test_provision_mongodb_via_crd_fallback(self, client, k8s_mock):
-        with _patch_externals()[0], _patch_externals()[1], _patch_externals()[2], \
-             _patch_externals()[3], _patch_externals()[4], _patch_externals()[5], \
-             _patch_externals()[6], \
-             patch("app.services.managed_service.everest_client") as mock_ev:
+        with (
+            _patch_externals()[0],
+            _patch_externals()[1],
+            _patch_externals()[2],
+            _patch_externals()[3],
+            _patch_externals()[4],
+            _patch_externals()[5],
+            _patch_externals()[6],
+            patch("app.services.managed_service.everest_client") as mock_ev,
+        ):
             mock_ev.is_configured.return_value = False
             await client.post("/api/v1/tenants", json=AMSTERDAM)
-            r = await client.post("/api/v1/tenants/amsterdam/services", json={
-                "name": "app-mongo",
-                "service_type": "mongodb",
-                "tier": "dev",
-            })
+            r = await client.post(
+                "/api/v1/tenants/amsterdam/services",
+                json={
+                    "name": "app-mongo",
+                    "service_type": "mongodb",
+                    "tier": "dev",
+                },
+            )
         assert r.status_code == 201
         data = r.json()
         assert data["secret_name"] == "app-mongo-psmdb-secrets"
@@ -525,18 +666,27 @@ class TestManagedServiceProvisioning:
 
     @pytest.mark.asyncio
     async def test_provision_mysql_via_everest(self, client, k8s_mock):
-        with _patch_externals()[0], _patch_externals()[1], _patch_externals()[2], \
-             _patch_externals()[3], _patch_externals()[4], _patch_externals()[5], \
-             _patch_externals()[6], \
-             patch("app.services.managed_service.everest_client") as mock_ev:
+        with (
+            _patch_externals()[0],
+            _patch_externals()[1],
+            _patch_externals()[2],
+            _patch_externals()[3],
+            _patch_externals()[4],
+            _patch_externals()[5],
+            _patch_externals()[6],
+            patch("app.services.managed_service.everest_client") as mock_ev,
+        ):
             mock_ev.is_configured.return_value = True
             mock_ev.create_database = AsyncMock()
             await client.post("/api/v1/tenants", json=UTRECHT)
-            r = await client.post("/api/v1/tenants/utrecht/services", json={
-                "name": "app-mysql",
-                "service_type": "mysql",
-                "tier": "dev",
-            })
+            r = await client.post(
+                "/api/v1/tenants/utrecht/services",
+                json={
+                    "name": "app-mysql",
+                    "service_type": "mysql",
+                    "tier": "dev",
+                },
+            )
         assert r.status_code == 201
         data = r.json()
         assert data["service_type"] == "mysql"
@@ -550,17 +700,26 @@ class TestManagedServiceProvisioning:
 
     @pytest.mark.asyncio
     async def test_provision_mysql_via_crd_fallback(self, client, k8s_mock):
-        with _patch_externals()[0], _patch_externals()[1], _patch_externals()[2], \
-             _patch_externals()[3], _patch_externals()[4], _patch_externals()[5], \
-             _patch_externals()[6], \
-             patch("app.services.managed_service.everest_client") as mock_ev:
+        with (
+            _patch_externals()[0],
+            _patch_externals()[1],
+            _patch_externals()[2],
+            _patch_externals()[3],
+            _patch_externals()[4],
+            _patch_externals()[5],
+            _patch_externals()[6],
+            patch("app.services.managed_service.everest_client") as mock_ev,
+        ):
             mock_ev.is_configured.return_value = False
             await client.post("/api/v1/tenants", json=UTRECHT)
-            r = await client.post("/api/v1/tenants/utrecht/services", json={
-                "name": "app-mysql",
-                "service_type": "mysql",
-                "tier": "dev",
-            })
+            r = await client.post(
+                "/api/v1/tenants/utrecht/services",
+                json={
+                    "name": "app-mysql",
+                    "service_type": "mysql",
+                    "tier": "dev",
+                },
+            )
         assert r.status_code == 201
         data = r.json()
         assert data["secret_name"] == "app-mysql-pxc-secrets"
@@ -571,17 +730,26 @@ class TestManagedServiceProvisioning:
 
     @pytest.mark.asyncio
     async def test_provision_rabbitmq_crd(self, client, k8s_mock):
-        with _patch_externals()[0], _patch_externals()[1], _patch_externals()[2], \
-             _patch_externals()[3], _patch_externals()[4], _patch_externals()[5], \
-             _patch_externals()[6], \
-             patch("app.services.managed_service.everest_client") as mock_ev:
+        with (
+            _patch_externals()[0],
+            _patch_externals()[1],
+            _patch_externals()[2],
+            _patch_externals()[3],
+            _patch_externals()[4],
+            _patch_externals()[5],
+            _patch_externals()[6],
+            patch("app.services.managed_service.everest_client") as mock_ev,
+        ):
             mock_ev.is_configured.return_value = True
             await client.post("/api/v1/tenants", json=UTRECHT)
-            r = await client.post("/api/v1/tenants/utrecht/services", json={
-                "name": "app-rabbit",
-                "service_type": "rabbitmq",
-                "tier": "dev",
-            })
+            r = await client.post(
+                "/api/v1/tenants/utrecht/services",
+                json={
+                    "name": "app-rabbit",
+                    "service_type": "rabbitmq",
+                    "tier": "dev",
+                },
+            )
         assert r.status_code == 201
         data = r.json()
         assert data["service_type"] == "rabbitmq"
@@ -595,10 +763,16 @@ class TestManagedServiceProvisioning:
 
     @pytest.mark.asyncio
     async def test_duplicate_service_name_rejected(self, client, k8s_mock):
-        with _patch_externals()[0], _patch_externals()[1], _patch_externals()[2], \
-             _patch_externals()[3], _patch_externals()[4], _patch_externals()[5], \
-             _patch_externals()[6], \
-             patch("app.services.managed_service.everest_client") as mock_ev:
+        with (
+            _patch_externals()[0],
+            _patch_externals()[1],
+            _patch_externals()[2],
+            _patch_externals()[3],
+            _patch_externals()[4],
+            _patch_externals()[5],
+            _patch_externals()[6],
+            patch("app.services.managed_service.everest_client") as mock_ev,
+        ):
             mock_ev.is_configured.return_value = False
             await client.post("/api/v1/tenants", json=ROTTERDAM)
             svc = {"name": "my-redis", "service_type": "redis", "tier": "dev"}
@@ -609,10 +783,16 @@ class TestManagedServiceProvisioning:
     @pytest.mark.asyncio
     async def test_same_service_name_different_tenants_allowed(self, client, k8s_mock):
         """Same service name is allowed in different tenants."""
-        with _patch_externals()[0], _patch_externals()[1], _patch_externals()[2], \
-             _patch_externals()[3], _patch_externals()[4], _patch_externals()[5], \
-             _patch_externals()[6], \
-             patch("app.services.managed_service.everest_client") as mock_ev:
+        with (
+            _patch_externals()[0],
+            _patch_externals()[1],
+            _patch_externals()[2],
+            _patch_externals()[3],
+            _patch_externals()[4],
+            _patch_externals()[5],
+            _patch_externals()[6],
+            patch("app.services.managed_service.everest_client") as mock_ev,
+        ):
             mock_ev.is_configured.return_value = False
             await client.post("/api/v1/tenants", json=ROTTERDAM)
             await client.post("/api/v1/tenants", json=AMSTERDAM)
@@ -628,22 +808,43 @@ class TestManagedServiceProvisioning:
 
     @pytest.mark.asyncio
     async def test_list_services_scoped_to_tenant(self, client, k8s_mock):
-        with _patch_externals()[0], _patch_externals()[1], _patch_externals()[2], \
-             _patch_externals()[3], _patch_externals()[4], _patch_externals()[5], \
-             _patch_externals()[6], \
-             patch("app.services.managed_service.everest_client") as mock_ev:
+        with (
+            _patch_externals()[0],
+            _patch_externals()[1],
+            _patch_externals()[2],
+            _patch_externals()[3],
+            _patch_externals()[4],
+            _patch_externals()[5],
+            _patch_externals()[6],
+            patch("app.services.managed_service.everest_client") as mock_ev,
+        ):
             mock_ev.is_configured.return_value = False
             await client.post("/api/v1/tenants", json=ROTTERDAM)
             await client.post("/api/v1/tenants", json=AMSTERDAM)
-            await client.post("/api/v1/tenants/rotterdam/services", json={
-                "name": "pg-one", "service_type": "redis", "tier": "dev",
-            })
-            await client.post("/api/v1/tenants/rotterdam/services", json={
-                "name": "pg-two", "service_type": "redis", "tier": "dev",
-            })
-            await client.post("/api/v1/tenants/amsterdam/services", json={
-                "name": "mg-one", "service_type": "redis", "tier": "dev",
-            })
+            await client.post(
+                "/api/v1/tenants/rotterdam/services",
+                json={
+                    "name": "pg-one",
+                    "service_type": "redis",
+                    "tier": "dev",
+                },
+            )
+            await client.post(
+                "/api/v1/tenants/rotterdam/services",
+                json={
+                    "name": "pg-two",
+                    "service_type": "redis",
+                    "tier": "dev",
+                },
+            )
+            await client.post(
+                "/api/v1/tenants/amsterdam/services",
+                json={
+                    "name": "mg-one",
+                    "service_type": "redis",
+                    "tier": "dev",
+                },
+            )
             r_rot = await client.get("/api/v1/tenants/rotterdam/services")
             r_ams = await client.get("/api/v1/tenants/amsterdam/services")
 
@@ -743,40 +944,68 @@ class TestServiceConnectDisconnect:
             "memory_limit": "16Gi",
             "storage_limit": "100Gi",
         }
-        with _patch_externals()[0], _patch_externals()[1], _patch_externals()[2], \
-             _patch_externals()[3], _patch_externals()[4], _patch_externals()[5], \
-             _patch_externals()[6], \
-             patch("app.services.managed_service.everest_client") as mock_ev:
+        with (
+            _patch_externals()[0],
+            _patch_externals()[1],
+            _patch_externals()[2],
+            _patch_externals()[3],
+            _patch_externals()[4],
+            _patch_externals()[5],
+            _patch_externals()[6],
+            patch("app.services.managed_service.everest_client") as mock_ev,
+        ):
             mock_ev.is_configured.return_value = False
             await client.post("/api/v1/tenants", json=tenant_payload)
-            await client.post(f"/api/v1/tenants/{tenant_slug}/apps", json={
-                "name": "Test App",
-                "slug": "test-app",
-                "repo_url": "https://github.com/org/repo",
-                "branch": "main",
-                "port": 8080,
-            })
-            await client.post(f"/api/v1/tenants/{tenant_slug}/services", json={
-                "name": svc_name,
-                "service_type": svc_type,
-                "tier": "dev",
-            })
+            await client.post(
+                f"/api/v1/tenants/{tenant_slug}/apps",
+                json={
+                    "name": "Test App",
+                    "slug": "test-app",
+                    "repo_url": "https://github.com/org/repo",
+                    "branch": "main",
+                    "port": 8080,
+                },
+            )
+            await client.post(
+                f"/api/v1/tenants/{tenant_slug}/services",
+                json={
+                    "name": svc_name,
+                    "service_type": svc_type,
+                    "tier": "dev",
+                },
+            )
 
     @pytest.mark.asyncio
     async def test_connect_postgres_to_app(self, client, db, k8s_mock):
-        with _patch_externals()[0], _patch_externals()[1], _patch_externals()[2], \
-             _patch_externals()[3], _patch_externals()[4], _patch_externals()[5], \
-             _patch_externals()[6], \
-             patch("app.services.managed_service.everest_client") as mock_ev:
+        with (
+            _patch_externals()[0],
+            _patch_externals()[1],
+            _patch_externals()[2],
+            _patch_externals()[3],
+            _patch_externals()[4],
+            _patch_externals()[5],
+            _patch_externals()[6],
+            patch("app.services.managed_service.everest_client") as mock_ev,
+        ):
             mock_ev.is_configured.return_value = False
             await client.post("/api/v1/tenants", json=ROTTERDAM)
-            await client.post("/api/v1/tenants/rotterdam/apps", json={
-                "name": "Test App", "slug": "test-app",
-                "repo_url": "https://github.com/org/repo", "branch": "main",
-            })
-            await client.post("/api/v1/tenants/rotterdam/services", json={
-                "name": "main-pg", "service_type": "postgres", "tier": "dev",
-            })
+            await client.post(
+                "/api/v1/tenants/rotterdam/apps",
+                json={
+                    "name": "Test App",
+                    "slug": "test-app",
+                    "repo_url": "https://github.com/org/repo",
+                    "branch": "main",
+                },
+            )
+            await client.post(
+                "/api/v1/tenants/rotterdam/services",
+                json={
+                    "name": "main-pg",
+                    "service_type": "postgres",
+                    "tier": "dev",
+                },
+            )
 
             # Manually mark service as READY for connect-service
             result = await db.execute(select(ManagedService).where(ManagedService.name == "main-pg"))
@@ -788,9 +1017,12 @@ class TestServiceConnectDisconnect:
             svc.connection_hint = "postgresql://main_pg_user@main-pg-rw.tenant-rotterdam.svc:5432/main_pg"
             await db.commit()
 
-            r = await client.post("/api/v1/tenants/rotterdam/apps/test-app/connect-service", json={
-                "service_name": "main-pg",
-            })
+            r = await client.post(
+                "/api/v1/tenants/rotterdam/apps/test-app/connect-service",
+                json={
+                    "service_name": "main-pg",
+                },
+            )
 
         assert r.status_code == 200
         data = r.json()
@@ -801,19 +1033,35 @@ class TestServiceConnectDisconnect:
 
     @pytest.mark.asyncio
     async def test_connect_redis_to_app(self, client, db, k8s_mock):
-        with _patch_externals()[0], _patch_externals()[1], _patch_externals()[2], \
-             _patch_externals()[3], _patch_externals()[4], _patch_externals()[5], \
-             _patch_externals()[6], \
-             patch("app.services.managed_service.everest_client") as mock_ev:
+        with (
+            _patch_externals()[0],
+            _patch_externals()[1],
+            _patch_externals()[2],
+            _patch_externals()[3],
+            _patch_externals()[4],
+            _patch_externals()[5],
+            _patch_externals()[6],
+            patch("app.services.managed_service.everest_client") as mock_ev,
+        ):
             mock_ev.is_configured.return_value = False
             await client.post("/api/v1/tenants", json=ROTTERDAM)
-            await client.post("/api/v1/tenants/rotterdam/apps", json={
-                "name": "Test App", "slug": "test-app",
-                "repo_url": "https://github.com/org/repo", "branch": "main",
-            })
-            await client.post("/api/v1/tenants/rotterdam/services", json={
-                "name": "app-cache", "service_type": "redis", "tier": "dev",
-            })
+            await client.post(
+                "/api/v1/tenants/rotterdam/apps",
+                json={
+                    "name": "Test App",
+                    "slug": "test-app",
+                    "repo_url": "https://github.com/org/repo",
+                    "branch": "main",
+                },
+            )
+            await client.post(
+                "/api/v1/tenants/rotterdam/services",
+                json={
+                    "name": "app-cache",
+                    "service_type": "redis",
+                    "tier": "dev",
+                },
+            )
 
             result = await db.execute(select(ManagedService).where(ManagedService.name == "app-cache"))
             svc = result.scalar_one()
@@ -824,9 +1072,12 @@ class TestServiceConnectDisconnect:
             svc.connection_hint = "redis://app-cache.tenant-rotterdam.svc:6379"
             await db.commit()
 
-            r = await client.post("/api/v1/tenants/rotterdam/apps/test-app/connect-service", json={
-                "service_name": "app-cache",
-            })
+            r = await client.post(
+                "/api/v1/tenants/rotterdam/apps/test-app/connect-service",
+                json={
+                    "service_name": "app-cache",
+                },
+            )
 
         assert r.status_code == 200
         # Redis has no DATABASE_URL key, but env_from_secrets should be set
@@ -835,19 +1086,35 @@ class TestServiceConnectDisconnect:
 
     @pytest.mark.asyncio
     async def test_connect_rabbitmq_to_app(self, client, db, k8s_mock):
-        with _patch_externals()[0], _patch_externals()[1], _patch_externals()[2], \
-             _patch_externals()[3], _patch_externals()[4], _patch_externals()[5], \
-             _patch_externals()[6], \
-             patch("app.services.managed_service.everest_client") as mock_ev:
+        with (
+            _patch_externals()[0],
+            _patch_externals()[1],
+            _patch_externals()[2],
+            _patch_externals()[3],
+            _patch_externals()[4],
+            _patch_externals()[5],
+            _patch_externals()[6],
+            patch("app.services.managed_service.everest_client") as mock_ev,
+        ):
             mock_ev.is_configured.return_value = False
             await client.post("/api/v1/tenants", json=UTRECHT)
-            await client.post("/api/v1/tenants/utrecht/apps", json={
-                "name": "Worker", "slug": "worker-app",
-                "repo_url": "https://github.com/org/repo", "branch": "main",
-            })
-            await client.post("/api/v1/tenants/utrecht/services", json={
-                "name": "app-mq", "service_type": "rabbitmq", "tier": "dev",
-            })
+            await client.post(
+                "/api/v1/tenants/utrecht/apps",
+                json={
+                    "name": "Worker",
+                    "slug": "worker-app",
+                    "repo_url": "https://github.com/org/repo",
+                    "branch": "main",
+                },
+            )
+            await client.post(
+                "/api/v1/tenants/utrecht/services",
+                json={
+                    "name": "app-mq",
+                    "service_type": "rabbitmq",
+                    "tier": "dev",
+                },
+            )
 
             result = await db.execute(select(ManagedService).where(ManagedService.name == "app-mq"))
             svc = result.scalar_one()
@@ -858,50 +1125,88 @@ class TestServiceConnectDisconnect:
             svc.connection_hint = "amqp://app-mq-default-user@app-mq.tenant-utrecht.svc:5672"
             await db.commit()
 
-            r = await client.post("/api/v1/tenants/utrecht/apps/worker-app/connect-service", json={
-                "service_name": "app-mq",
-            })
+            r = await client.post(
+                "/api/v1/tenants/utrecht/apps/worker-app/connect-service",
+                json={
+                    "service_name": "app-mq",
+                },
+            )
 
         assert r.status_code == 200
 
     @pytest.mark.asyncio
     async def test_connect_service_not_ready_rejected(self, client, db, k8s_mock):
         """Cannot connect a service that is still provisioning."""
-        with _patch_externals()[0], _patch_externals()[1], _patch_externals()[2], \
-             _patch_externals()[3], _patch_externals()[4], _patch_externals()[5], \
-             _patch_externals()[6], \
-             patch("app.services.managed_service.everest_client") as mock_ev:
+        with (
+            _patch_externals()[0],
+            _patch_externals()[1],
+            _patch_externals()[2],
+            _patch_externals()[3],
+            _patch_externals()[4],
+            _patch_externals()[5],
+            _patch_externals()[6],
+            patch("app.services.managed_service.everest_client") as mock_ev,
+        ):
             mock_ev.is_configured.return_value = False
             await client.post("/api/v1/tenants", json=ROTTERDAM)
-            await client.post("/api/v1/tenants/rotterdam/apps", json={
-                "name": "App", "slug": "test-app",
-                "repo_url": "https://github.com/org/repo", "branch": "main",
-            })
-            await client.post("/api/v1/tenants/rotterdam/services", json={
-                "name": "new-pg", "service_type": "redis", "tier": "dev",
-            })
+            await client.post(
+                "/api/v1/tenants/rotterdam/apps",
+                json={
+                    "name": "App",
+                    "slug": "test-app",
+                    "repo_url": "https://github.com/org/repo",
+                    "branch": "main",
+                },
+            )
+            await client.post(
+                "/api/v1/tenants/rotterdam/services",
+                json={
+                    "name": "new-pg",
+                    "service_type": "redis",
+                    "tier": "dev",
+                },
+            )
             # Service is still PROVISIONING, no manual status change
-            r = await client.post("/api/v1/tenants/rotterdam/apps/test-app/connect-service", json={
-                "service_name": "new-pg",
-            })
+            r = await client.post(
+                "/api/v1/tenants/rotterdam/apps/test-app/connect-service",
+                json={
+                    "service_name": "new-pg",
+                },
+            )
         assert r.status_code == 409
 
     @pytest.mark.asyncio
     async def test_disconnect_service_from_app(self, client, db, k8s_mock):
         """Disconnect removes env_from_secrets entry and cleans up env_vars."""
-        with _patch_externals()[0], _patch_externals()[1], _patch_externals()[2], \
-             _patch_externals()[3], _patch_externals()[4], _patch_externals()[5], \
-             _patch_externals()[6], \
-             patch("app.services.managed_service.everest_client") as mock_ev:
+        with (
+            _patch_externals()[0],
+            _patch_externals()[1],
+            _patch_externals()[2],
+            _patch_externals()[3],
+            _patch_externals()[4],
+            _patch_externals()[5],
+            _patch_externals()[6],
+            patch("app.services.managed_service.everest_client") as mock_ev,
+        ):
             mock_ev.is_configured.return_value = False
             await client.post("/api/v1/tenants", json=ROTTERDAM)
-            await client.post("/api/v1/tenants/rotterdam/apps", json={
-                "name": "App", "slug": "test-app",
-                "repo_url": "https://github.com/org/repo", "branch": "main",
-            })
-            await client.post("/api/v1/tenants/rotterdam/services", json={
-                "name": "my-pg", "service_type": "postgres", "tier": "dev",
-            })
+            await client.post(
+                "/api/v1/tenants/rotterdam/apps",
+                json={
+                    "name": "App",
+                    "slug": "test-app",
+                    "repo_url": "https://github.com/org/repo",
+                    "branch": "main",
+                },
+            )
+            await client.post(
+                "/api/v1/tenants/rotterdam/services",
+                json={
+                    "name": "my-pg",
+                    "service_type": "postgres",
+                    "tier": "dev",
+                },
+            )
 
             # Mark ready and connect
             result = await db.execute(select(ManagedService).where(ManagedService.name == "my-pg"))
@@ -913,9 +1218,12 @@ class TestServiceConnectDisconnect:
             svc.connection_hint = "postgresql://user@my-pg-rw.tenant-rotterdam.svc:5432/my_pg"
             await db.commit()
 
-            await client.post("/api/v1/tenants/rotterdam/apps/test-app/connect-service", json={
-                "service_name": "my-pg",
-            })
+            await client.post(
+                "/api/v1/tenants/rotterdam/apps/test-app/connect-service",
+                json={
+                    "service_name": "my-pg",
+                },
+            )
 
             # Now disconnect
             r = await client.delete("/api/v1/tenants/rotterdam/apps/test-app/connect-service/my-pg")
@@ -946,8 +1254,11 @@ class TestServiceStatusSync:
 
         provisioner = ManagedServiceProvisioner(k8s, everest=mock_ev)
         svc = ManagedService(
-            name="test-pg", service_type=ServiceType.POSTGRES, tier=ServiceTier.DEV,
-            status=ServiceStatus.PROVISIONING, everest_name="tenant-test-pg",
+            name="test-pg",
+            service_type=ServiceType.POSTGRES,
+            tier=ServiceTier.DEV,
+            status=ServiceStatus.PROVISIONING,
+            everest_name="tenant-test-pg",
         )
         await provisioner.sync_status(svc)
         assert svc.status == ServiceStatus.READY
@@ -962,8 +1273,11 @@ class TestServiceStatusSync:
 
         provisioner = ManagedServiceProvisioner(k8s, everest=mock_ev)
         svc = ManagedService(
-            name="test-mysql", service_type=ServiceType.MYSQL, tier=ServiceTier.DEV,
-            status=ServiceStatus.PROVISIONING, everest_name="tenant-test-mysql",
+            name="test-mysql",
+            service_type=ServiceType.MYSQL,
+            tier=ServiceTier.DEV,
+            status=ServiceStatus.PROVISIONING,
+            everest_name="tenant-test-mysql",
         )
         await provisioner.sync_status(svc)
         assert svc.status == ServiceStatus.FAILED
@@ -981,8 +1295,11 @@ class TestServiceStatusSync:
 
         provisioner = ManagedServiceProvisioner(k8s, everest=mock_ev)
         svc = ManagedService(
-            name="app-redis", service_type=ServiceType.REDIS, tier=ServiceTier.DEV,
-            status=ServiceStatus.PROVISIONING, service_namespace="tenant-test",
+            name="app-redis",
+            service_type=ServiceType.REDIS,
+            tier=ServiceTier.DEV,
+            status=ServiceStatus.PROVISIONING,
+            service_namespace="tenant-test",
         )
         await provisioner.sync_status(svc)
         assert svc.status == ServiceStatus.READY
@@ -1004,8 +1321,11 @@ class TestServiceStatusSync:
 
         provisioner = ManagedServiceProvisioner(k8s, everest=mock_ev)
         svc = ManagedService(
-            name="app-rabbit", service_type=ServiceType.RABBITMQ, tier=ServiceTier.DEV,
-            status=ServiceStatus.PROVISIONING, service_namespace="tenant-test",
+            name="app-rabbit",
+            service_type=ServiceType.RABBITMQ,
+            tier=ServiceTier.DEV,
+            status=ServiceStatus.PROVISIONING,
+            service_namespace="tenant-test",
         )
         await provisioner.sync_status(svc)
         assert svc.status == ServiceStatus.READY
@@ -1024,8 +1344,11 @@ class TestServiceStatusSync:
 
         provisioner = ManagedServiceProvisioner(k8s, everest=mock_ev)
         svc = ManagedService(
-            name="app-pg", service_type=ServiceType.POSTGRES, tier=ServiceTier.DEV,
-            status=ServiceStatus.PROVISIONING, service_namespace="tenant-test",
+            name="app-pg",
+            service_type=ServiceType.POSTGRES,
+            tier=ServiceTier.DEV,
+            status=ServiceStatus.PROVISIONING,
+            service_namespace="tenant-test",
         )
         await provisioner.sync_status(svc)
         assert svc.status == ServiceStatus.READY
@@ -1043,8 +1366,11 @@ class TestServiceStatusSync:
 
         provisioner = ManagedServiceProvisioner(k8s, everest=mock_ev)
         svc = ManagedService(
-            name="app-mysql", service_type=ServiceType.MYSQL, tier=ServiceTier.DEV,
-            status=ServiceStatus.PROVISIONING, service_namespace="tenant-test",
+            name="app-mysql",
+            service_type=ServiceType.MYSQL,
+            tier=ServiceTier.DEV,
+            status=ServiceStatus.PROVISIONING,
+            service_namespace="tenant-test",
         )
         await provisioner.sync_status(svc)
         assert svc.status == ServiceStatus.READY
@@ -1062,8 +1388,11 @@ class TestServiceStatusSync:
 
         provisioner = ManagedServiceProvisioner(k8s, everest=mock_ev)
         svc = ManagedService(
-            name="app-mongo", service_type=ServiceType.MONGODB, tier=ServiceTier.DEV,
-            status=ServiceStatus.PROVISIONING, service_namespace="tenant-test",
+            name="app-mongo",
+            service_type=ServiceType.MONGODB,
+            tier=ServiceTier.DEV,
+            status=ServiceStatus.PROVISIONING,
+            service_namespace="tenant-test",
         )
         await provisioner.sync_status(svc)
         assert svc.status == ServiceStatus.READY
@@ -1080,8 +1409,11 @@ class TestServiceStatusSync:
 
         provisioner = ManagedServiceProvisioner(k8s, everest=mock_ev)
         svc = ManagedService(
-            name="gone-svc", service_type=ServiceType.REDIS, tier=ServiceTier.DEV,
-            status=ServiceStatus.PROVISIONING, service_namespace="tenant-test",
+            name="gone-svc",
+            service_type=ServiceType.REDIS,
+            tier=ServiceTier.DEV,
+            status=ServiceStatus.PROVISIONING,
+            service_namespace="tenant-test",
         )
         await provisioner.sync_status(svc)
         assert svc.status == ServiceStatus.FAILED
@@ -1108,15 +1440,26 @@ class TestServiceCredentials:
             }
         )
 
-        with _patch_externals()[0], _patch_externals()[1], _patch_externals()[2], \
-             _patch_externals()[3], _patch_externals()[4], _patch_externals()[5], \
-             _patch_externals()[6], \
-             patch("app.services.managed_service.everest_client") as mock_ev:
+        with (
+            _patch_externals()[0],
+            _patch_externals()[1],
+            _patch_externals()[2],
+            _patch_externals()[3],
+            _patch_externals()[4],
+            _patch_externals()[5],
+            _patch_externals()[6],
+            patch("app.services.managed_service.everest_client") as mock_ev,
+        ):
             mock_ev.is_configured.return_value = False
             await client.post("/api/v1/tenants", json=ROTTERDAM)
-            await client.post("/api/v1/tenants/rotterdam/services", json={
-                "name": "cred-pg", "service_type": "postgres", "tier": "dev",
-            })
+            await client.post(
+                "/api/v1/tenants/rotterdam/services",
+                json={
+                    "name": "cred-pg",
+                    "service_type": "postgres",
+                    "tier": "dev",
+                },
+            )
 
             # Mark READY
             result = await db.execute(select(ManagedService).where(ManagedService.name == "cred-pg"))
@@ -1138,15 +1481,26 @@ class TestServiceCredentials:
 
     @pytest.mark.asyncio
     async def test_credentials_rejected_when_not_ready(self, client, db, k8s_mock):
-        with _patch_externals()[0], _patch_externals()[1], _patch_externals()[2], \
-             _patch_externals()[3], _patch_externals()[4], _patch_externals()[5], \
-             _patch_externals()[6], \
-             patch("app.services.managed_service.everest_client") as mock_ev:
+        with (
+            _patch_externals()[0],
+            _patch_externals()[1],
+            _patch_externals()[2],
+            _patch_externals()[3],
+            _patch_externals()[4],
+            _patch_externals()[5],
+            _patch_externals()[6],
+            patch("app.services.managed_service.everest_client") as mock_ev,
+        ):
             mock_ev.is_configured.return_value = False
             await client.post("/api/v1/tenants", json=ROTTERDAM)
-            await client.post("/api/v1/tenants/rotterdam/services", json={
-                "name": "not-ready-pg", "service_type": "redis", "tier": "dev",
-            })
+            await client.post(
+                "/api/v1/tenants/rotterdam/services",
+                json={
+                    "name": "not-ready-pg",
+                    "service_type": "redis",
+                    "tier": "dev",
+                },
+            )
             # Still PROVISIONING
             r = await client.get("/api/v1/tenants/rotterdam/services/not-ready-pg/credentials")
         assert r.status_code == 409
@@ -1163,20 +1517,36 @@ class TestTenantDeletion:
     @pytest.mark.asyncio
     async def test_delete_tenant_cascades_services_and_apps(self, client, db, k8s_mock):
         """Deleting a tenant removes all services, apps from DB."""
-        with _patch_externals()[0], _patch_externals()[1], _patch_externals()[2], \
-             _patch_externals()[3], _patch_externals()[4], _patch_externals()[5], \
-             _patch_externals()[6], \
-             patch("app.services.managed_service.everest_client") as mock_ev:
+        with (
+            _patch_externals()[0],
+            _patch_externals()[1],
+            _patch_externals()[2],
+            _patch_externals()[3],
+            _patch_externals()[4],
+            _patch_externals()[5],
+            _patch_externals()[6],
+            patch("app.services.managed_service.everest_client") as mock_ev,
+        ):
             mock_ev.is_configured.return_value = False
             mock_ev.delete_database = AsyncMock()
             await client.post("/api/v1/tenants", json=ROTTERDAM)
-            await client.post("/api/v1/tenants/rotterdam/apps", json={
-                "name": "App A", "slug": "app-aaa",
-                "repo_url": "https://github.com/org/repo", "branch": "main",
-            })
-            await client.post("/api/v1/tenants/rotterdam/services", json={
-                "name": "svc-redis", "service_type": "redis", "tier": "dev",
-            })
+            await client.post(
+                "/api/v1/tenants/rotterdam/apps",
+                json={
+                    "name": "App A",
+                    "slug": "app-aaa",
+                    "repo_url": "https://github.com/org/repo",
+                    "branch": "main",
+                },
+            )
+            await client.post(
+                "/api/v1/tenants/rotterdam/services",
+                json={
+                    "name": "svc-redis",
+                    "service_type": "redis",
+                    "tier": "dev",
+                },
+            )
 
             # Verify they exist
             r_apps = await client.get("/api/v1/tenants/rotterdam/apps")
@@ -1201,10 +1571,16 @@ class TestTenantDeletion:
     @pytest.mark.asyncio
     async def test_delete_tenant_calls_k8s_cleanup(self, client, db, k8s_mock):
         """Deleting a tenant deletes namespace and ApplicationSet via K8s."""
-        with _patch_externals()[0], _patch_externals()[1], _patch_externals()[2], \
-             _patch_externals()[3], _patch_externals()[4], _patch_externals()[5], \
-             _patch_externals()[6], \
-             patch("app.services.managed_service.everest_client") as mock_ev:
+        with (
+            _patch_externals()[0],
+            _patch_externals()[1],
+            _patch_externals()[2],
+            _patch_externals()[3],
+            _patch_externals()[4],
+            _patch_externals()[5],
+            _patch_externals()[6],
+            patch("app.services.managed_service.everest_client") as mock_ev,
+        ):
             mock_ev.is_configured.return_value = False
             await client.post("/api/v1/tenants", json=ROTTERDAM)
             await client.delete("/api/v1/tenants/rotterdam")
@@ -1224,18 +1600,29 @@ class TestTenantDeletion:
     @pytest.mark.asyncio
     async def test_delete_tenant_deprovisions_everest_dbs(self, client, db, k8s_mock):
         """Deleting a tenant with Everest DBs calls Everest delete API."""
-        with _patch_externals()[0], _patch_externals()[1], _patch_externals()[2], \
-             _patch_externals()[3], _patch_externals()[4], _patch_externals()[5], \
-             _patch_externals()[6], \
-             patch("app.services.managed_service.everest_client") as mock_ev:
+        with (
+            _patch_externals()[0],
+            _patch_externals()[1],
+            _patch_externals()[2],
+            _patch_externals()[3],
+            _patch_externals()[4],
+            _patch_externals()[5],
+            _patch_externals()[6],
+            patch("app.services.managed_service.everest_client") as mock_ev,
+        ):
             mock_ev.is_configured.return_value = True
             mock_ev.create_database = AsyncMock()
             mock_ev.delete_database = AsyncMock()
 
             await client.post("/api/v1/tenants", json=AMSTERDAM)
-            await client.post("/api/v1/tenants/amsterdam/services", json={
-                "name": "mongo-db", "service_type": "mongodb", "tier": "dev",
-            })
+            await client.post(
+                "/api/v1/tenants/amsterdam/services",
+                json={
+                    "name": "mongo-db",
+                    "service_type": "mongodb",
+                    "tier": "dev",
+                },
+            )
 
             # Mark it with everest_name
             result = await db.execute(select(ManagedService).where(ManagedService.name == "mongo-db"))
@@ -1249,19 +1636,35 @@ class TestTenantDeletion:
     @pytest.mark.asyncio
     async def test_delete_tenant_deprovisions_crd_services(self, client, db, k8s_mock):
         """Deleting a tenant with CRD services calls K8s delete."""
-        with _patch_externals()[0], _patch_externals()[1], _patch_externals()[2], \
-             _patch_externals()[3], _patch_externals()[4], _patch_externals()[5], \
-             _patch_externals()[6], \
-             patch("app.services.managed_service.everest_client") as mock_ev:
+        with (
+            _patch_externals()[0],
+            _patch_externals()[1],
+            _patch_externals()[2],
+            _patch_externals()[3],
+            _patch_externals()[4],
+            _patch_externals()[5],
+            _patch_externals()[6],
+            patch("app.services.managed_service.everest_client") as mock_ev,
+        ):
             mock_ev.is_configured.return_value = False
 
             await client.post("/api/v1/tenants", json=UTRECHT)
-            await client.post("/api/v1/tenants/utrecht/services", json={
-                "name": "my-redis", "service_type": "redis", "tier": "dev",
-            })
-            await client.post("/api/v1/tenants/utrecht/services", json={
-                "name": "my-rabbit", "service_type": "rabbitmq", "tier": "dev",
-            })
+            await client.post(
+                "/api/v1/tenants/utrecht/services",
+                json={
+                    "name": "my-redis",
+                    "service_type": "redis",
+                    "tier": "dev",
+                },
+            )
+            await client.post(
+                "/api/v1/tenants/utrecht/services",
+                json={
+                    "name": "my-rabbit",
+                    "service_type": "rabbitmq",
+                    "tier": "dev",
+                },
+            )
 
             await client.delete("/api/v1/tenants/utrecht")
 
@@ -1274,20 +1677,36 @@ class TestTenantDeletion:
     @pytest.mark.asyncio
     async def test_delete_multiple_tenants_independently(self, client, db, k8s_mock):
         """Deleting one tenant does not affect others."""
-        with _patch_externals()[0], _patch_externals()[1], _patch_externals()[2], \
-             _patch_externals()[3], _patch_externals()[4], _patch_externals()[5], \
-             _patch_externals()[6], \
-             patch("app.services.managed_service.everest_client") as mock_ev:
+        with (
+            _patch_externals()[0],
+            _patch_externals()[1],
+            _patch_externals()[2],
+            _patch_externals()[3],
+            _patch_externals()[4],
+            _patch_externals()[5],
+            _patch_externals()[6],
+            patch("app.services.managed_service.everest_client") as mock_ev,
+        ):
             mock_ev.is_configured.return_value = False
 
             await client.post("/api/v1/tenants", json=ROTTERDAM)
             await client.post("/api/v1/tenants", json=AMSTERDAM)
-            await client.post("/api/v1/tenants/rotterdam/services", json={
-                "name": "rot-redis", "service_type": "redis", "tier": "dev",
-            })
-            await client.post("/api/v1/tenants/amsterdam/services", json={
-                "name": "ams-redis", "service_type": "redis", "tier": "dev",
-            })
+            await client.post(
+                "/api/v1/tenants/rotterdam/services",
+                json={
+                    "name": "rot-redis",
+                    "service_type": "redis",
+                    "tier": "dev",
+                },
+            )
+            await client.post(
+                "/api/v1/tenants/amsterdam/services",
+                json={
+                    "name": "ams-redis",
+                    "service_type": "redis",
+                    "tier": "dev",
+                },
+            )
 
             # Delete rotterdam
             r = await client.delete("/api/v1/tenants/rotterdam")
@@ -1311,15 +1730,26 @@ class TestServiceDelete:
 
     @pytest.mark.asyncio
     async def test_delete_redis_service(self, client, db, k8s_mock):
-        with _patch_externals()[0], _patch_externals()[1], _patch_externals()[2], \
-             _patch_externals()[3], _patch_externals()[4], _patch_externals()[5], \
-             _patch_externals()[6], \
-             patch("app.services.managed_service.everest_client") as mock_ev:
+        with (
+            _patch_externals()[0],
+            _patch_externals()[1],
+            _patch_externals()[2],
+            _patch_externals()[3],
+            _patch_externals()[4],
+            _patch_externals()[5],
+            _patch_externals()[6],
+            patch("app.services.managed_service.everest_client") as mock_ev,
+        ):
             mock_ev.is_configured.return_value = False
             await client.post("/api/v1/tenants", json=ROTTERDAM)
-            await client.post("/api/v1/tenants/rotterdam/services", json={
-                "name": "del-redis", "service_type": "redis", "tier": "dev",
-            })
+            await client.post(
+                "/api/v1/tenants/rotterdam/services",
+                json={
+                    "name": "del-redis",
+                    "service_type": "redis",
+                    "tier": "dev",
+                },
+            )
 
             r = await client.delete("/api/v1/tenants/rotterdam/services/del-redis")
         assert r.status_code == 204
@@ -1330,17 +1760,28 @@ class TestServiceDelete:
 
     @pytest.mark.asyncio
     async def test_delete_everest_service(self, client, db, k8s_mock):
-        with _patch_externals()[0], _patch_externals()[1], _patch_externals()[2], \
-             _patch_externals()[3], _patch_externals()[4], _patch_externals()[5], \
-             _patch_externals()[6], \
-             patch("app.services.managed_service.everest_client") as mock_ev:
+        with (
+            _patch_externals()[0],
+            _patch_externals()[1],
+            _patch_externals()[2],
+            _patch_externals()[3],
+            _patch_externals()[4],
+            _patch_externals()[5],
+            _patch_externals()[6],
+            patch("app.services.managed_service.everest_client") as mock_ev,
+        ):
             mock_ev.is_configured.return_value = True
             mock_ev.create_database = AsyncMock()
             mock_ev.delete_database = AsyncMock()
             await client.post("/api/v1/tenants", json=AMSTERDAM)
-            await client.post("/api/v1/tenants/amsterdam/services", json={
-                "name": "del-pg", "service_type": "postgres", "tier": "dev",
-            })
+            await client.post(
+                "/api/v1/tenants/amsterdam/services",
+                json={
+                    "name": "del-pg",
+                    "service_type": "postgres",
+                    "tier": "dev",
+                },
+            )
 
             r = await client.delete("/api/v1/tenants/amsterdam/services/del-pg")
         assert r.status_code == 204
@@ -1348,9 +1789,15 @@ class TestServiceDelete:
 
     @pytest.mark.asyncio
     async def test_delete_nonexistent_service_returns_404(self, client, k8s_mock):
-        with _patch_externals()[0], _patch_externals()[1], _patch_externals()[2], \
-             _patch_externals()[3], _patch_externals()[4], _patch_externals()[5], \
-             _patch_externals()[6]:
+        with (
+            _patch_externals()[0],
+            _patch_externals()[1],
+            _patch_externals()[2],
+            _patch_externals()[3],
+            _patch_externals()[4],
+            _patch_externals()[5],
+            _patch_externals()[6],
+        ):
             await client.post("/api/v1/tenants", json=ROTTERDAM)
             r = await client.delete("/api/v1/tenants/rotterdam/services/nonexistent")
         assert r.status_code == 404
@@ -1366,9 +1813,15 @@ class TestApplicationSetPerTenant:
 
     @pytest.mark.asyncio
     async def test_appset_created_on_tenant_provision(self, client, k8s_mock):
-        with _patch_externals()[0], _patch_externals()[1], _patch_externals()[2], \
-             _patch_externals()[3], _patch_externals()[4], _patch_externals()[5], \
-             _patch_externals()[6]:
+        with (
+            _patch_externals()[0],
+            _patch_externals()[1],
+            _patch_externals()[2],
+            _patch_externals()[3],
+            _patch_externals()[4],
+            _patch_externals()[5],
+            _patch_externals()[6],
+        ):
             await client.post("/api/v1/tenants", json=ROTTERDAM)
 
         # Find the ApplicationSet creation call
@@ -1381,9 +1834,15 @@ class TestApplicationSetPerTenant:
 
     @pytest.mark.asyncio
     async def test_three_tenants_three_appsets(self, client, k8s_mock):
-        with _patch_externals()[0], _patch_externals()[1], _patch_externals()[2], \
-             _patch_externals()[3], _patch_externals()[4], _patch_externals()[5], \
-             _patch_externals()[6]:
+        with (
+            _patch_externals()[0],
+            _patch_externals()[1],
+            _patch_externals()[2],
+            _patch_externals()[3],
+            _patch_externals()[4],
+            _patch_externals()[5],
+            _patch_externals()[6],
+        ):
             await client.post("/api/v1/tenants", json=ROTTERDAM)
             await client.post("/api/v1/tenants", json=AMSTERDAM)
             await client.post("/api/v1/tenants", json=UTRECHT)
@@ -1395,10 +1854,16 @@ class TestApplicationSetPerTenant:
 
     @pytest.mark.asyncio
     async def test_appset_deleted_on_tenant_delete(self, client, k8s_mock):
-        with _patch_externals()[0], _patch_externals()[1], _patch_externals()[2], \
-             _patch_externals()[3], _patch_externals()[4], _patch_externals()[5], \
-             _patch_externals()[6], \
-             patch("app.services.managed_service.everest_client") as mock_ev:
+        with (
+            _patch_externals()[0],
+            _patch_externals()[1],
+            _patch_externals()[2],
+            _patch_externals()[3],
+            _patch_externals()[4],
+            _patch_externals()[5],
+            _patch_externals()[6],
+            patch("app.services.managed_service.everest_client") as mock_ev,
+        ):
             mock_ev.is_configured.return_value = False
             await client.post("/api/v1/tenants", json=ROTTERDAM)
             await client.delete("/api/v1/tenants/rotterdam")
@@ -1478,16 +1943,27 @@ class TestEverestTenantPrefix:
 
     @pytest.mark.asyncio
     async def test_everest_name_prefixed_rotterdam(self, client, db, k8s_mock):
-        with _patch_externals()[0], _patch_externals()[1], _patch_externals()[2], \
-             _patch_externals()[3], _patch_externals()[4], _patch_externals()[5], \
-             _patch_externals()[6], \
-             patch("app.services.managed_service.everest_client") as mock_ev:
+        with (
+            _patch_externals()[0],
+            _patch_externals()[1],
+            _patch_externals()[2],
+            _patch_externals()[3],
+            _patch_externals()[4],
+            _patch_externals()[5],
+            _patch_externals()[6],
+            patch("app.services.managed_service.everest_client") as mock_ev,
+        ):
             mock_ev.is_configured.return_value = True
             mock_ev.create_database = AsyncMock()
             await client.post("/api/v1/tenants", json=ROTTERDAM)
-            await client.post("/api/v1/tenants/rotterdam/services", json={
-                "name": "main-db", "service_type": "postgres", "tier": "dev",
-            })
+            await client.post(
+                "/api/v1/tenants/rotterdam/services",
+                json={
+                    "name": "main-db",
+                    "service_type": "postgres",
+                    "tier": "dev",
+                },
+            )
 
         result = await db.execute(select(ManagedService).where(ManagedService.name == "main-db"))
         svc = result.scalar_one()
@@ -1495,16 +1971,27 @@ class TestEverestTenantPrefix:
 
     @pytest.mark.asyncio
     async def test_everest_name_prefixed_amsterdam(self, client, db, k8s_mock):
-        with _patch_externals()[0], _patch_externals()[1], _patch_externals()[2], \
-             _patch_externals()[3], _patch_externals()[4], _patch_externals()[5], \
-             _patch_externals()[6], \
-             patch("app.services.managed_service.everest_client") as mock_ev:
+        with (
+            _patch_externals()[0],
+            _patch_externals()[1],
+            _patch_externals()[2],
+            _patch_externals()[3],
+            _patch_externals()[4],
+            _patch_externals()[5],
+            _patch_externals()[6],
+            patch("app.services.managed_service.everest_client") as mock_ev,
+        ):
             mock_ev.is_configured.return_value = True
             mock_ev.create_database = AsyncMock()
             await client.post("/api/v1/tenants", json=AMSTERDAM)
-            await client.post("/api/v1/tenants/amsterdam/services", json={
-                "name": "main-db", "service_type": "mongodb", "tier": "dev",
-            })
+            await client.post(
+                "/api/v1/tenants/amsterdam/services",
+                json={
+                    "name": "main-db",
+                    "service_type": "mongodb",
+                    "tier": "dev",
+                },
+            )
 
         result = await db.execute(select(ManagedService).where(ManagedService.name == "main-db"))
         svc = result.scalar_one()
@@ -1513,20 +2000,36 @@ class TestEverestTenantPrefix:
     @pytest.mark.asyncio
     async def test_same_service_name_different_everest_names(self, client, db, k8s_mock):
         """Two tenants with same service name get different Everest DB names."""
-        with _patch_externals()[0], _patch_externals()[1], _patch_externals()[2], \
-             _patch_externals()[3], _patch_externals()[4], _patch_externals()[5], \
-             _patch_externals()[6], \
-             patch("app.services.managed_service.everest_client") as mock_ev:
+        with (
+            _patch_externals()[0],
+            _patch_externals()[1],
+            _patch_externals()[2],
+            _patch_externals()[3],
+            _patch_externals()[4],
+            _patch_externals()[5],
+            _patch_externals()[6],
+            patch("app.services.managed_service.everest_client") as mock_ev,
+        ):
             mock_ev.is_configured.return_value = True
             mock_ev.create_database = AsyncMock()
             await client.post("/api/v1/tenants", json=ROTTERDAM)
             await client.post("/api/v1/tenants", json=AMSTERDAM)
-            await client.post("/api/v1/tenants/rotterdam/services", json={
-                "name": "shared-db", "service_type": "postgres", "tier": "dev",
-            })
-            await client.post("/api/v1/tenants/amsterdam/services", json={
-                "name": "shared-db", "service_type": "postgres", "tier": "dev",
-            })
+            await client.post(
+                "/api/v1/tenants/rotterdam/services",
+                json={
+                    "name": "shared-db",
+                    "service_type": "postgres",
+                    "tier": "dev",
+                },
+            )
+            await client.post(
+                "/api/v1/tenants/amsterdam/services",
+                json={
+                    "name": "shared-db",
+                    "service_type": "postgres",
+                    "tier": "dev",
+                },
+            )
 
         result = await db.execute(select(ManagedService))
         svcs = list(result.scalars())
@@ -1544,9 +2047,15 @@ class TestTenantUpdate:
 
     @pytest.mark.asyncio
     async def test_update_tenant_name(self, client, k8s_mock):
-        with _patch_externals()[0], _patch_externals()[1], _patch_externals()[2], \
-             _patch_externals()[3], _patch_externals()[4], _patch_externals()[5], \
-             _patch_externals()[6]:
+        with (
+            _patch_externals()[0],
+            _patch_externals()[1],
+            _patch_externals()[2],
+            _patch_externals()[3],
+            _patch_externals()[4],
+            _patch_externals()[5],
+            _patch_externals()[6],
+        ):
             await client.post("/api/v1/tenants", json=ROTTERDAM)
             r = await client.patch("/api/v1/tenants/rotterdam", json={"name": "Rotterdam City"})
         assert r.status_code == 200
@@ -1555,9 +2064,15 @@ class TestTenantUpdate:
 
     @pytest.mark.asyncio
     async def test_update_tenant_tier(self, client, k8s_mock):
-        with _patch_externals()[0], _patch_externals()[1], _patch_externals()[2], \
-             _patch_externals()[3], _patch_externals()[4], _patch_externals()[5], \
-             _patch_externals()[6]:
+        with (
+            _patch_externals()[0],
+            _patch_externals()[1],
+            _patch_externals()[2],
+            _patch_externals()[3],
+            _patch_externals()[4],
+            _patch_externals()[5],
+            _patch_externals()[6],
+        ):
             await client.post("/api/v1/tenants", json=ROTTERDAM)
             r = await client.patch("/api/v1/tenants/rotterdam", json={"tier": "enterprise"})
         assert r.status_code == 200
@@ -1574,45 +2089,82 @@ class TestApplicationUpdate:
 
     @pytest.mark.asyncio
     async def test_update_app_env_vars(self, client, k8s_mock):
-        with _patch_externals()[0], _patch_externals()[1], _patch_externals()[2], \
-             _patch_externals()[3], _patch_externals()[4], _patch_externals()[5], \
-             _patch_externals()[6]:
+        with (
+            _patch_externals()[0],
+            _patch_externals()[1],
+            _patch_externals()[2],
+            _patch_externals()[3],
+            _patch_externals()[4],
+            _patch_externals()[5],
+            _patch_externals()[6],
+        ):
             await client.post("/api/v1/tenants", json=ROTTERDAM)
-            await client.post("/api/v1/tenants/rotterdam/apps", json={
-                "name": "App", "slug": "test-app",
-                "repo_url": "https://github.com/org/repo", "branch": "main",
-            })
-            r = await client.patch("/api/v1/tenants/rotterdam/apps/test-app", json={
-                "env_vars": {"DATABASE_URL": "postgres://localhost/db", "REDIS_URL": "redis://localhost"},
-            })
+            await client.post(
+                "/api/v1/tenants/rotterdam/apps",
+                json={
+                    "name": "App",
+                    "slug": "test-app",
+                    "repo_url": "https://github.com/org/repo",
+                    "branch": "main",
+                },
+            )
+            r = await client.patch(
+                "/api/v1/tenants/rotterdam/apps/test-app",
+                json={
+                    "env_vars": {"DATABASE_URL": "postgres://localhost/db", "REDIS_URL": "redis://localhost"},
+                },
+            )
         assert r.status_code == 200
         assert r.json()["env_vars"]["DATABASE_URL"] == "postgres://localhost/db"
         assert r.json()["env_vars"]["REDIS_URL"] == "redis://localhost"
 
     @pytest.mark.asyncio
     async def test_update_app_replicas(self, client, k8s_mock):
-        with _patch_externals()[0], _patch_externals()[1], _patch_externals()[2], \
-             _patch_externals()[3], _patch_externals()[4], _patch_externals()[5], \
-             _patch_externals()[6]:
+        with (
+            _patch_externals()[0],
+            _patch_externals()[1],
+            _patch_externals()[2],
+            _patch_externals()[3],
+            _patch_externals()[4],
+            _patch_externals()[5],
+            _patch_externals()[6],
+        ):
             await client.post("/api/v1/tenants", json=ROTTERDAM)
-            await client.post("/api/v1/tenants/rotterdam/apps", json={
-                "name": "App", "slug": "test-app",
-                "repo_url": "https://github.com/org/repo", "branch": "main",
-            })
+            await client.post(
+                "/api/v1/tenants/rotterdam/apps",
+                json={
+                    "name": "App",
+                    "slug": "test-app",
+                    "repo_url": "https://github.com/org/repo",
+                    "branch": "main",
+                },
+            )
             r = await client.patch("/api/v1/tenants/rotterdam/apps/test-app", json={"replicas": 3})
         assert r.status_code == 200
         assert r.json()["replicas"] == 3
 
     @pytest.mark.asyncio
     async def test_update_app_port(self, client, k8s_mock):
-        with _patch_externals()[0], _patch_externals()[1], _patch_externals()[2], \
-             _patch_externals()[3], _patch_externals()[4], _patch_externals()[5], \
-             _patch_externals()[6]:
+        with (
+            _patch_externals()[0],
+            _patch_externals()[1],
+            _patch_externals()[2],
+            _patch_externals()[3],
+            _patch_externals()[4],
+            _patch_externals()[5],
+            _patch_externals()[6],
+        ):
             await client.post("/api/v1/tenants", json=ROTTERDAM)
-            await client.post("/api/v1/tenants/rotterdam/apps", json={
-                "name": "App", "slug": "test-app",
-                "repo_url": "https://github.com/org/repo", "branch": "main", "port": 8000,
-            })
+            await client.post(
+                "/api/v1/tenants/rotterdam/apps",
+                json={
+                    "name": "App",
+                    "slug": "test-app",
+                    "repo_url": "https://github.com/org/repo",
+                    "branch": "main",
+                    "port": 8000,
+                },
+            )
             r = await client.patch("/api/v1/tenants/rotterdam/apps/test-app", json={"port": 3000})
         assert r.status_code == 200
         assert r.json()["port"] == 3000
@@ -1637,10 +2189,16 @@ class TestFullIntegrationScenario:
 
     @pytest.mark.asyncio
     async def test_three_tenant_full_lifecycle(self, client, db, k8s_mock):
-        with _patch_externals()[0], _patch_externals()[1], _patch_externals()[2], \
-             _patch_externals()[3], _patch_externals()[4], _patch_externals()[5], \
-             _patch_externals()[6], \
-             patch("app.services.managed_service.everest_client") as mock_ev:
+        with (
+            _patch_externals()[0],
+            _patch_externals()[1],
+            _patch_externals()[2],
+            _patch_externals()[3],
+            _patch_externals()[4],
+            _patch_externals()[5],
+            _patch_externals()[6],
+            patch("app.services.managed_service.everest_client") as mock_ev,
+        ):
             mock_ev.is_configured.return_value = False
 
             # === STEP 1: Create 3 tenants ===
@@ -1656,53 +2214,99 @@ class TestFullIntegrationScenario:
             assert len(tenants.json()) == 3
 
             # === STEP 2: Create apps ===
-            r_app1 = await client.post("/api/v1/tenants/rotterdam/apps", json={
-                "name": "Rotterdam API", "slug": "rotterdam-api",
-                "repo_url": "https://github.com/NimbusProTch/rotterdam-api",
-                "branch": "main", "port": 8080,
-            })
-            r_app2 = await client.post("/api/v1/tenants/amsterdam/apps", json={
-                "name": "Amsterdam Portal", "slug": "amsterdam-portal",
-                "repo_url": "https://github.com/NimbusProTch/amsterdam-portal",
-                "branch": "main", "port": 3000,
-            })
-            r_app3 = await client.post("/api/v1/tenants/utrecht/apps", json={
-                "name": "Utrecht Worker", "slug": "utrecht-worker",
-                "repo_url": "https://github.com/NimbusProTch/utrecht-worker",
-                "branch": "main", "port": 8080, "app_type": "worker",
-            })
+            r_app1 = await client.post(
+                "/api/v1/tenants/rotterdam/apps",
+                json={
+                    "name": "Rotterdam API",
+                    "slug": "rotterdam-api",
+                    "repo_url": "https://github.com/NimbusProTch/rotterdam-api",
+                    "branch": "main",
+                    "port": 8080,
+                },
+            )
+            r_app2 = await client.post(
+                "/api/v1/tenants/amsterdam/apps",
+                json={
+                    "name": "Amsterdam Portal",
+                    "slug": "amsterdam-portal",
+                    "repo_url": "https://github.com/NimbusProTch/amsterdam-portal",
+                    "branch": "main",
+                    "port": 3000,
+                },
+            )
+            r_app3 = await client.post(
+                "/api/v1/tenants/utrecht/apps",
+                json={
+                    "name": "Utrecht Worker",
+                    "slug": "utrecht-worker",
+                    "repo_url": "https://github.com/NimbusProTch/utrecht-worker",
+                    "branch": "main",
+                    "port": 8080,
+                    "app_type": "worker",
+                },
+            )
             assert r_app1.status_code == 201
             assert r_app2.status_code == 201
             assert r_app3.status_code == 201
 
             # === STEP 3: Provision services ===
             # Rotterdam: PG + Redis
-            r_pg = await client.post("/api/v1/tenants/rotterdam/services", json={
-                "name": "main-pg", "service_type": "postgres", "tier": "dev",
-            })
-            r_redis1 = await client.post("/api/v1/tenants/rotterdam/services", json={
-                "name": "cache", "service_type": "redis", "tier": "dev",
-            })
+            r_pg = await client.post(
+                "/api/v1/tenants/rotterdam/services",
+                json={
+                    "name": "main-pg",
+                    "service_type": "postgres",
+                    "tier": "dev",
+                },
+            )
+            r_redis1 = await client.post(
+                "/api/v1/tenants/rotterdam/services",
+                json={
+                    "name": "cache",
+                    "service_type": "redis",
+                    "tier": "dev",
+                },
+            )
             assert r_pg.status_code == 201
             assert r_redis1.status_code == 201
 
             # Amsterdam: MongoDB + Redis
-            r_mongo = await client.post("/api/v1/tenants/amsterdam/services", json={
-                "name": "main-mongo", "service_type": "mongodb", "tier": "dev",
-            })
-            r_redis2 = await client.post("/api/v1/tenants/amsterdam/services", json={
-                "name": "cache", "service_type": "redis", "tier": "dev",
-            })
+            r_mongo = await client.post(
+                "/api/v1/tenants/amsterdam/services",
+                json={
+                    "name": "main-mongo",
+                    "service_type": "mongodb",
+                    "tier": "dev",
+                },
+            )
+            r_redis2 = await client.post(
+                "/api/v1/tenants/amsterdam/services",
+                json={
+                    "name": "cache",
+                    "service_type": "redis",
+                    "tier": "dev",
+                },
+            )
             assert r_mongo.status_code == 201
             assert r_redis2.status_code == 201
 
             # Utrecht: MySQL + RabbitMQ
-            r_mysql = await client.post("/api/v1/tenants/utrecht/services", json={
-                "name": "main-mysql", "service_type": "mysql", "tier": "dev",
-            })
-            r_rabbit = await client.post("/api/v1/tenants/utrecht/services", json={
-                "name": "task-queue", "service_type": "rabbitmq", "tier": "dev",
-            })
+            r_mysql = await client.post(
+                "/api/v1/tenants/utrecht/services",
+                json={
+                    "name": "main-mysql",
+                    "service_type": "mysql",
+                    "tier": "dev",
+                },
+            )
+            r_rabbit = await client.post(
+                "/api/v1/tenants/utrecht/services",
+                json={
+                    "name": "task-queue",
+                    "service_type": "rabbitmq",
+                    "tier": "dev",
+                },
+            )
             assert r_mysql.status_code == 201
             assert r_rabbit.status_code == 201
 
@@ -1726,15 +2330,21 @@ class TestFullIntegrationScenario:
             await db.commit()
 
             # Connect Rotterdam PG to Rotterdam API
-            r_conn1 = await client.post("/api/v1/tenants/rotterdam/apps/rotterdam-api/connect-service", json={
-                "service_name": "main-pg",
-            })
+            r_conn1 = await client.post(
+                "/api/v1/tenants/rotterdam/apps/rotterdam-api/connect-service",
+                json={
+                    "service_name": "main-pg",
+                },
+            )
             assert r_conn1.status_code == 200
 
             # Connect Rotterdam Redis to Rotterdam API
-            r_conn2 = await client.post("/api/v1/tenants/rotterdam/apps/rotterdam-api/connect-service", json={
-                "service_name": "cache",
-            })
+            r_conn2 = await client.post(
+                "/api/v1/tenants/rotterdam/apps/rotterdam-api/connect-service",
+                json={
+                    "service_name": "cache",
+                },
+            )
             assert r_conn2.status_code == 200
 
             # Verify Rotterdam API has 2 connected services
@@ -1742,18 +2352,27 @@ class TestFullIntegrationScenario:
             assert len(r_app_detail.json()["env_from_secrets"]) == 2
 
             # Connect Amsterdam MongoDB to Amsterdam Portal
-            r_conn3 = await client.post("/api/v1/tenants/amsterdam/apps/amsterdam-portal/connect-service", json={
-                "service_name": "main-mongo",
-            })
+            r_conn3 = await client.post(
+                "/api/v1/tenants/amsterdam/apps/amsterdam-portal/connect-service",
+                json={
+                    "service_name": "main-mongo",
+                },
+            )
             assert r_conn3.status_code == 200
 
             # Connect Utrecht MySQL + RabbitMQ to Utrecht Worker
-            r_conn4 = await client.post("/api/v1/tenants/utrecht/apps/utrecht-worker/connect-service", json={
-                "service_name": "main-mysql",
-            })
-            r_conn5 = await client.post("/api/v1/tenants/utrecht/apps/utrecht-worker/connect-service", json={
-                "service_name": "task-queue",
-            })
+            r_conn4 = await client.post(
+                "/api/v1/tenants/utrecht/apps/utrecht-worker/connect-service",
+                json={
+                    "service_name": "main-mysql",
+                },
+            )
+            r_conn5 = await client.post(
+                "/api/v1/tenants/utrecht/apps/utrecht-worker/connect-service",
+                json={
+                    "service_name": "task-queue",
+                },
+            )
             assert r_conn4.status_code == 200
             assert r_conn5.status_code == 200
 
@@ -1804,10 +2423,7 @@ class TestFullIntegrationScenario:
 
             # 3 ApplicationSets deleted
             all_delete_calls = k8s_mock.custom_objects.delete_namespaced_custom_object.call_args_list
-            appset_deletes = {
-                c.kwargs["name"] for c in all_delete_calls
-                if c.kwargs.get("plural") == "applicationsets"
-            }
+            appset_deletes = {c.kwargs["name"] for c in all_delete_calls if c.kwargs.get("plural") == "applicationsets"}
             assert "appset-rotterdam" in appset_deletes
             assert "appset-amsterdam" in appset_deletes
             assert "appset-utrecht" in appset_deletes

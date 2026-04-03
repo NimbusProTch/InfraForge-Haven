@@ -39,9 +39,14 @@ def test_build_app_values_basic():
 def test_build_app_values_empty_env():
     """build_app_values with empty env_vars."""
     values = build_app_values(
-        tenant_slug="test", app_slug="app", namespace="tenant-test",
-        image="harbor.io/test:v1", replicas=1, env_vars={},
-        service_secret_names=[], port=3000,
+        tenant_slug="test",
+        app_slug="app",
+        namespace="tenant-test",
+        image="harbor.io/test:v1",
+        replicas=1,
+        env_vars={},
+        service_secret_names=[],
+        port=3000,
     )
     assert values["env"] == {}
     assert isinstance(values["envSecrets"], list)
@@ -50,9 +55,15 @@ def test_build_app_values_empty_env():
 def test_build_app_values_with_custom_domain():
     """build_app_values includes custom domain in httproute."""
     values = build_app_values(
-        tenant_slug="test", app_slug="app", namespace="tenant-test",
-        image="harbor.io/test:v1", replicas=1, env_vars={},
-        service_secret_names=[], port=8080, custom_domain="api.rotterdam.nl",
+        tenant_slug="test",
+        app_slug="app",
+        namespace="tenant-test",
+        image="harbor.io/test:v1",
+        replicas=1,
+        env_vars={},
+        service_secret_names=[],
+        port=8080,
+        custom_domain="api.rotterdam.nl",
     )
     assert values["httproute"]["customDomain"] == "api.rotterdam.nl"
 
@@ -60,9 +71,15 @@ def test_build_app_values_with_custom_domain():
 def test_build_app_values_with_health_check():
     """build_app_values includes health check probes."""
     values = build_app_values(
-        tenant_slug="test", app_slug="app", namespace="tenant-test",
-        image="harbor.io/test:v1", replicas=1, env_vars={},
-        service_secret_names=[], port=8080, health_check_path="/health",
+        tenant_slug="test",
+        app_slug="app",
+        namespace="tenant-test",
+        image="harbor.io/test:v1",
+        replicas=1,
+        env_vars={},
+        service_secret_names=[],
+        port=8080,
+        health_check_path="/health",
     )
     assert values["probes"]["liveness"]["path"] == "/health"
     assert values["probes"]["readiness"]["path"] == "/health"
@@ -71,10 +88,17 @@ def test_build_app_values_with_health_check():
 def test_build_app_values_autoscaling():
     """build_app_values includes HPA config."""
     values = build_app_values(
-        tenant_slug="test", app_slug="app", namespace="tenant-test",
-        image="harbor.io/test:v1", replicas=1, env_vars={},
-        service_secret_names=[], port=8080,
-        min_replicas=2, max_replicas=10, cpu_threshold=80,
+        tenant_slug="test",
+        app_slug="app",
+        namespace="tenant-test",
+        image="harbor.io/test:v1",
+        replicas=1,
+        env_vars={},
+        service_secret_names=[],
+        port=8080,
+        min_replicas=2,
+        max_replicas=10,
+        cpu_threshold=80,
     )
     assert values["autoscaling"]["enabled"] is True
     assert values["autoscaling"]["minReplicas"] == 2
@@ -85,11 +109,18 @@ def test_build_app_values_autoscaling():
 def test_build_app_values_resources():
     """build_app_values includes resource requests/limits."""
     values = build_app_values(
-        tenant_slug="test", app_slug="app", namespace="tenant-test",
-        image="harbor.io/test:v1", replicas=1, env_vars={},
-        service_secret_names=[], port=8080,
-        resource_cpu_request="100m", resource_cpu_limit="1",
-        resource_memory_request="128Mi", resource_memory_limit="1Gi",
+        tenant_slug="test",
+        app_slug="app",
+        namespace="tenant-test",
+        image="harbor.io/test:v1",
+        replicas=1,
+        env_vars={},
+        service_secret_names=[],
+        port=8080,
+        resource_cpu_request="100m",
+        resource_cpu_limit="1",
+        resource_memory_request="128Mi",
+        resource_memory_limit="1Gi",
     )
     assert values["resources"]["requests"]["cpu"] == "100m"
     assert values["resources"]["limits"]["memory"] == "1Gi"
@@ -98,9 +129,14 @@ def test_build_app_values_resources():
 def test_build_app_values_tolerations():
     """build_app_values includes CIS hardening tolerations."""
     values = build_app_values(
-        tenant_slug="test", app_slug="app", namespace="tenant-test",
-        image="harbor.io/test:v1", replicas=1, env_vars={},
-        service_secret_names=[], port=8080,
+        tenant_slug="test",
+        app_slug="app",
+        namespace="tenant-test",
+        image="harbor.io/test:v1",
+        replicas=1,
+        env_vars={},
+        service_secret_names=[],
+        port=8080,
     )
     assert values["tolerations"] == [{"operator": "Exists"}]
 

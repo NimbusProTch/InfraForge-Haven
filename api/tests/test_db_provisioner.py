@@ -76,9 +76,7 @@ async def test_read_admin_credentials():
     assert creds["user"] == "postgres"
     assert creds["password"] == "secret123"
     assert creds["host"] == "pg-ha.everest.svc"
-    mock_k8s.core_v1.read_namespaced_secret.assert_called_once_with(
-        name="everest-secrets-test-pg", namespace="everest"
-    )
+    mock_k8s.core_v1.read_namespaced_secret.assert_called_once_with(name="everest-secrets-test-pg", namespace="everest")
 
 
 @pytest.mark.asyncio
@@ -304,7 +302,7 @@ async def test_create_custom_database_rejects_unsafe_db_user():
             k8s=mock_k8s,
             everest_secret_name="test",
             db_name="safe_db",
-            db_user="admin\"; DROP TABLE users; --",
+            db_user='admin"; DROP TABLE users; --',
         )
 
 
@@ -360,9 +358,7 @@ async def test_create_tenant_secret_creates_new():
     mock_k8s.is_available.return_value = True
     mock_k8s.core_v1.create_namespaced_secret.return_value = MagicMock()
 
-    await create_tenant_secret(
-        mock_k8s, "tenant-amsterdam", "svc-app-pg", {"DATABASE_URL": "postgresql://..."}
-    )
+    await create_tenant_secret(mock_k8s, "tenant-amsterdam", "svc-app-pg", {"DATABASE_URL": "postgresql://..."})
 
     mock_k8s.core_v1.create_namespaced_secret.assert_called_once()
     call_args = mock_k8s.core_v1.create_namespaced_secret.call_args
@@ -382,9 +378,7 @@ async def test_create_tenant_secret_updates_existing():
     mock_k8s.core_v1.create_namespaced_secret.side_effect = ApiException(status=409)
     mock_k8s.core_v1.replace_namespaced_secret.return_value = MagicMock()
 
-    await create_tenant_secret(
-        mock_k8s, "tenant-amsterdam", "svc-app-pg", {"DATABASE_URL": "postgresql://..."}
-    )
+    await create_tenant_secret(mock_k8s, "tenant-amsterdam", "svc-app-pg", {"DATABASE_URL": "postgresql://..."})
 
     mock_k8s.core_v1.replace_namespaced_secret.assert_called_once()
 
@@ -549,7 +543,7 @@ async def test_mysql_rejects_unsafe_db_user():
             k8s=mock_k8s,
             everest_secret_name="test",
             db_name="safe_db",
-            db_user="admin\"; DROP TABLE users; --",
+            db_user='admin"; DROP TABLE users; --',
         )
 
 
@@ -579,10 +573,12 @@ async def test_mongodb_creates_user():
     mock_k8s = _mock_k8s_with_mongo_creds()
 
     mock_db = AsyncMock()
-    mock_db.command = AsyncMock(side_effect=[
-        {"users": []},     # usersInfo — user doesn't exist
-        None,               # createUser
-    ])
+    mock_db.command = AsyncMock(
+        side_effect=[
+            {"users": []},  # usersInfo — user doesn't exist
+            None,  # createUser
+        ]
+    )
     mock_client = MagicMock()
     mock_client.__getitem__ = MagicMock(return_value=mock_db)
     mock_client.close = MagicMock()
@@ -596,7 +592,10 @@ async def test_mongodb_creates_user():
             db_password="custom_pass",
         )
 
-    assert result["DATABASE_URL"] == "mongodb://myapp_user:custom_pass@mydb-mongos.everest.svc:27017/myapp_db?authSource=myapp_db"
+    assert (
+        result["DATABASE_URL"]
+        == "mongodb://myapp_user:custom_pass@mydb-mongos.everest.svc:27017/myapp_db?authSource=myapp_db"
+    )
     assert result["DB_HOST"] == "mydb-mongos.everest.svc"
     assert result["DB_PORT"] == "27017"
     assert result["DB_USER"] == "myapp_user"
@@ -617,10 +616,12 @@ async def test_mongodb_updates_existing_user():
     mock_k8s = _mock_k8s_with_mongo_creds()
 
     mock_db = AsyncMock()
-    mock_db.command = AsyncMock(side_effect=[
-        {"users": [{"user": "existing_user"}]},  # usersInfo — user exists
-        None,                                      # updateUser
-    ])
+    mock_db.command = AsyncMock(
+        side_effect=[
+            {"users": [{"user": "existing_user"}]},  # usersInfo — user exists
+            None,  # updateUser
+        ]
+    )
     mock_client = MagicMock()
     mock_client.__getitem__ = MagicMock(return_value=mock_db)
     mock_client.close = MagicMock()
@@ -712,5 +713,5 @@ async def test_mongodb_rejects_unsafe_db_user():
             k8s=mock_k8s,
             everest_secret_name="test",
             db_name="safe_db",
-            db_user="admin\"; DROP TABLE --",
+            db_user='admin"; DROP TABLE --',
         )

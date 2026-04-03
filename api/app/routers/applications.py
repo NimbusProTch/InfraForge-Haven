@@ -99,7 +99,9 @@ async def create_application(
         await db.commit()
     except IntegrityError:
         await db.rollback()
-        raise HTTPException(status_code=409, detail=f"Application '{body.slug}' already exists in tenant '{tenant_slug}'")
+        raise HTTPException(
+            status_code=409, detail=f"Application '{body.slug}' already exists in tenant '{tenant_slug}'"
+        )
     await db.refresh(app)
 
     # GitOps scaffold: create app values.yaml in haven-gitops (non-blocking)

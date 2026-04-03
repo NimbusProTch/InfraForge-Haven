@@ -99,14 +99,23 @@ async def test_tenants_me_empty(tc):
 @pytest.mark.asyncio
 async def test_tenants_me_with_membership(tc, db_session):
     t = Tenant(
-        id=uuid.uuid4(), slug="tc-me", name="Me", namespace="tenant-tc-me",
-        keycloak_realm="tc-me", cpu_limit="4", memory_limit="8Gi", storage_limit="50Gi",
+        id=uuid.uuid4(),
+        slug="tc-me",
+        name="Me",
+        namespace="tenant-tc-me",
+        keycloak_realm="tc-me",
+        cpu_limit="4",
+        memory_limit="8Gi",
+        storage_limit="50Gi",
     )
     db_session.add(t)
     await db_session.commit()
     m = TenantMember(
-        id=uuid.uuid4(), tenant_id=t.id, user_id="user-1",
-        email="u@t.nl", role=MemberRole("owner"),
+        id=uuid.uuid4(),
+        tenant_id=t.id,
+        user_id="user-1",
+        email="u@t.nl",
+        role=MemberRole("owner"),
     )
     db_session.add(m)
     await db_session.commit()

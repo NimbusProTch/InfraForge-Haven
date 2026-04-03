@@ -246,9 +246,7 @@ class ManagedServiceProvisioner:
         if not self.k8s.core_v1:
             return
         try:
-            pod = self.k8s.core_v1.read_namespaced_pod(
-                name=pod_name, namespace=service.service_namespace
-            )
+            pod = self.k8s.core_v1.read_namespaced_pod(name=pod_name, namespace=service.service_namespace)
         except ApiException as e:
             if e.status == 404 and service.status == ServiceStatus.READY:
                 service.status = ServiceStatus.DEGRADED
@@ -310,7 +308,9 @@ class ManagedServiceProvisioner:
             logger.exception("Everest provision failed for %s — falling back to CRD", service.name)
             slug = tenant_slug or tenant_namespace.removeprefix("tenant-")
             lifecycle_bus.emit(
-                f"service:{slug}:{service.name}", "provision", "warning",
+                f"service:{slug}:{service.name}",
+                "provision",
+                "warning",
                 "Everest unavailable — provisioning via direct CRD (reduced features)",
             )
             service.error_message = "Provisioned via CRD fallback (Everest unavailable)"
@@ -410,7 +410,9 @@ class ManagedServiceProvisioner:
 
         cfg = _CRD_CONFIG[service.service_type]
         if service.service_type == ServiceType.POSTGRES:
-            body = cfg["body_fn"](service.name, tenant_namespace, service.tier, db_name=service.db_name, db_user=service.db_user)
+            body = cfg["body_fn"](
+                service.name, tenant_namespace, service.tier, db_name=service.db_name, db_user=service.db_user
+            )
         else:
             body = cfg["body_fn"](service.name, tenant_namespace, service.tier)
 
@@ -543,7 +545,10 @@ class ManagedServiceProvisioner:
                 # App connections use HA endpoint (returned in creds).
                 try:
                     creds = await create_custom_database(
-                        self.k8s, admin_secret, db_name=db_name, db_user=db_user,
+                        self.k8s,
+                        admin_secret,
+                        db_name=db_name,
+                        db_user=db_user,
                     )
                 except Exception:
                     logger.warning("PG custom user failed for %s — copying admin creds", service.name)
@@ -565,7 +570,10 @@ class ManagedServiceProvisioner:
                 # Host = {everest_name}-haproxy.everest.svc:3306
                 try:
                     creds = await create_custom_mysql_database(
-                        self.k8s, admin_secret, db_name=db_name, db_user=db_user,
+                        self.k8s,
+                        admin_secret,
+                        db_name=db_name,
+                        db_user=db_user,
                         everest_db_name=everest_name,
                     )
                 except Exception:
@@ -587,7 +595,10 @@ class ManagedServiceProvisioner:
                 # Host = {everest_name}-mongos.everest.svc:27017
                 try:
                     creds = await create_custom_mongodb_database(
-                        self.k8s, admin_secret, db_name=db_name, db_user=db_user,
+                        self.k8s,
+                        admin_secret,
+                        db_name=db_name,
+                        db_user=db_user,
                         everest_db_name=everest_name,
                     )
                 except Exception:
@@ -626,9 +637,7 @@ class ManagedServiceProvisioner:
             elif service.service_type == ServiceType.MONGODB:
                 service.connection_hint = f"mongodb://{db_user}@{db_host}:{db_port}/{svc_db_name}"
 
-            logger.info(
-                "Custom credentials provisioned for %s → %s/%s", service.name, tenant_namespace, target_secret
-            )
+            logger.info("Custom credentials provisioned for %s → %s/%s", service.name, tenant_namespace, target_secret)
         except Exception:
             logger.exception("Failed to provision custom credentials for %s", service.name)
 
@@ -696,21 +705,13 @@ class ManagedServiceProvisioner:
         if self._use_everest(service.service_type):
             result = await self._everest_sync_details(service)
             # Provision custom credentials when DB is ready but creds not yet created
-            if (
-                service.status == ServiceStatus.READY
-                and not service.credentials_provisioned
-                and tenant_namespace
-            ):
+            if service.status == ServiceStatus.READY and not service.credentials_provisioned and tenant_namespace:
                 await self._provision_everest_credentials(service, tenant_namespace)
             return result
 
         # CRD path: sync status, create standardized secret when ready
         await self._crd_sync_status(service)
-        if (
-            service.status == ServiceStatus.READY
-            and not service.credentials_provisioned
-            and tenant_namespace
-        ):
+        if service.status == ServiceStatus.READY and not service.credentials_provisioned and tenant_namespace:
             await self._create_crd_tenant_secret(service, tenant_namespace)
 
         return None
@@ -721,9 +722,13 @@ class ManagedServiceProvisioner:
         bus_key = f"service:{slug}:{service.name}"
         engine = "Everest" if self._use_everest(service.service_type) else "CRD"
 
-        lifecycle_bus.emit(bus_key, "provision", "running",
-                          f"Creating {service.service_type.value} via {engine}",
-                          detail={"type": service.service_type.value, "tier": service.tier.value, "engine": engine})
+        lifecycle_bus.emit(
+            bus_key,
+            "provision",
+            "running",
+            f"Creating {service.service_type.value} via {engine}",
+            detail={"type": service.service_type.value, "tier": service.tier.value, "engine": engine},
+        )
         if self._use_everest(service.service_type):
             await self._everest_provision(service, tenant_namespace, slug)
         else:
@@ -733,13 +738,18 @@ class ManagedServiceProvisioner:
             lifecycle_bus.emit(bus_key, "provision", "failed", f"Failed to create {service.name}")
             lifecycle_bus.mark_done(bus_key, success=False, message="Provisioning failed")
         else:
-            lifecycle_bus.emit(bus_key, "provision", "done",
-                              f"{service.service_type.value} {service.name} created in {service.service_namespace}",
-                              detail={"secret": service.secret_name, "hint": service.connection_hint})
+            lifecycle_bus.emit(
+                bus_key,
+                "provision",
+                "done",
+                f"{service.service_type.value} {service.name} created in {service.service_namespace}",
+                detail={"secret": service.secret_name, "hint": service.connection_hint},
+            )
             lifecycle_bus.emit(bus_key, "waiting", "running", "Waiting for service to become ready")
 
-        logger.info("Service %s (%s) provisioned in %s via %s",
-                    service.name, service.service_type, tenant_namespace, engine)
+        logger.info(
+            "Service %s (%s) provisioned in %s via %s", service.name, service.service_type, tenant_namespace, engine
+        )
 
     async def update(
         self,
@@ -752,9 +762,7 @@ class ManagedServiceProvisioner:
     ) -> None:
         """Update the database/service resources."""
         if self._use_everest(service.service_type):
-            await self._everest_update(
-                service, replicas=replicas, storage=storage, cpu=cpu, memory=memory
-            )
+            await self._everest_update(service, replicas=replicas, storage=storage, cpu=cpu, memory=memory)
         elif service.service_type == ServiceType.REDIS:
             await self._crd_scale_redis(service, replicas=replicas)
         elif service.service_type == ServiceType.RABBITMQ:

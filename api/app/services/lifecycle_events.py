@@ -22,10 +22,13 @@ import asyncio
 import json
 import logging
 import time
-from collections import defaultdict, deque
+from collections import deque
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import AsyncGenerator
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncGenerator
 
 logger = logging.getLogger(__name__)
 
@@ -136,7 +139,7 @@ class LifecycleChannel:
             self._waiters.append(waiter)
             try:
                 await asyncio.wait_for(waiter.wait(), timeout=HEARTBEAT_INTERVAL)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 yield f": heartbeat {int(time.monotonic() - start)}s\n\n"
                 continue
             finally:

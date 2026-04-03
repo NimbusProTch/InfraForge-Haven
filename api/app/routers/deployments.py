@@ -433,9 +433,9 @@ async def stream_logs(
 
             # Filter by specific pod or stream all replicas
             ready_pods = [
-                p for p in pods.items
-                if p.status.phase in ("Running", "Succeeded", "Failed")
-                and (pod is None or p.metadata.name == pod)
+                p
+                for p in pods.items
+                if p.status.phase in ("Running", "Succeeded", "Failed") and (pod is None or p.metadata.name == pod)
             ]
             if not ready_pods:
                 yield "data: [no ready pods found]\n\n"

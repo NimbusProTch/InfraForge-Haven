@@ -31,8 +31,14 @@ from app.services.managed_service import ManagedServiceProvisioner
 
 async def _tenant(db: AsyncSession, slug: str = "scale-test") -> Tenant:
     t = Tenant(
-        id=uuid.uuid4(), slug=slug, name=slug, namespace=f"tenant-{slug}",
-        keycloak_realm=slug, cpu_limit="4", memory_limit="8Gi", storage_limit="50Gi",
+        id=uuid.uuid4(),
+        slug=slug,
+        name=slug,
+        namespace=f"tenant-{slug}",
+        keycloak_realm=slug,
+        cpu_limit="4",
+        memory_limit="8Gi",
+        storage_limit="50Gi",
     )
     db.add(t)
     await db.commit()
@@ -41,13 +47,22 @@ async def _tenant(db: AsyncSession, slug: str = "scale-test") -> Tenant:
 
 
 async def _service(
-    db: AsyncSession, tenant: Tenant, name: str, svc_type: ModelServiceType,
+    db: AsyncSession,
+    tenant: Tenant,
+    name: str,
+    svc_type: ModelServiceType,
     status: ServiceStatus = ServiceStatus.READY,
 ) -> ManagedService:
     s = ManagedService(
-        id=uuid.uuid4(), tenant_id=tenant.id, name=name, service_type=svc_type,
-        tier=ServiceTier.DEV, status=status, secret_name=f"svc-{name}",
-        service_namespace=tenant.namespace, credentials_provisioned=True,
+        id=uuid.uuid4(),
+        tenant_id=tenant.id,
+        name=name,
+        service_type=svc_type,
+        tier=ServiceTier.DEV,
+        status=status,
+        secret_name=f"svc-{name}",
+        service_namespace=tenant.namespace,
+        credentials_provisioned=True,
     )
     db.add(s)
     await db.commit()
@@ -57,8 +72,13 @@ async def _service(
 
 async def _app(db: AsyncSession, tenant: Tenant, slug: str = "test-api") -> Application:
     a = Application(
-        id=uuid.uuid4(), tenant_id=tenant.id, slug=slug, name="Test",
-        repo_url="https://github.com/test/repo", branch="main", port=8080,
+        id=uuid.uuid4(),
+        tenant_id=tenant.id,
+        slug=slug,
+        name="Test",
+        repo_url="https://github.com/test/repo",
+        branch="main",
+        port=8080,
     )
     db.add(a)
     await db.commit()
@@ -68,7 +88,9 @@ async def _app(db: AsyncSession, tenant: Tenant, slug: str = "test-api") -> Appl
 
 async def _deployment(db: AsyncSession, application: Application, **kwargs) -> Deployment:
     d = Deployment(
-        id=uuid.uuid4(), application_id=application.id, commit_sha="abc123",
+        id=uuid.uuid4(),
+        application_id=application.id,
+        commit_sha="abc123",
         status=kwargs.get("status", DeploymentStatus.RUNNING),
         image_tag=kwargs.get("image_tag", "harbor.io/test:v1"),
     )
@@ -229,9 +251,7 @@ async def test_rollback_creates_new_deployment(scale_client, db_session):
     application = await _app(db_session, t)
     d1 = await _deployment(db_session, application, image_tag="harbor.io/test:v1")
 
-    resp = await scale_client.post(
-        f"/api/v1/tenants/{t.slug}/apps/{application.slug}/deployments/{d1.id}/rollback"
-    )
+    resp = await scale_client.post(f"/api/v1/tenants/{t.slug}/apps/{application.slug}/deployments/{d1.id}/rollback")
     assert resp.status_code == 202
     data = resp.json()
     assert data["status"] == "deploying"
@@ -256,7 +276,5 @@ async def test_rollback_no_image_tag_400(scale_client, db_session):
     application = await _app(db_session, t)
     d1 = await _deployment(db_session, application, image_tag=None)
 
-    resp = await scale_client.post(
-        f"/api/v1/tenants/{t.slug}/apps/{application.slug}/deployments/{d1.id}/rollback"
-    )
+    resp = await scale_client.post(f"/api/v1/tenants/{t.slug}/apps/{application.slug}/deployments/{d1.id}/rollback")
     assert resp.status_code in (400, 409)  # no image_tag = cannot rollback

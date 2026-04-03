@@ -21,8 +21,14 @@ from app.models.tenant import Tenant
 
 async def _tenant(db: AsyncSession, slug: str = "obs-test") -> Tenant:
     t = Tenant(
-        id=uuid.uuid4(), slug=slug, name=slug, namespace=f"tenant-{slug}",
-        keycloak_realm=slug, cpu_limit="4", memory_limit="8Gi", storage_limit="50Gi",
+        id=uuid.uuid4(),
+        slug=slug,
+        name=slug,
+        namespace=f"tenant-{slug}",
+        keycloak_realm=slug,
+        cpu_limit="4",
+        memory_limit="8Gi",
+        storage_limit="50Gi",
     )
     db.add(t)
     await db.commit()
@@ -32,8 +38,13 @@ async def _tenant(db: AsyncSession, slug: str = "obs-test") -> Tenant:
 
 async def _app(db: AsyncSession, tenant: Tenant, slug: str = "obs-api") -> Application:
     a = Application(
-        id=uuid.uuid4(), tenant_id=tenant.id, slug=slug, name="Obs API",
-        repo_url="https://github.com/test/repo", branch="main", port=8080,
+        id=uuid.uuid4(),
+        tenant_id=tenant.id,
+        slug=slug,
+        name="Obs API",
+        repo_url="https://github.com/test/repo",
+        branch="main",
+        port=8080,
     )
     db.add(a)
     await db.commit()
@@ -47,7 +58,7 @@ def _mock_k8s_with_metrics(pods=None, events=None):
 
     # Pod list
     pod_items = []
-    for p in (pods or []):
+    for p in pods or []:
         pod = MagicMock()
         pod.metadata.name = p["name"]
         pod.metadata.namespace = "tenant-obs-test"
@@ -64,7 +75,7 @@ def _mock_k8s_with_metrics(pods=None, events=None):
 
     # Events
     event_items = []
-    for e in (events or []):
+    for e in events or []:
         ev = MagicMock()
         ev.involved_object.name = e.get("object", "obs-api-abc")
         ev.reason = e.get("reason", "Pulled")

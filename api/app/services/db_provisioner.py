@@ -39,7 +39,9 @@ def generate_password(length: int = 24) -> str:
 
 
 async def read_admin_credentials(
-    k8s: K8sClient, secret_name: str, namespace: str = EVEREST_NAMESPACE,
+    k8s: K8sClient,
+    secret_name: str,
+    namespace: str = EVEREST_NAMESPACE,
 ) -> dict[str, str]:
     """Read admin credentials from an Everest-managed K8s secret."""
     if not k8s.is_available() or k8s.core_v1 is None:
@@ -130,15 +132,15 @@ async def create_custom_database(
         # Grant schema privileges (for Alembic migrations)
         if db_name:
             db_conn = await asyncpg.connect(
-                host=admin_host, port=admin_port,
-                user=admin_user, password=admin_password,
+                host=admin_host,
+                port=admin_port,
+                user=admin_user,
+                password=admin_password,
                 database=db_name,
             )
             try:
                 await db_conn.execute(f'GRANT ALL ON SCHEMA public TO "{db_user}"')
-                await db_conn.execute(
-                    f'ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO "{db_user}"'
-                )
+                await db_conn.execute(f'ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO "{db_user}"')
                 await db_conn.execute(
                     f'ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO "{db_user}"'
                 )
@@ -156,7 +158,9 @@ async def create_custom_database(
 
     from urllib.parse import quote as urlquote
 
-    database_url = f"postgresql://{db_user}:{urlquote(db_password, safe='')}@{app_host}:{admin_port}/{db_name or 'postgres'}"
+    database_url = (
+        f"postgresql://{db_user}:{urlquote(db_password, safe='')}@{app_host}:{admin_port}/{db_name or 'postgres'}"
+    )
 
     return {
         "DATABASE_URL": database_url,

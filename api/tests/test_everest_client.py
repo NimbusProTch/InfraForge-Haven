@@ -1,15 +1,15 @@
 """Unit tests for Percona Everest REST API client."""
 
-import pytest
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import httpx
-from unittest.mock import AsyncMock, patch, MagicMock
+import pytest
 
 from app.services.everest_client import (
     ENGINE_MAP,
     TIER_CONFIG,
     EverestClient,
 )
-
 
 # ---------------------------------------------------------------------------
 # ENGINE_MAP and TIER_CONFIG
@@ -413,12 +413,15 @@ class TestGetCredentials:
         client = EverestClient(base_url="http://fake:8080")
         client._token = "my-token"
 
-        mock_resp = _mock_response(200, {
-            "status": {
-                "hostname": "my-db-pgbouncer.everest.svc",
-                "port": 5432,
-            }
-        })
+        mock_resp = _mock_response(
+            200,
+            {
+                "status": {
+                    "hostname": "my-db-pgbouncer.everest.svc",
+                    "port": 5432,
+                }
+            },
+        )
         mock_http = AsyncMock()
         mock_http.request.return_value = mock_resp
         mock_http.__aenter__ = AsyncMock(return_value=mock_http)
@@ -550,25 +553,28 @@ class TestGetDatabaseDetails:
         client = EverestClient(base_url="http://fake:8080")
         client._token = "my-token"
 
-        mock_resp = _mock_response(200, {
-            "metadata": {"name": "my-db", "resourceVersion": "100"},
-            "spec": {
-                "engine": {
-                    "type": "postgresql",
-                    "version": "17.7",
-                    "replicas": 1,
-                    "storage": {"size": "1Gi"},
-                    "resources": {"cpu": "600m", "memory": "512Mi"},
+        mock_resp = _mock_response(
+            200,
+            {
+                "metadata": {"name": "my-db", "resourceVersion": "100"},
+                "spec": {
+                    "engine": {
+                        "type": "postgresql",
+                        "version": "17.7",
+                        "replicas": 1,
+                        "storage": {"size": "1Gi"},
+                        "resources": {"cpu": "600m", "memory": "512Mi"},
+                    },
+                },
+                "status": {
+                    "status": "ready",
+                    "hostname": "my-db-pgbouncer.everest.svc",
+                    "port": 5432,
+                    "ready": 1,
+                    "message": None,
                 },
             },
-            "status": {
-                "status": "ready",
-                "hostname": "my-db-pgbouncer.everest.svc",
-                "port": 5432,
-                "ready": 1,
-                "message": None,
-            },
-        })
+        )
         mock_http = AsyncMock()
         mock_http.request.return_value = mock_resp
         mock_http.__aenter__ = AsyncMock(return_value=mock_http)
@@ -592,11 +598,14 @@ class TestGetDatabaseDetails:
         client = EverestClient(base_url="http://fake:8080")
         client._token = "my-token"
 
-        mock_resp = _mock_response(200, {
-            "metadata": {"name": "my-db"},
-            "spec": {"engine": {"type": "postgresql"}},
-            "status": {"status": "initializing"},
-        })
+        mock_resp = _mock_response(
+            200,
+            {
+                "metadata": {"name": "my-db"},
+                "spec": {"engine": {"type": "postgresql"}},
+                "status": {"status": "initializing"},
+            },
+        )
         mock_http = AsyncMock()
         mock_http.request.return_value = mock_resp
         mock_http.__aenter__ = AsyncMock(return_value=mock_http)

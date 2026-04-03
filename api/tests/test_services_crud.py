@@ -20,8 +20,14 @@ from app.models.tenant import Tenant
 
 async def _tenant(db: AsyncSession, slug: str = "svc-test") -> Tenant:
     t = Tenant(
-        id=uuid.uuid4(), slug=slug, name=slug, namespace=f"tenant-{slug}",
-        keycloak_realm=slug, cpu_limit="4", memory_limit="8Gi", storage_limit="50Gi",
+        id=uuid.uuid4(),
+        slug=slug,
+        name=slug,
+        namespace=f"tenant-{slug}",
+        keycloak_realm=slug,
+        cpu_limit="4",
+        memory_limit="8Gi",
+        storage_limit="50Gi",
     )
     db.add(t)
     await db.commit()

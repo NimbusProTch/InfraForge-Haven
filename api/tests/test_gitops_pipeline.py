@@ -546,7 +546,7 @@ async def test_delete_tenant_removes_directory():
 @pytest.mark.asyncio
 async def test_argocd_fallback_to_k8s_when_unreachable():
     """If ArgoCD wait_for_healthy fails, pipeline must fall back to K8s Deployment check."""
-    from unittest.mock import AsyncMock, MagicMock, patch
+    from unittest.mock import AsyncMock, MagicMock
 
     from app.services.argocd_service import ArgoCDService
     from app.services.deploy_service import DeployService

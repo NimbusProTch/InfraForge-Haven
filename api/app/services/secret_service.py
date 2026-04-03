@@ -70,7 +70,11 @@ class SecretService:
         return self._vault.is_configured()
 
     async def upsert_sensitive_vars(
-        self, namespace: str, app_slug: str, tenant_slug: str, data: dict[str, str],
+        self,
+        namespace: str,
+        app_slug: str,
+        tenant_slug: str,
+        data: dict[str, str],
     ) -> bool:
         """Write sensitive env vars. Uses Vault if configured, K8s Secret otherwise.
 
@@ -117,14 +121,21 @@ class SecretService:
 
         try:
             self._k8s.custom_objects.create_namespaced_custom_object(
-                group="external-secrets.io", version="v1", namespace=namespace,
-                plural="externalsecrets", body=body,
+                group="external-secrets.io",
+                version="v1",
+                namespace=namespace,
+                plural="externalsecrets",
+                body=body,
             )
         except ApiException as e:
             if e.status == 409:
                 self._k8s.custom_objects.replace_namespaced_custom_object(
-                    group="external-secrets.io", version="v1", namespace=namespace,
-                    plural="externalsecrets", name=_secret_name(app_slug), body=body,
+                    group="external-secrets.io",
+                    version="v1",
+                    namespace=namespace,
+                    plural="externalsecrets",
+                    name=_secret_name(app_slug),
+                    body=body,
                 )
             else:
                 raise
@@ -135,8 +146,11 @@ class SecretService:
             return
         try:
             self._k8s.custom_objects.delete_namespaced_custom_object(
-                group="external-secrets.io", version="v1", namespace=namespace,
-                plural="externalsecrets", name=_secret_name(app_slug),
+                group="external-secrets.io",
+                version="v1",
+                namespace=namespace,
+                plural="externalsecrets",
+                name=_secret_name(app_slug),
             )
         except ApiException as e:
             if e.status != 404:

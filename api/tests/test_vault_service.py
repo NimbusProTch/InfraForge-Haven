@@ -48,7 +48,12 @@ class TestVaultServiceOperations:
 
         svc = VaultService(url="http://vault:8200", token="test-token")
         resp = httpx.Response(404, request=httpx.Request("GET", "http://vault:8200/v1/test"))
-        with patch.object(svc, "_request", new_callable=AsyncMock, side_effect=httpx.HTTPStatusError("", request=resp.request, response=resp)):
+        with patch.object(
+            svc,
+            "_request",
+            new_callable=AsyncMock,
+            side_effect=httpx.HTTPStatusError("", request=resp.request, response=resp),
+        ):
             result = await svc.read_secrets("rotterdam", "my-api")
             assert result == {}
 
@@ -96,8 +101,10 @@ class TestSecretServiceVaultPath:
         svc._vault = mock_vault
 
         result = await svc.upsert_sensitive_vars(
-            namespace="tenant-rotterdam", app_slug="my-api",
-            tenant_slug="rotterdam", data={"DB_PASSWORD": "secret123"},
+            namespace="tenant-rotterdam",
+            app_slug="my-api",
+            tenant_slug="rotterdam",
+            data={"DB_PASSWORD": "secret123"},
         )
         assert result is True
         mock_vault.write_secrets.assert_called_once_with("rotterdam", "my-api", {"DB_PASSWORD": "secret123"})
@@ -118,8 +125,10 @@ class TestSecretServiceVaultPath:
         svc._vault = mock_vault
 
         result = await svc.upsert_sensitive_vars(
-            namespace="tenant-test", app_slug="app1",
-            tenant_slug="test", data={"KEY": "val"},
+            namespace="tenant-test",
+            app_slug="app1",
+            tenant_slug="test",
+            data={"KEY": "val"},
         )
         assert result is True
         # Should call K8s directly, not Vault
@@ -142,7 +151,9 @@ class TestSecretServiceVaultPath:
         svc._vault = mock_vault
 
         result = await svc.delete_sensitive_vars(
-            namespace="tenant-rotterdam", app_slug="my-api", tenant_slug="rotterdam",
+            namespace="tenant-rotterdam",
+            app_slug="my-api",
+            tenant_slug="rotterdam",
         )
         assert result is True
         mock_vault.delete_secrets.assert_called_once()
@@ -200,14 +211,23 @@ async def test_put_secrets_endpoint_vault_path(async_client, db_session):
     from app.models.tenant import Tenant
 
     tenant = Tenant(
-        id=uuid.uuid4(), slug="vault-tenant", name="Vault Test",
-        namespace="tenant-vault-tenant", keycloak_realm="vault-tenant",
-        cpu_limit="4", memory_limit="8Gi", storage_limit="50Gi",
+        id=uuid.uuid4(),
+        slug="vault-tenant",
+        name="Vault Test",
+        namespace="tenant-vault-tenant",
+        keycloak_realm="vault-tenant",
+        cpu_limit="4",
+        memory_limit="8Gi",
+        storage_limit="50Gi",
     )
     db_session.add(tenant)
     app_obj = Application(
-        id=uuid.uuid4(), tenant_id=tenant.id, slug="vault-app", name="Vault App",
-        repo_url="https://github.com/org/repo", branch="main",
+        id=uuid.uuid4(),
+        tenant_id=tenant.id,
+        slug="vault-app",
+        name="Vault App",
+        repo_url="https://github.com/org/repo",
+        branch="main",
     )
     db_session.add(app_obj)
     await db_session.commit()
@@ -237,14 +257,23 @@ async def test_get_secrets_endpoint_lists_keys(async_client, db_session):
     from app.models.tenant import Tenant
 
     tenant = Tenant(
-        id=uuid.uuid4(), slug="keys-tenant", name="Keys Test",
-        namespace="tenant-keys-tenant", keycloak_realm="keys-tenant",
-        cpu_limit="4", memory_limit="8Gi", storage_limit="50Gi",
+        id=uuid.uuid4(),
+        slug="keys-tenant",
+        name="Keys Test",
+        namespace="tenant-keys-tenant",
+        keycloak_realm="keys-tenant",
+        cpu_limit="4",
+        memory_limit="8Gi",
+        storage_limit="50Gi",
     )
     db_session.add(tenant)
     app_obj = Application(
-        id=uuid.uuid4(), tenant_id=tenant.id, slug="keys-app", name="Keys App",
-        repo_url="https://github.com/org/repo", branch="main",
+        id=uuid.uuid4(),
+        tenant_id=tenant.id,
+        slug="keys-app",
+        name="Keys App",
+        repo_url="https://github.com/org/repo",
+        branch="main",
     )
     db_session.add(app_obj)
     await db_session.commit()

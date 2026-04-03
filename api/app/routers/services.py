@@ -79,18 +79,18 @@ async def create_service(
     db.add(svc)
     try:
         await db.flush()
-    except IntegrityError:
+    except IntegrityError as exc:
         await db.rollback()
-        raise HTTPException(status_code=409, detail=f"Service '{body.name}' already exists in tenant '{tenant_slug}'")
+        raise HTTPException(status_code=409, detail=f"Service '{body.name}' already exists") from exc
 
     provisioner = ManagedServiceProvisioner(k8s)
     await provisioner.provision(svc, tenant.namespace, tenant_slug=tenant.slug)
 
     try:
         await db.commit()
-    except IntegrityError:
+    except IntegrityError as exc:
         await db.rollback()
-        raise HTTPException(status_code=409, detail=f"Service '{body.name}' already exists in tenant '{tenant_slug}'")
+        raise HTTPException(status_code=409, detail=f"Service '{body.name}' already exists") from exc
     await db.refresh(svc)
     return svc
 
@@ -119,14 +119,10 @@ async def get_service(
         await db.refresh(svc)
 
     # Query connected apps (apps that reference this service in env_from_secrets)
-    apps_result = await db.execute(
-        select(Application).where(Application.tenant_id == tenant.id)
-    )
+    apps_result = await db.execute(select(Application).where(Application.tenant_id == tenant.id))
     connected_apps = []
     for app_obj in apps_result.scalars():
-        if app_obj.env_from_secrets and any(
-            e.get("service_name") == svc.name for e in app_obj.env_from_secrets
-        ):
+        if app_obj.env_from_secrets and any(e.get("service_name") == svc.name for e in app_obj.env_from_secrets):
             connected_apps.append(ConnectedAppSummary(slug=app_obj.slug, name=app_obj.name))
 
     # Build enriched response
@@ -203,9 +199,7 @@ async def delete_service(
         raise HTTPException(status_code=404, detail="Service not found")
 
     # Clean up app connections referencing this service
-    apps_result = await db.execute(
-        select(Application).where(Application.tenant_id == tenant.id)
-    )
+    apps_result = await db.execute(select(Application).where(Application.tenant_id == tenant.id))
     for app_obj in apps_result.scalars():
         if app_obj.env_from_secrets and any(e.get("service_name") == svc.name for e in app_obj.env_from_secrets):
             app_obj.env_from_secrets = [e for e in app_obj.env_from_secrets if e.get("service_name") != svc.name]

@@ -14,7 +14,7 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.jwt import verify_token
-from app.auth.rbac import require_role, require_tenant_member
+from app.auth.rbac import require_role
 from app.deps import get_db, get_k8s
 from app.main import app
 from app.models.tenant import Tenant

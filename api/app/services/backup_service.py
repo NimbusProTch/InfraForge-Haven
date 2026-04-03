@@ -208,6 +208,7 @@ _BACKUP_CRD = {
     },
 }
 
+
 def _percona_pg_restore_body(restore_name: str, cluster_name: str, namespace: str, backup_id: str) -> dict:
     """Percona PG restore manifest."""
     return {

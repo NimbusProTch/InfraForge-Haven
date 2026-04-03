@@ -56,9 +56,7 @@ async def test_provision_postgres_via_backend(async_client, db_session, sample_t
         await asyncio.sleep(poll_interval)
         elapsed += poll_interval
 
-        status_resp = await async_client.get(
-            f"/api/v1/tenants/{sample_tenant.slug}/services/integ-test-pg"
-        )
+        status_resp = await async_client.get(f"/api/v1/tenants/{sample_tenant.slug}/services/integ-test-pg")
         assert status_resp.status_code == 200
         svc_data = status_resp.json()
         final_status = svc_data["status"]
@@ -71,9 +69,7 @@ async def test_provision_postgres_via_backend(async_client, db_session, sample_t
     logger.info("PostgreSQL DB ready via backend → Everest flow!")
 
     # 3. Cleanup: delete the service
-    del_resp = await async_client.delete(
-        f"/api/v1/tenants/{sample_tenant.slug}/services/integ-test-pg"
-    )
+    del_resp = await async_client.delete(f"/api/v1/tenants/{sample_tenant.slug}/services/integ-test-pg")
     assert del_resp.status_code == 204
     logger.info("Service deleted successfully")
 
@@ -96,15 +92,11 @@ async def test_provision_duplicate_name_rejected(async_client, db_session, sampl
     assert resp2.status_code == 409
 
     # Cleanup
-    await async_client.delete(
-        f"/api/v1/tenants/{sample_tenant.slug}/services/dup-test-pg"
-    )
+    await async_client.delete(f"/api/v1/tenants/{sample_tenant.slug}/services/dup-test-pg")
 
 
 @pytest.mark.asyncio
 async def test_get_nonexistent_service_returns_404(async_client, db_session, sample_tenant):
     """GET for a service that doesn't exist returns 404."""
-    resp = await async_client.get(
-        f"/api/v1/tenants/{sample_tenant.slug}/services/no-such-service"
-    )
+    resp = await async_client.get(f"/api/v1/tenants/{sample_tenant.slug}/services/no-such-service")
     assert resp.status_code == 404

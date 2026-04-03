@@ -1,6 +1,7 @@
 """Tests for Everest credential provisioning and background loop."""
 
 import base64
+from datetime import UTC
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -59,10 +60,14 @@ class TestProvisionEverestCredentials:
         everest.is_configured.return_value = True
         everest.get_database_details.return_value = {"status": "ready"}
 
-        k8s = _mock_k8s_with_admin_secret({
-            "user": "postgres", "password": "adminpass",
-            "host": "mydb-ha.everest.svc", "port": "5432",
-        })
+        k8s = _mock_k8s_with_admin_secret(
+            {
+                "user": "postgres",
+                "password": "adminpass",
+                "host": "mydb-ha.everest.svc",
+                "port": "5432",
+            }
+        )
 
         svc = _make_service(name="app-pg", stype=ServiceType.POSTGRES)
         svc.everest_name = "acme-app-pg"
@@ -87,10 +92,14 @@ class TestProvisionEverestCredentials:
         everest.is_configured.return_value = True
         everest.get_database_details.return_value = {"status": "ready"}
 
-        k8s = _mock_k8s_with_admin_secret({
-            "user": "root", "password": "adminpass",
-            "host": "mydb-haproxy.everest.svc", "port": "3306",
-        })
+        k8s = _mock_k8s_with_admin_secret(
+            {
+                "user": "root",
+                "password": "adminpass",
+                "host": "mydb-haproxy.everest.svc",
+                "port": "3306",
+            }
+        )
 
         svc = _make_service(name="app-mysql", stype=ServiceType.MYSQL)
         svc.everest_name = "acme-app-mysql"
@@ -121,10 +130,14 @@ class TestProvisionEverestCredentials:
         everest.is_configured.return_value = True
         everest.get_database_details.return_value = {"status": "ready"}
 
-        k8s = _mock_k8s_with_admin_secret({
-            "user": "databaseAdmin", "password": "adminpass",
-            "host": "mydb-mongos.everest.svc", "port": "27017",
-        })
+        k8s = _mock_k8s_with_admin_secret(
+            {
+                "user": "databaseAdmin",
+                "password": "adminpass",
+                "host": "mydb-mongos.everest.svc",
+                "port": "27017",
+            }
+        )
 
         svc = _make_service(name="app-mongo", stype=ServiceType.MONGODB)
         svc.everest_name = "acme-app-mongo"
@@ -323,7 +336,6 @@ class TestCredentialProvisioningTick:
 
     def _mock_factory(self, query_result, get_results=None):
         """Build a mock session factory that supports multiple context manager entries."""
-        import uuid
 
         call_count = 0
 
@@ -452,7 +464,7 @@ class TestCredentialProvisioningTick:
     @pytest.mark.asyncio
     async def test_tick_timeout_marks_stuck_service_failed(self):
         """Service stuck in PROVISIONING for >10min must be marked FAILED."""
-        from datetime import datetime, timedelta, timezone
+        from datetime import datetime, timedelta
 
         from app.main import _credential_provisioning_tick
 
@@ -462,7 +474,7 @@ class TestCredentialProvisioningTick:
         mock_svc.status = ServiceStatus.PROVISIONING
         mock_svc.credentials_provisioned = False
         # Created 15 minutes ago — exceeds 10min timeout
-        mock_svc.created_at = datetime.now(timezone.utc) - timedelta(minutes=15)
+        mock_svc.created_at = datetime.now(UTC) - timedelta(minutes=15)
 
         call_count = [0]
 
