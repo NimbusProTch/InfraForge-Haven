@@ -5,15 +5,15 @@ Custom credentials (user/db/password) are provisioned post-creation and stored
 as K8s Secrets in the tenant namespace for app pod access via envFrom.
 """
 
+import asyncio
 import base64
 import logging
+from urllib.parse import quote as urlquote
 
 from kubernetes.client.exceptions import ApiException
 
 from app.k8s.client import K8sClient
 from app.models.managed_service import ManagedService, ServiceStatus, ServiceTier, ServiceType
-from urllib.parse import quote as urlquote
-
 from app.services.everest_client import EVEREST_NS, EverestClient, everest_client
 from app.services.lifecycle_events import lifecycle_bus
 
@@ -755,8 +755,56 @@ class ManagedServiceProvisioner:
             await self._everest_update(
                 service, replicas=replicas, storage=storage, cpu=cpu, memory=memory
             )
+        elif service.service_type == ServiceType.REDIS:
+            await self._crd_scale_redis(service, replicas=replicas)
+        elif service.service_type == ServiceType.RABBITMQ:
+            await self._crd_scale_rabbitmq(service, replicas=replicas)
         else:
-            raise NotImplementedError(f"Update not supported for CRD-based service '{service.name}' ({service.service_type.value})")
+            raise NotImplementedError(f"Update not supported for '{service.service_type.value}'")
+
+    async def _crd_scale_redis(self, service: ManagedService, *, replicas: int | None = None) -> None:
+        """Scale Redis via OpsTree CRD patch."""
+        if replicas is None:
+            return
+        namespace = service.service_namespace or f"tenant-{service.name.split('-')[0]}"
+        crd_name = service.name
+        body = {"spec": {"kubernetesConfig": {"replicas": replicas}}}
+        try:
+            await asyncio.to_thread(
+                self.k8s.custom_objects.patch_namespaced_custom_object,
+                group="redis.redis.opstreelabs.in",
+                version="v1beta2",
+                namespace=namespace,
+                plural="redis" if replicas <= 1 else "redisclusters",
+                name=crd_name,
+                body=body,
+            )
+            logger.info("Redis %s scaled to %d replicas", crd_name, replicas)
+        except Exception as exc:
+            logger.exception("Redis scale failed for %s", crd_name)
+            raise RuntimeError(f"Redis scale failed: {exc}") from exc
+
+    async def _crd_scale_rabbitmq(self, service: ManagedService, *, replicas: int | None = None) -> None:
+        """Scale RabbitMQ via Cluster Operator CRD patch."""
+        if replicas is None:
+            return
+        namespace = service.service_namespace or f"tenant-{service.name.split('-')[0]}"
+        crd_name = service.name
+        body = {"spec": {"replicas": replicas}}
+        try:
+            await asyncio.to_thread(
+                self.k8s.custom_objects.patch_namespaced_custom_object,
+                group="rabbitmq.com",
+                version="v1beta1",
+                namespace=namespace,
+                plural="rabbitmqclusters",
+                name=crd_name,
+                body=body,
+            )
+            logger.info("RabbitMQ %s scaled to %d replicas", crd_name, replicas)
+        except Exception as exc:
+            logger.exception("RabbitMQ scale failed for %s", crd_name)
+            raise RuntimeError(f"RabbitMQ scale failed: {exc}") from exc
 
     async def deprovision(self, service: ManagedService) -> None:
         """Delete the database/service."""
