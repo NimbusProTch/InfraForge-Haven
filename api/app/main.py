@@ -175,6 +175,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Request logging with correlation ID
+from app.middleware.request_logging import RequestLoggingMiddleware  # noqa: E402
+
+app.add_middleware(RequestLoggingMiddleware)
+
 
 # ---------------------------------------------------------------------------
 # Global exception handlers

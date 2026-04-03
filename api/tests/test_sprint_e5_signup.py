@@ -168,8 +168,9 @@ async def test_list_members(auth_client, db_session):
 
 @pytest.mark.asyncio
 async def test_add_member(auth_client, db_session):
-    """POST /members creates a new tenant member."""
+    """POST /members creates a new tenant member (requires owner/admin)."""
     t = await _tenant(db_session, "add-member")
+    await _member(db_session, t, "user-123", "user@haven.nl", MemberRole("owner"))  # RBAC: caller is owner
 
     resp = await auth_client.post(
         f"/api/v1/tenants/{t.slug}/members",
@@ -183,6 +184,7 @@ async def test_add_member(auth_client, db_session):
 async def test_add_duplicate_member_409(auth_client, db_session):
     """POST /members with duplicate email returns 409."""
     t = await _tenant(db_session, "dup-member")
+    await _member(db_session, t, "user-123", "user@haven.nl", MemberRole("owner"))  # RBAC
     await _member(db_session, t, "user-1", "exists@test.nl")
 
     resp = await auth_client.post(

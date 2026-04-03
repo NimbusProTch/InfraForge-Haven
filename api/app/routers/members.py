@@ -3,9 +3,10 @@
 import logging
 import uuid
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 
+from app.auth.rbac import require_role
 from app.deps import CurrentUser, DBSession
 from app.models.tenant import Tenant
 from app.models.tenant_member import MemberRole, TenantMember
@@ -47,7 +48,12 @@ async def list_members(tenant_slug: str, db: DBSession, current_user: CurrentUse
     return list(result.scalars().all())
 
 
-@router.post("", response_model=TenantMemberResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "",
+    response_model=TenantMemberResponse,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_role("owner", "admin"))],
+)
 async def add_member(
     tenant_slug: str, body: TenantMemberInvite, db: DBSession, current_user: CurrentUser
 ) -> TenantMember:

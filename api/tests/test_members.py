@@ -50,6 +50,21 @@ async def owner_member(db_session: AsyncSession, member_tenant: Tenant) -> Tenan
 
 
 @pytest_asyncio.fixture
+async def _test_user_is_owner(db_session: AsyncSession, member_tenant: Tenant) -> TenantMember:
+    """Ensure the default test user (sub=test-user) is an owner — required for RBAC."""
+    m = TenantMember(
+        tenant_id=member_tenant.id,
+        user_id="test-user",
+        email="test@haven.nl",
+        role=MemberRole.owner,
+    )
+    db_session.add(m)
+    await db_session.commit()
+    await db_session.refresh(m)
+    return m
+
+
+@pytest_asyncio.fixture
 async def dev_member(db_session: AsyncSession, member_tenant: Tenant) -> TenantMember:
     member = TenantMember(
         tenant_id=member_tenant.id,
@@ -98,6 +113,7 @@ async def test_list_members_tenant_not_found(async_client: AsyncClient):
 
 
 @pytest.mark.asyncio
+@pytest.mark.usefixtures("_test_user_is_owner")
 async def test_add_member(async_client: AsyncClient, member_tenant: Tenant):
     with patch("app.routers.members.keycloak_service") as mock_kc:
         mock_kc.create_user = AsyncMock(return_value="kc-user-123")
@@ -114,6 +130,7 @@ async def test_add_member(async_client: AsyncClient, member_tenant: Tenant):
 
 
 @pytest.mark.asyncio
+@pytest.mark.usefixtures("_test_user_is_owner")
 async def test_add_member_keycloak_fails_gracefully(async_client: AsyncClient, member_tenant: Tenant):
     """When Keycloak is down, member is still created with empty user_id."""
     with patch("app.routers.members.keycloak_service") as mock_kc:
@@ -129,6 +146,7 @@ async def test_add_member_keycloak_fails_gracefully(async_client: AsyncClient, m
 
 
 @pytest.mark.asyncio
+@pytest.mark.usefixtures("_test_user_is_owner")
 async def test_add_member_with_explicit_user_id(async_client: AsyncClient, member_tenant: Tenant):
     resp = await async_client.post(
         f"/api/v1/tenants/{member_tenant.slug}/members",
@@ -139,6 +157,7 @@ async def test_add_member_with_explicit_user_id(async_client: AsyncClient, membe
 
 
 @pytest.mark.asyncio
+@pytest.mark.usefixtures("_test_user_is_owner")
 async def test_add_member_duplicate_email(async_client: AsyncClient, member_tenant: Tenant, owner_member: TenantMember):
     with patch("app.routers.members.keycloak_service") as mock_kc:
         mock_kc.create_user = AsyncMock(return_value="kc-dup")
@@ -151,12 +170,12 @@ async def test_add_member_duplicate_email(async_client: AsyncClient, member_tena
 
 
 @pytest.mark.asyncio
-async def test_add_member_tenant_not_found(async_client: AsyncClient):
+async def test_add_member_tenant_not_found_returns_403_or_404(async_client: AsyncClient):
     resp = await async_client.post(
         "/api/v1/tenants/nonexistent/members",
         json={"email": "no@haven.nl", "role": "viewer"},
     )
-    assert resp.status_code == 404
+    assert resp.status_code in (403, 404)  # RBAC may deny before tenant lookup
 
 
 # ---------------------------------------------------------------------------

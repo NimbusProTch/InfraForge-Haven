@@ -1,8 +1,25 @@
+import logging
+
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+logger = logging.getLogger(__name__)
 
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+
+    @model_validator(mode="after")
+    def _validate_critical_settings(self) -> "Settings":
+        """Warn about missing critical settings at startup."""
+        missing = []
+        if not self.secret_key:
+            missing.append("SECRET_KEY")
+        if not self.database_url:
+            missing.append("DATABASE_URL")
+        if missing:
+            logger.warning("SECURITY WARNING: Missing critical settings: %s", ", ".join(missing))
+        return self
 
     # Database
     database_url: str = "postgresql+asyncpg://haven:haven@localhost:5432/haven_platform"

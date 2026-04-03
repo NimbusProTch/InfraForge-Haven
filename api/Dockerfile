@@ -25,10 +25,14 @@ COPY --from=builder /usr/local/bin /usr/local/bin
 
 COPY . .
 
+# Run as non-root user for security
+RUN groupadd -r haven && useradd -r -g haven -u 1000 haven && \
+    chown -R haven:haven /app
+USER 1000:1000
+
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1
 
 EXPOSE 8000
 
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
-# Force rebuild 1774799758
