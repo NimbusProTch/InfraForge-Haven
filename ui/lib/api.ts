@@ -206,6 +206,37 @@ export interface BackupTriggerResult {
   status: string;
 }
 
+// Per-service backups
+export interface ServiceBackup {
+  backup_id: string;
+  service_name: string;
+  service_type: string;
+  phase: string;
+  started_at: string | null;
+  finished_at: string | null;
+  size: string | null;
+  s3_path: string | null;
+}
+
+export interface ServiceBackupList {
+  tenant_slug: string;
+  service_name: string;
+  k8s_available: boolean;
+  backups: ServiceBackup[];
+}
+
+export interface ServiceBackupTrigger {
+  message: string;
+  backup_name: string;
+  triggered_at: string;
+}
+
+export interface ServiceRestoreResult {
+  message: string;
+  restore_name: string;
+  triggered_at: string;
+}
+
 // Canary
 export interface CanaryStatus {
   enabled: boolean;
@@ -891,6 +922,30 @@ export const api = {
       apiFetch<void>(
         `/tenants/${tenantSlug}/backup/schedule`,
         { method: "PUT", body: JSON.stringify(body) },
+        token
+      ),
+    // Per-service backup/restore
+    listForService: (tenantSlug: string, serviceName: string, token?: string) =>
+      apiFetch<ServiceBackupList>(
+        `/tenants/${tenantSlug}/services/${serviceName}/backups`,
+        {},
+        token
+      ),
+    triggerForService: (tenantSlug: string, serviceName: string, token?: string) =>
+      apiFetch<ServiceBackupTrigger>(
+        `/tenants/${tenantSlug}/services/${serviceName}/backup`,
+        { method: "POST" },
+        token
+      ),
+    restoreForService: (
+      tenantSlug: string,
+      serviceName: string,
+      backupId: string,
+      token?: string
+    ) =>
+      apiFetch<ServiceRestoreResult>(
+        `/tenants/${tenantSlug}/services/${serviceName}/restore/${backupId}`,
+        { method: "POST" },
         token
       ),
   },
