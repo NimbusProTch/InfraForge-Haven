@@ -11,7 +11,6 @@ from unittest.mock import MagicMock
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
-from jose import jwt
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.jwt import verify_token
@@ -19,7 +18,6 @@ from app.deps import get_db, get_k8s
 from app.main import app
 from app.models.tenant import Tenant
 from app.models.tenant_member import MemberRole, TenantMember
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -237,9 +235,7 @@ async def test_b10_create_tenant_auto_owner(auth_client, db_session):
     # Check creator is owner
     from sqlalchemy import select
 
-    result = await db_session.execute(
-        select(TenantMember).where(TenantMember.user_id == "auth-user")
-    )
+    result = await db_session.execute(select(TenantMember).where(TenantMember.user_id == "auth-user"))
     member = result.scalar_one_or_none()
     assert member is not None
     assert member.role == MemberRole("owner")
@@ -288,9 +284,7 @@ async def test_b13_tenants_me_empty_for_new_user(db_session):
 @pytest.mark.asyncio
 async def test_b14_create_tenant_creates_namespace(auth_client):
     """B14: POST /tenants → K8s namespace created."""
-    resp = await auth_client.post(
-        "/api/v1/tenants", json={"name": "NS Test", "slug": "ns-test"}
-    )
+    resp = await auth_client.post("/api/v1/tenants", json={"name": "NS Test", "slug": "ns-test"})
     assert resp.status_code == 201
     assert resp.json()["namespace"] == "tenant-ns-test"
 
@@ -298,9 +292,7 @@ async def test_b14_create_tenant_creates_namespace(auth_client):
 @pytest.mark.asyncio
 async def test_b15_delete_tenant_cascade(auth_client, db_session):
     """B17: DELETE /tenants → cascade cleanup."""
-    await auth_client.post(
-        "/api/v1/tenants", json={"name": "Del Test", "slug": "del-test"}
-    )
+    await auth_client.post("/api/v1/tenants", json={"name": "Del Test", "slug": "del-test"})
     resp = await auth_client.delete("/api/v1/tenants/del-test")
     assert resp.status_code == 204
 

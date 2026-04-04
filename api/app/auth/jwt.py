@@ -72,14 +72,10 @@ async def verify_token(
 
     except ExpiredSignatureError as e:
         logger.warning("Expired token presented: %s", e)
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="Token expired"
-        ) from e
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token expired") from e
 
     except JWTError as e:
         global _jwks_cache  # noqa: PLW0603
         logger.warning("Token validation failed: %s", e)
         _jwks_cache = None
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token"
-        ) from e
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token") from e

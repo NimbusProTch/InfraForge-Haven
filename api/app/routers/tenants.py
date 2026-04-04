@@ -4,14 +4,12 @@ from fastapi import APIRouter, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
-from app.auth.rbac import require_role
 from app.deps import CurrentUser, DBSession, K8sDep
 from app.models.managed_service import ManagedService
 from app.models.tenant import Tenant
 from app.models.tenant_member import MemberRole, TenantMember
 from app.schemas.tenant import TenantCreate, TenantResponse, TenantUpdate
 from app.services.gitops_scaffold import gitops_scaffold
-from app.services.keycloak_service import keycloak_service
 from app.services.managed_service import ManagedServiceProvisioner
 from app.services.tenant_service import TenantService
 
