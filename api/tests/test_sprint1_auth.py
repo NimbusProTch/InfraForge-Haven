@@ -356,3 +356,60 @@ async def test_b20_update_member_role(db_session):
         assert resp.status_code == 200
         assert resp.json()["role"] == "admin"
     app.dependency_overrides.clear()
+
+
+# ---------------------------------------------------------------------------
+# B21-B24: Tenant authorization bypass prevention (Architect review fix)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_b21_non_member_cannot_get_tenant(db_session):
+    """Non-member cannot GET another user's tenant."""
+    t = await _make_tenant(db_session, "private-tenant")
+    await _make_member(db_session, t, "real-owner", "owner")
+
+    async with _client_with_user(db_session, "stranger") as c:
+        resp = await c.get(f"/api/v1/tenants/{t.slug}")
+        assert resp.status_code == 403
+    app.dependency_overrides.clear()
+
+
+@pytest.mark.asyncio
+async def test_b22_non_member_cannot_update_tenant(db_session):
+    """Non-member cannot PATCH another user's tenant."""
+    t = await _make_tenant(db_session, "protected-tenant")
+    await _make_member(db_session, t, "real-owner", "owner")
+
+    async with _client_with_user(db_session, "hacker") as c:
+        resp = await c.patch(
+            f"/api/v1/tenants/{t.slug}",
+            json={"name": "Hacked!"},
+        )
+        assert resp.status_code == 403
+    app.dependency_overrides.clear()
+
+
+@pytest.mark.asyncio
+async def test_b23_non_member_cannot_delete_tenant(db_session):
+    """Non-member cannot DELETE another user's tenant."""
+    t = await _make_tenant(db_session, "locked-tenant")
+    await _make_member(db_session, t, "real-owner", "owner")
+
+    async with _client_with_user(db_session, "attacker") as c:
+        resp = await c.delete(f"/api/v1/tenants/{t.slug}")
+        assert resp.status_code == 403
+    app.dependency_overrides.clear()
+
+
+@pytest.mark.asyncio
+async def test_b24_member_can_get_own_tenant(db_session):
+    """Member CAN GET their own tenant."""
+    t = await _make_tenant(db_session, "my-tenant")
+    await _make_member(db_session, t, "member-user", "member")
+
+    async with _client_with_user(db_session, "member-user") as c:
+        resp = await c.get(f"/api/v1/tenants/{t.slug}")
+        assert resp.status_code == 200
+        assert resp.json()["slug"] == "my-tenant"
+    app.dependency_overrides.clear()

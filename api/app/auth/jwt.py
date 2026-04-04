@@ -20,8 +20,8 @@ bearer_scheme = HTTPBearer(auto_error=False)
 # In-memory JWKS cache — refreshed on decode failure (key rotation)
 _jwks_cache: dict[str, Any] | None = None
 
-# Accepted JWT audiences (Keycloak client IDs + default "account" audience)
-_ACCEPTED_AUDIENCES = {"haven-portal", "haven-api", "haven-ui", "account"}
+# Accepted JWT audiences (only our client IDs — NOT the generic "account" audience)
+_ACCEPTED_AUDIENCES = {"haven-portal", "haven-api", "haven-ui"}
 
 
 async def _fetch_jwks() -> dict[str, Any]:
@@ -29,7 +29,7 @@ async def _fetch_jwks() -> dict[str, Any]:
     if _jwks_cache is not None:
         return _jwks_cache
     jwks_url = f"{settings.keycloak_url}/realms/{settings.keycloak_realm}/protocol/openid-connect/certs"
-    async with httpx.AsyncClient(timeout=10, verify=False) as http:
+    async with httpx.AsyncClient(timeout=10) as http:
         response = await http.get(jwks_url)
         response.raise_for_status()
     _jwks_cache = response.json()
@@ -60,9 +60,11 @@ async def verify_token(
             jwks,
             algorithms=["RS256"],
             audience=list(_ACCEPTED_AUDIENCES),
+            issuer=f"{settings.keycloak_url}/realms/{settings.keycloak_realm}",
             options={
                 "verify_aud": True,
                 "verify_exp": True,
+                "verify_iss": True,
             },
         )
         logger.debug("Token verified: sub=%s", payload.get("sub"))
@@ -79,5 +81,5 @@ async def verify_token(
         logger.warning("Token validation failed: %s", e)
         _jwks_cache = None
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail=f"Invalid token: {e}"
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token"
         ) from e

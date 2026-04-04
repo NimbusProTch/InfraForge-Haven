@@ -1,8 +1,7 @@
 /**
- * Next.js Edge Middleware — protects all authenticated routes.
+ * Next.js Edge Middleware — protects ALL authenticated routes.
  *
- * Unauthenticated users are redirected to /auth/signin server-side
- * (not client-side) for better security and UX.
+ * Unauthenticated users are redirected to /auth/signin server-side.
  */
 export { default } from "next-auth/middleware";
 
@@ -12,5 +11,8 @@ export const config = {
     "/tenants/:path*",
     "/organizations/:path*",
     "/platform/:path*",
+    "/apps/:path*",
+    "/services/:path*",
+    "/settings/:path*",
   ],
 };

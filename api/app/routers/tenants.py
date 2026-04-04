@@ -4,6 +4,7 @@ from fastapi import APIRouter, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
+from app.auth.rbac import require_role
 from app.deps import CurrentUser, DBSession, K8sDep
 from app.models.managed_service import ManagedService
 from app.models.tenant import Tenant
@@ -25,6 +26,27 @@ async def _get_tenant_or_404(tenant_slug: str, db: DBSession) -> Tenant:
     if tenant is None:
         raise HTTPException(status_code=404, detail="Tenant not found")
     return tenant
+
+
+async def _require_tenant_membership(
+    tenant: Tenant, current_user: dict, db: DBSession, min_role: str | None = None
+) -> TenantMember:
+    """Verify user is a member of this tenant. Returns the membership record."""
+    user_id = current_user.get("sub", "")
+    result = await db.execute(
+        select(TenantMember).where(
+            TenantMember.tenant_id == tenant.id,
+            TenantMember.user_id == user_id,
+        )
+    )
+    member = result.scalar_one_or_none()
+    if member is None:
+        raise HTTPException(status_code=403, detail="You are not a member of this tenant")
+    if min_role:
+        hierarchy = {"owner": 4, "admin": 3, "member": 2, "viewer": 1}
+        if hierarchy.get(member.role.value, 0) < hierarchy.get(min_role, 0):
+            raise HTTPException(status_code=403, detail=f"Requires {min_role} role or higher")
+    return member
 
 
 @router.get("/me", response_model=list[TenantResponse])
@@ -118,17 +140,23 @@ async def create_tenant(body: TenantCreate, db: DBSession, k8s: K8sDep, current_
 
 @router.get("/{tenant_slug}", response_model=TenantResponse)
 async def get_tenant(tenant_slug: str, db: DBSession, current_user: CurrentUser) -> Tenant:
-    return await _get_tenant_or_404(tenant_slug, db)
+    tenant = await _get_tenant_or_404(tenant_slug, db)
+    await _require_tenant_membership(tenant, current_user, db)
+    return tenant
 
 
 @router.patch("/{tenant_slug}", response_model=TenantResponse)
 @router.put("/{tenant_slug}", response_model=TenantResponse)
 async def update_tenant(tenant_slug: str, body: TenantUpdate, db: DBSession, current_user: CurrentUser) -> Tenant:
     tenant = await _get_tenant_or_404(tenant_slug, db)
+    await _require_tenant_membership(tenant, current_user, db, min_role="admin")
 
+    # Only allow safe fields to be updated
+    _MUTABLE_FIELDS = {"name", "cpu_limit", "memory_limit", "storage_limit", "tier", "active", "github_token"}
     update_data = body.model_dump(exclude_none=True)
     for field, value in update_data.items():
-        setattr(tenant, field, value)
+        if field in _MUTABLE_FIELDS:
+            setattr(tenant, field, value)
 
     await db.commit()
     await db.refresh(tenant)
@@ -138,6 +166,7 @@ async def update_tenant(tenant_slug: str, body: TenantUpdate, db: DBSession, cur
 @router.delete("/{tenant_slug}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_tenant(tenant_slug: str, db: DBSession, k8s: K8sDep, current_user: CurrentUser) -> None:
     tenant = await _get_tenant_or_404(tenant_slug, db)
+    await _require_tenant_membership(tenant, current_user, db, min_role="owner")
 
     # 1. Deprovision all managed services (Everest DBs, Redis CRDs, RabbitMQ CRDs)
     provisioner = ManagedServiceProvisioner(k8s)

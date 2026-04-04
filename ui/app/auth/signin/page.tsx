@@ -71,12 +71,14 @@ export default function SignInPage() {
 
           {/* Links */}
           <div className="flex items-center justify-center gap-4 mt-6">
-            <button
-              onClick={() => signIn("keycloak", { callbackUrl: "/dashboard" })}
+            <a
+              href={`${process.env.NEXT_PUBLIC_KEYCLOAK_URL ?? "https://keycloak.46.225.42.2.sslip.io"}/realms/${process.env.NEXT_PUBLIC_KEYCLOAK_REALM ?? "haven"}/login-actions/reset-credentials`}
+              target="_blank"
+              rel="noopener noreferrer"
               className="text-xs text-zinc-600 hover:text-emerald-400 transition-colors"
             >
               Forgot password?
-            </button>
+            </a>
           </div>
 
           {/* Compliance footer */}
@@ -92,7 +94,7 @@ export default function SignInPage() {
               </div>
             </div>
             <p className="text-center text-[10px] text-zinc-700 mt-2">
-              GDPR Compliant · ISO 27001 · BIO Baseline
+              GDPR Compliant · Haven 15/15 Infrastructure
             </p>
           </div>
         </div>
