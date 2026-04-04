@@ -551,7 +551,12 @@ async def test_github_status_404_tenant(async_client):
 @pytest.mark.asyncio
 async def test_tenant_response_includes_github_connected(async_client, db_session):
     """GET /tenants/{slug} response includes github_connected field."""
+    from app.models.tenant_member import MemberRole, TenantMember
+
     tenant = await _make_tenant(db_session)
+    # Add test-user as member (required by tenant auth)
+    db_session.add(TenantMember(tenant_id=tenant.id, user_id="test-user", email="test@haven.nl", role=MemberRole("owner")))
+    await db_session.commit()
     response = await async_client.get(f"/api/v1/tenants/{tenant.slug}")
     assert response.status_code == 200
     data = response.json()
