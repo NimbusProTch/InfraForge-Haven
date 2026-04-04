@@ -65,7 +65,29 @@ async def get_queue_status(queue_svc: QueueDep) -> dict[str, Any]:
     """
     pending = await queue_svc.queue_length()
     dead = await queue_svc.dead_letter_length()
-    return {"pending": pending, "dead_letter": dead}
+
+    # Check if git-worker is alive by looking for heartbeat key or worker pod
+    worker_alive = False
+    try:
+        # Worker sets a heartbeat key with TTL
+        heartbeat = await queue_svc._redis.get("haven:git:worker:alive")
+        worker_alive = heartbeat is not None
+        if not worker_alive:
+            # Fallback: check if any processing job exists (worker is busy)
+            processing = await queue_svc._redis.get("haven:git:processing")
+            worker_alive = processing is not None
+            if not worker_alive:
+                # Fallback 2: if queue is empty and DLQ is empty, assume worker is OK
+                worker_alive = pending == 0 and dead == 0
+    except Exception:
+        pass
+
+    return {
+        "pending": pending,
+        "processing": 0,
+        "dead_letter": dead,
+        "worker_alive": worker_alive,
+    }
 
 
 @router.get("/jobs/{job_id}", summary="Single job status")

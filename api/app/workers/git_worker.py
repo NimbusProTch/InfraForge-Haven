@@ -65,6 +65,9 @@ class GitWorker:
 
         while self._running:
             try:
+                # Set heartbeat (TTL 15s — expires if worker dies)
+                await self._redis.set("haven:git:worker:alive", "1", ex=15)
+
                 result = await self._redis.brpop(QUEUE_KEY, timeout=BRPOP_TIMEOUT)
                 if result is None:
                     # Timeout — loop back to check _running flag
