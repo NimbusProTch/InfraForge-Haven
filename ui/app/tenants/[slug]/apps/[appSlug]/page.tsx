@@ -671,6 +671,8 @@ export default function AppDetailPage() {
   }
 
   async function handleDeploy() {
+    const imageShort = app?.image_tag?.split(":").pop() ?? "current";
+    if (!confirm(`Deploy image "${imageShort}" to production?`)) return;
     setActionLoading("deploy");
     try {
       await api.deployments.deploy(tenantSlug, appSlug, accessToken);
@@ -809,7 +811,7 @@ export default function AppDetailPage() {
             <button
               onClick={handleSync}
               disabled={syncing}
-              title="Sync ArgoCD application state"
+              title="Force ArgoCD to re-sync this application with the GitOps repository"
               className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-zinc-800 hover:border-zinc-700 bg-zinc-900/50 hover:bg-zinc-800/50 text-zinc-400 hover:text-zinc-200 text-xs font-medium transition-colors disabled:opacity-50"
             >
               {syncing ? (
@@ -817,7 +819,7 @@ export default function AppDetailPage() {
               ) : (
                 <RefreshCw className="w-3.5 h-3.5" />
               )}
-              Sync
+              ArgoCD Sync
             </button>
           </div>
         </div>

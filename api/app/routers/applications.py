@@ -12,6 +12,7 @@ from app.models.application import Application
 from app.models.managed_service import ManagedService, ServiceStatus, ServiceType
 from app.models.tenant import Tenant
 from app.schemas.application import ApplicationCreate, ApplicationResponse, ApplicationUpdate
+from app.services.audit_service import audit
 from app.services.deploy_service import DeployService
 from app.services.git_queue_service import GitOperation, GitQueueService
 from app.services.gitops_scaffold import gitops_scaffold
@@ -123,6 +124,15 @@ async def create_application(
         env_vars=dict(body.env_vars) if body.env_vars else {},
     )
 
+    await audit(
+        db,
+        tenant_id=tenant.id,
+        action="app.create",
+        user_id=current_user.get("sub", ""),
+        resource_type="application",
+        resource_id=str(app.id),
+    )
+
     return app
 
 
@@ -182,6 +192,16 @@ async def update_application(
         }
         if updated_fields.keys() & gitops_fields:
             await _enqueue_app_values_update(queue, tenant_slug, app, "config update")
+
+    await audit(
+        db,
+        tenant_id=tenant.id,
+        action="app.update",
+        user_id=current_user.get("sub", ""),
+        resource_type="application",
+        resource_id=str(app.id),
+        extra={"updated_fields": list(updated_fields.keys())},
+    )
 
     return app
 
@@ -268,6 +288,16 @@ async def delete_application(
             logger.info("K8s resources cleaned up for %s/%s", namespace, app_slug)
         except Exception:
             logger.exception("Failed to clean up K8s resources for %s/%s", namespace, app_slug)
+
+    await audit(
+        db,
+        tenant_id=tenant.id,
+        action="app.delete",
+        user_id=current_user.get("sub", ""),
+        resource_type="application",
+        resource_id=str(app.id),
+        extra={"slug": app.slug},
+    )
 
     await db.delete(app)
     await db.commit()

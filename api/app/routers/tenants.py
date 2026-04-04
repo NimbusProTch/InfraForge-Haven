@@ -10,6 +10,7 @@ from app.models.managed_service import ManagedService
 from app.models.tenant import Tenant
 from app.models.tenant_member import MemberRole, TenantMember
 from app.schemas.tenant import TenantCreate, TenantResponse, TenantUpdate
+from app.services.audit_service import audit
 from app.services.gitops_scaffold import gitops_scaffold
 from app.services.keycloak_service import keycloak_service  # noqa: F401 — used by test mocks
 from app.services.managed_service import ManagedServiceProvisioner
@@ -135,6 +136,17 @@ async def create_tenant(body: TenantCreate, db: DBSession, k8s: K8sDep, current_
         await db.rollback()
         raise HTTPException(status_code=409, detail=f"Tenant '{body.slug}' already exists")
     await db.refresh(tenant)
+
+    await audit(
+        db,
+        tenant_id=tenant.id,
+        action="tenant.create",
+        user_id=current_user.get("sub", ""),
+        resource_type="tenant",
+        resource_id=str(tenant.id),
+        extra={"slug": tenant.slug},
+    )
+
     return tenant
 
 
@@ -187,6 +199,17 @@ async def delete_tenant(tenant_slug: str, db: DBSession, k8s: K8sDep, current_us
     # 4. GitOps scaffold: remove tenant directory from haven-gitops
     await gitops_scaffold.delete_tenant(tenant.slug)
 
-    # 5. DB cascade delete (tenant → apps → services → deployments)
+    # 5. Audit log before cascade delete
+    await audit(
+        db,
+        tenant_id=tenant.id,
+        action="tenant.delete",
+        user_id=current_user.get("sub", ""),
+        resource_type="tenant",
+        resource_id=str(tenant.id),
+        extra={"slug": tenant.slug},
+    )
+
+    # 6. DB cascade delete (tenant → apps → services → deployments)
     await db.delete(tenant)
     await db.commit()

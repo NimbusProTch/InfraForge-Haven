@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/select";
 import { api, type ManagedService } from "@/lib/api";
 import { Plus } from "lucide-react";
+import { ServiceIcon } from "@/components/icons/ServiceIcons";
 
 interface AddServiceModalProps {
   tenantSlug: string;
@@ -99,19 +100,19 @@ export function AddServiceModal({ tenantSlug, accessToken, onCreated }: AddServi
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="postgres">
-                  <span className="flex items-center gap-2">PostgreSQL (Percona)</span>
+                  <span className="flex items-center gap-2"><ServiceIcon type="postgres" size={16} /> PostgreSQL</span>
                 </SelectItem>
                 <SelectItem value="mysql">
-                  <span className="flex items-center gap-2">MySQL (Percona XtraDB)</span>
+                  <span className="flex items-center gap-2"><ServiceIcon type="mysql" size={16} /> MySQL</span>
                 </SelectItem>
                 <SelectItem value="mongodb">
-                  <span className="flex items-center gap-2">MongoDB (Percona)</span>
+                  <span className="flex items-center gap-2"><ServiceIcon type="mongodb" size={16} /> MongoDB</span>
                 </SelectItem>
                 <SelectItem value="redis">
-                  <span className="flex items-center gap-2">Redis</span>
+                  <span className="flex items-center gap-2"><ServiceIcon type="redis" size={16} /> Redis</span>
                 </SelectItem>
                 <SelectItem value="rabbitmq">
-                  <span className="flex items-center gap-2">RabbitMQ</span>
+                  <span className="flex items-center gap-2"><ServiceIcon type="rabbitmq" size={16} /> RabbitMQ</span>
                 </SelectItem>
               </SelectContent>
             </Select>
