@@ -81,7 +81,7 @@ async def list_applications(tenant_slug: str, db: DBSession, current_user: Curre
 async def create_application(
     tenant_slug: str, body: ApplicationCreate, db: DBSession, k8s: K8sDep, current_user: CurrentUser
 ) -> Application:
-    tenant = await _get_tenant_or_404(tenant_slug, db)
+    tenant = await _get_tenant_or_404(tenant_slug, db, current_user)
 
     # Check slug uniqueness within tenant
     existing = await db.execute(
@@ -128,7 +128,7 @@ async def create_application(
 
 @router.get("/{app_slug}", response_model=ApplicationResponse)
 async def get_application(tenant_slug: str, app_slug: str, db: DBSession, current_user: CurrentUser) -> Application:
-    tenant = await _get_tenant_or_404(tenant_slug, db)
+    tenant = await _get_tenant_or_404(tenant_slug, db, current_user)
     result = await db.execute(
         select(Application).where(Application.tenant_id == tenant.id, Application.slug == app_slug)
     )
@@ -147,7 +147,7 @@ async def update_application(
     current_user: CurrentUser,
     queue: GitQueueDep,
 ) -> Application:
-    tenant = await _get_tenant_or_404(tenant_slug, db)
+    tenant = await _get_tenant_or_404(tenant_slug, db, current_user)
     result = await db.execute(
         select(Application).where(Application.tenant_id == tenant.id, Application.slug == app_slug)
     )
@@ -205,7 +205,7 @@ async def upsert_secrets(
 
     These are injected into the pod via envFrom.secretRef and never stored in GitOps.
     """
-    tenant = await _get_tenant_or_404(tenant_slug, db)
+    tenant = await _get_tenant_or_404(tenant_slug, db, current_user)
     app = await _get_app_or_404(tenant.id, app_slug, db)
 
     from app.services.secret_service import SecretService
@@ -229,7 +229,7 @@ async def list_secret_keys(
     current_user: CurrentUser,
 ) -> dict:
     """List sensitive env var keys (values never returned via API)."""
-    tenant = await _get_tenant_or_404(tenant_slug, db)
+    tenant = await _get_tenant_or_404(tenant_slug, db, current_user)
     app = await _get_app_or_404(tenant.id, app_slug, db)
 
     from app.services.secret_service import SecretService
@@ -248,7 +248,7 @@ async def list_secret_keys(
 async def delete_application(
     tenant_slug: str, app_slug: str, db: DBSession, k8s: K8sDep, current_user: CurrentUser
 ) -> None:
-    tenant = await _get_tenant_or_404(tenant_slug, db)
+    tenant = await _get_tenant_or_404(tenant_slug, db, current_user)
     result = await db.execute(
         select(Application).where(Application.tenant_id == tenant.id, Application.slug == app_slug)
     )
@@ -311,7 +311,7 @@ async def connect_service(
     queue: GitQueueDep,
 ) -> Application:
     """Attach a managed service secret to an app's envFrom list."""
-    tenant = await _get_tenant_or_404(tenant_slug, db)
+    tenant = await _get_tenant_or_404(tenant_slug, db, current_user)
     app = await _get_app_or_404(tenant.id, app_slug, db)
 
     result = await db.execute(
@@ -371,7 +371,7 @@ async def disconnect_service(
     queue: GitQueueDep,
 ) -> None:
     """Remove a managed service secret from an app's envFrom list."""
-    tenant = await _get_tenant_or_404(tenant_slug, db)
+    tenant = await _get_tenant_or_404(tenant_slug, db, current_user)
     app = await _get_app_or_404(tenant.id, app_slug, db)
 
     existing: list[dict] = list(app.env_from_secrets or [])
