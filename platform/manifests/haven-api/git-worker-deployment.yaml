@@ -20,7 +20,7 @@ spec:
       serviceAccountName: haven-api
       containers:
         - name: git-worker
-          image: harbor.46.225.42.2.sslip.io/library/haven-api:6258155
+          image: harbor.46.225.42.2.sslip.io/library/haven-api:dd01b2c
           command: ["python", "-m", "app.workers.git_worker"]
           envFrom:
             - configMapRef:
