@@ -84,13 +84,13 @@ test.describe.serial("Sprint 1: Auth & Login", () => {
     await page.waitForTimeout(2_000);
 
     // Platform section
-    await expect(page.getByText("PLATFORM")).toBeVisible();
+    await expect(page.getByText("Platform", { exact: true }).first()).toBeVisible();
     await expect(page.getByText("Dashboard").first()).toBeVisible();
     await expect(page.getByText("Projects").first()).toBeVisible();
     await expect(page.getByText("Organizations").first()).toBeVisible();
 
     // Operations section
-    await expect(page.getByText("OPERATIONS")).toBeVisible();
+    await expect(page.getByText("Operations", { exact: true }).first()).toBeVisible();
     await expect(page.getByText("Build Queue").first()).toBeVisible();
 
     await page.screenshot({ path: "test-results/sprint1/p04-sidebar.png" });
