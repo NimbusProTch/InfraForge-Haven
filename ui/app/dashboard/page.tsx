@@ -95,7 +95,7 @@ export default function DashboardPage() {
   }, [status, router]);
 
   useEffect(() => {
-    if (status !== "authenticated") return;
+    if (status !== "authenticated" || !accessToken) return;
 
     async function load() {
       try {

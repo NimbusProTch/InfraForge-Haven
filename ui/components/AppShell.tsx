@@ -8,6 +8,10 @@ import { useTheme } from "next-themes";
 import {
   LayoutDashboard,
   Building2,
+  FolderKanban,
+  Activity,
+  ListOrdered,
+  Settings,
   LogOut,
   Anchor,
   Sun,
@@ -15,9 +19,21 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-const NAV_ITEMS = [
-  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/tenants", label: "Tenants", icon: Building2 },
+const NAV_SECTIONS = [
+  {
+    label: "Platform",
+    items: [
+      { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+      { href: "/tenants", label: "Projects", icon: FolderKanban },
+      { href: "/organizations", label: "Organizations", icon: Building2 },
+    ],
+  },
+  {
+    label: "Operations",
+    items: [
+      { href: "/platform/queue", label: "Build Queue", icon: ListOrdered },
+    ],
+  },
 ];
 
 interface AppShellProps {
@@ -46,28 +62,37 @@ export function AppShell({ children, userEmail }: AppShellProps) {
         </div>
 
         {/* Nav */}
-        <nav className="flex-1 p-2 space-y-0.5 overflow-y-auto">
-          {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
-            const isActive =
-              pathname === href ||
-              (href !== "/dashboard" && pathname.startsWith(href + "/")) ||
-              (href !== "/dashboard" && pathname === href);
-            return (
-              <Link
-                key={href}
-                href={href}
-                className={cn(
-                  "flex items-center gap-2.5 px-3 py-2 rounded-md text-sm transition-colors",
-                  isActive
-                    ? "bg-blue-50 dark:bg-[#1e293b] text-blue-700 dark:text-white font-medium"
-                    : "text-gray-500 dark:text-[#888] hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-[#1a1a1a]"
-                )}
-              >
-                <Icon className="w-4 h-4 shrink-0" />
-                {label}
-              </Link>
-            );
-          })}
+        <nav className="flex-1 p-2 overflow-y-auto">
+          {NAV_SECTIONS.map((section) => (
+            <div key={section.label} className="mb-4">
+              <p className="px-3 mb-1 text-[10px] font-semibold uppercase tracking-widest text-gray-400 dark:text-[#555]">
+                {section.label}
+              </p>
+              <div className="space-y-0.5">
+                {section.items.map(({ href, label, icon: Icon }) => {
+                  const isActive =
+                    pathname === href ||
+                    (href !== "/dashboard" && pathname.startsWith(href + "/")) ||
+                    (href !== "/dashboard" && pathname === href);
+                  return (
+                    <Link
+                      key={href}
+                      href={href}
+                      className={cn(
+                        "flex items-center gap-2.5 px-3 py-2 rounded-md text-sm transition-colors",
+                        isActive
+                          ? "bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 font-medium border-l-2 border-emerald-500"
+                          : "text-gray-500 dark:text-[#888] hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-[#1a1a1a]"
+                      )}
+                    >
+                      <Icon className="w-4 h-4 shrink-0" />
+                      {label}
+                    </Link>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
         </nav>
 
         {/* Bottom: theme toggle + user */}
