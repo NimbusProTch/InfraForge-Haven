@@ -56,7 +56,7 @@ async def audit(
     extra: dict[str, Any] | None = None,
     ip_address: str | None = None,
 ) -> AuditLog:
-    """Create an AuditLog entry and flush it to the current transaction."""
+    """Create an AuditLog entry and commit it."""
     entry = AuditLog(
         tenant_id=tenant_id,
         user_id=user_id,
@@ -67,5 +67,5 @@ async def audit(
         ip_address=ip_address,
     )
     db.add(entry)
-    await db.flush()
+    await db.commit()
     return entry

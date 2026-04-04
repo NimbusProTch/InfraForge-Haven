@@ -32,7 +32,11 @@ test.describe.serial("Sprint 3: App Build & Deploy Pipeline", () => {
 
   // -- Cleanup: delete tenant (cascades apps, services, namespace) --
   test.afterAll(async () => {
-    await apiCall("DELETE", `/tenants/${SLUG}`);
+    // Tenant delete cascades K8s cleanup which can take >30s
+    await Promise.race([
+      apiCall("DELETE", `/tenants/${SLUG}`),
+      new Promise((r) => setTimeout(r, 55_000)),
+    ]);
   });
 
   // ---------------------------------------------------------------
