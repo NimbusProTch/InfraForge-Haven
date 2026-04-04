@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Breadcrumb } from "@/components/Breadcrumb";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { AddServiceModal } from "@/components/AddServiceModal";
+import { ServiceIcon } from "@/components/icons/ServiceIcons";
 import MembersTab from "@/components/MembersTab";
 import BillingTab from "@/components/BillingTab";
 import AuditLogsTab from "@/components/AuditLogsTab";
@@ -48,14 +49,6 @@ function appUrl(tenantSlug: string, appSlug: string) {
   if (!LB_IP) return null;
   return `https://${appSlug}.${tenantSlug}.apps.${LB_IP}.sslip.io`;
 }
-
-const SERVICE_ICONS: Record<string, string> = {
-  postgres: "🐘",
-  redis: "🔴",
-  rabbitmq: "🐰",
-  mysql: "🐬",
-  mongodb: "🍃",
-};
 
 const SERVICE_STATUS_VARIANT: Record<string, "success" | "warning" | "destructive" | "secondary"> = {
   ready: "success",
@@ -230,6 +223,23 @@ export default function TenantDetailPage() {
   useEffect(() => {
     load();
   }, [load]);
+
+  // Poll services while any is in "provisioning" state
+  useEffect(() => {
+    const hasProvisioning = services.some((s) => s.status === "provisioning");
+    if (!hasProvisioning || status !== "authenticated") return;
+
+    const interval = setInterval(async () => {
+      try {
+        const updated = await api.services.list(slug, accessToken);
+        setServices(updated);
+      } catch {
+        /* ignore */
+      }
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [services, slug, status, accessToken]);
 
   async function deleteService(serviceName: string) {
     if (!confirm(`Delete service "${serviceName}"?`)) return;
@@ -515,7 +525,7 @@ export default function TenantDetailPage() {
                   >
                     <div className="flex items-start justify-between">
                       <div className="flex items-center gap-2">
-                        <span className="text-lg">{SERVICE_ICONS[svc.service_type] ?? "🔧"}</span>
+                        <ServiceIcon type={svc.service_type} size={24} />
                         <div>
                           <p className="text-sm font-medium text-zinc-200">{svc.name}</p>
                           <p className="text-xs text-zinc-600">

@@ -11,6 +11,7 @@ from app.deps import CurrentUser, DBSession
 from app.models.tenant import Tenant
 from app.models.tenant_member import MemberRole, TenantMember
 from app.schemas.tenant_member import TenantMemberInvite, TenantMemberResponse, TenantMemberUpdate
+from app.services.audit_service import audit
 from app.services.keycloak_service import keycloak_service
 
 logger = logging.getLogger(__name__)
@@ -107,6 +108,17 @@ async def add_member(
     db.add(member)
     await db.commit()
     await db.refresh(member)
+
+    await audit(
+        db,
+        tenant_id=tenant.id,
+        action="member.add",
+        user_id=current_user.get("sub", ""),
+        resource_type="member",
+        resource_id=str(member.id),
+        extra={"email": body.email, "role": body.role.value},
+    )
+
     return member
 
 
@@ -149,6 +161,16 @@ async def remove_member(tenant_slug: str, user_id: str, db: DBSession, current_u
         )
         if len(list(owners_result.scalars().all())) <= 1:
             raise HTTPException(status_code=409, detail="Cannot remove the last owner")
+
+    await audit(
+        db,
+        tenant_id=tenant.id,
+        action="member.remove",
+        user_id=current_user.get("sub", ""),
+        resource_type="member",
+        resource_id=str(member.id),
+        extra={"removed_user_id": user_id},
+    )
 
     await db.delete(member)
     await db.commit()

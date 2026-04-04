@@ -7,23 +7,24 @@ interface Span {
   style: React.CSSProperties;
 }
 
+// Muted enterprise color palette (VS Code inspired)
 const ANSI_COLORS: Record<number, string> = {
-  30: "#4d4d4d",
-  31: "#ff6b6b",
-  32: "#69ff94",
-  33: "#ffe66d",
-  34: "#4fc3f7",
-  35: "#e040fb",
-  36: "#18ffff",
-  37: "#e0e0e0",
-  90: "#686868",
-  91: "#ff5555",
-  92: "#50fa7b",
-  93: "#f1fa8c",
-  94: "#bd93f9",
-  95: "#ff79c6",
-  96: "#8be9fd",
-  97: "#f8f8f2",
+  30: "#6b7280", // gray
+  31: "#f87171", // red (muted)
+  32: "#86efac", // green (muted)
+  33: "#fcd34d", // yellow (muted)
+  34: "#93c5fd", // blue (muted)
+  35: "#c4b5fd", // purple (muted)
+  36: "#67e8f9", // cyan (muted)
+  37: "#d1d5db", // light gray
+  90: "#9ca3af", // bright gray
+  91: "#fca5a5", // bright red
+  92: "#a7f3d0", // bright green
+  93: "#fde68a", // bright yellow
+  94: "#bfdbfe", // bright blue
+  95: "#ddd6fe", // bright purple
+  96: "#a5f3fc", // bright cyan
+  97: "#f3f4f6", // white
 };
 
 function parseAnsi(text: string): Span[] {
@@ -68,7 +69,7 @@ export function AnsiTerminal({ content, className = "", endRef }: AnsiTerminalPr
 
   return (
     <pre
-      className={`text-xs font-mono text-emerald-400/90 overflow-auto whitespace-pre-wrap break-all leading-relaxed ${className}`}
+      className={`text-[13px] font-mono text-zinc-300 overflow-auto whitespace-pre-wrap break-all leading-relaxed ${className}`}
     >
       {spans.map((span, i) => (
         <span key={i} style={span.style}>

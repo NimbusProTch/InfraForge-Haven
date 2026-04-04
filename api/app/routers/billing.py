@@ -37,21 +37,40 @@ async def get_usage(
 ) -> UsageSummary:
     """Return current period usage + history for a tenant."""
     tenant = await _get_tenant_or_404(tenant_slug, db)
-    limits = get_plan_limits(tenant.tier)
 
-    current = await get_or_create_current_record(db, tenant.id)
-    history = await get_usage_history(db, tenant.id, limit=history_months + 1)
-    usage_pct = compute_usage_pct(current, limits)
+    try:
+        limits = get_plan_limits(tenant.tier)
+        current = await get_or_create_current_record(db, tenant.id)
+        history = await get_usage_history(db, tenant.id, limit=history_months + 1)
+        usage_pct = compute_usage_pct(current, limits)
 
-    from app.schemas.billing import UsageRecordResponse
+        from app.schemas.billing import UsageRecordResponse
 
-    return UsageSummary(
-        tier=tenant.tier,
-        limits=limits,
-        current_period=UsageRecordResponse.model_validate(current),
-        usage_pct=usage_pct,
-        history=[UsageRecordResponse.model_validate(r) for r in history],
-    )
+        return UsageSummary(
+            tier=tenant.tier,
+            limits=limits,
+            current_period=UsageRecordResponse.model_validate(current),
+            usage_pct=usage_pct,
+            history=[UsageRecordResponse.model_validate(r) for r in history],
+        )
+    except Exception:
+        logger.exception("Failed to compute usage for tenant %s — returning empty state", tenant_slug)
+        from app.schemas.billing import PlanLimits
+
+        return UsageSummary(
+            tier=tenant.tier or "free",
+            limits=PlanLimits(
+                cpu_hours=0,
+                memory_gb_hours=0,
+                storage_gb_hours=0,
+                build_minutes=0,
+                bandwidth_gb=0,
+                max_apps=0,
+            ),
+            current_period=None,
+            usage_pct={},
+            history=[],
+        )
 
 
 @router.patch("/{tenant_slug}/tier", response_model=dict)

@@ -12,6 +12,7 @@ from app.models.application import Application
 from app.models.deployment import Deployment, DeploymentStatus
 from app.models.tenant import Tenant
 from app.schemas.deployment import DeploymentResponse
+from app.services.audit_service import audit
 from app.services.deploy_service import DeployService, get_service_secret_names
 from app.services.pipeline import run_pipeline
 
@@ -237,6 +238,17 @@ async def trigger_build(
         max_replicas=app.max_replicas,
         cpu_threshold=app.cpu_threshold,
     )
+
+    await audit(
+        db,
+        tenant_id=tenant.id,
+        action="deployment.build",
+        user_id=current_user.get("sub", ""),
+        resource_type="deployment",
+        resource_id=str(deployment.id),
+        extra={"app_slug": app.slug},
+    )
+
     return deployment
 
 
@@ -285,6 +297,16 @@ async def trigger_deploy(
             k8s=k8s,
         ),
         name=f"redeploy-{deployment.id}",
+    )
+
+    await audit(
+        db,
+        tenant_id=tenant.id,
+        action="deployment.deploy",
+        user_id=current_user.get("sub", ""),
+        resource_type="deployment",
+        resource_id=str(deployment.id),
+        extra={"app_slug": app.slug, "image_tag": app.image_tag},
     )
 
     return deployment
@@ -585,6 +607,7 @@ async def _run_redeploy(
 ) -> None:
     """Re-deploy an existing image without going through the build step."""
     from app.models.deployment import Deployment as _Deployment
+    from app.services.pipeline import WAIT_FOR_READY_TIMEOUT
 
     session_factory = get_session_factory()
     deploy_svc = DeployService(k8s)
@@ -596,44 +619,75 @@ async def _run_redeploy(
             await db.commit()
 
     try:
-        await deploy_svc.deploy(
-            namespace=namespace,
-            tenant_slug=tenant_slug,
-            app_slug=app_slug,
-            image=image,
-            replicas=replicas,
-            env_vars=env_vars,
-            service_secret_names=service_secret_names,
-            port=port,
-        )
-    except Exception as exc:
-        logger.exception("Redeploy failed for deployment %s", deployment_id)
+        try:
+            await deploy_svc.deploy(
+                namespace=namespace,
+                tenant_slug=tenant_slug,
+                app_slug=app_slug,
+                image=image,
+                replicas=replicas,
+                env_vars=env_vars,
+                service_secret_names=service_secret_names,
+                port=port,
+            )
+        except Exception as exc:
+            logger.exception("Redeploy failed for deployment %s", deployment_id)
+            async with session_factory() as db:
+                dep = await db.get(_Deployment, deployment_id)
+                if dep:
+                    dep.status = DeploymentStatus.FAILED
+                    dep.error_message = str(exc)[:4096]
+                    await db.commit()
+            return
+
+        # Wait for at least 1 ready replica before marking as RUNNING
+        try:
+            ready, msg = await asyncio.wait_for(
+                deploy_svc.wait_for_ready(namespace, app_slug),
+                timeout=WAIT_FOR_READY_TIMEOUT,
+            )
+        except TimeoutError:
+            ready, msg = False, f"Readiness check timed out after {WAIT_FOR_READY_TIMEOUT}s"
+
+        if not ready:
+            logger.error("Redeploy not ready: %s (deployment=%s)", msg, deployment_id)
+            async with session_factory() as db:
+                dep = await db.get(_Deployment, deployment_id)
+                if dep:
+                    dep.status = DeploymentStatus.FAILED
+                    dep.error_message = msg[:4096]
+                    await db.commit()
+            return
+
         async with session_factory() as db:
             dep = await db.get(_Deployment, deployment_id)
             if dep:
-                dep.status = DeploymentStatus.FAILED
-                dep.error_message = str(exc)[:4096]
+                dep.status = DeploymentStatus.RUNNING
                 await db.commit()
-        return
-
-    # Wait for at least 1 ready replica before marking as RUNNING
-    ready, msg = await deploy_svc.wait_for_ready(namespace, app_slug)
-    if not ready:
-        logger.error("Redeploy not ready: %s (deployment=%s)", msg, deployment_id)
+            app = await db.get(Application, app_id)
+            if app:
+                app.image_tag = image
+                await db.commit()
+    finally:
+        # Safety net: if status is still DEPLOYING after redeploy ends, resolve it
         async with session_factory() as db:
             dep = await db.get(_Deployment, deployment_id)
-            if dep:
-                dep.status = DeploymentStatus.FAILED
-                dep.error_message = msg[:4096]
+            if dep and dep.status == DeploymentStatus.DEPLOYING:
+                logger.warning(
+                    "Deployment %s still in DEPLOYING state after redeploy — checking pod status",
+                    deployment_id,
+                )
+                try:
+                    pod_ready, pod_msg = await deploy_svc.wait_for_ready(namespace, app_slug, timeout=10)
+                    if pod_ready:
+                        dep.status = DeploymentStatus.RUNNING
+                        logger.info("Deployment %s resolved to RUNNING via finally check", deployment_id)
+                    else:
+                        dep.status = DeploymentStatus.FAILED
+                        dep.error_message = f"Redeploy ended with DEPLOYING status: {pod_msg}"[:4096]
+                        logger.error("Deployment %s resolved to FAILED via finally check: %s", deployment_id, pod_msg)
+                except Exception:
+                    dep.status = DeploymentStatus.FAILED
+                    dep.error_message = "Redeploy ended unexpectedly while still in DEPLOYING status"
+                    logger.exception("Deployment %s finally check failed", deployment_id)
                 await db.commit()
-        return
-
-    async with session_factory() as db:
-        dep = await db.get(_Deployment, deployment_id)
-        if dep:
-            dep.status = DeploymentStatus.RUNNING
-            await db.commit()
-        app = await db.get(Application, app_id)
-        if app:
-            app.image_tag = image
-            await db.commit()

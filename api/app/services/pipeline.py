@@ -8,6 +8,7 @@ Supports two deployment modes:
   2. Direct: calls K8s API directly (fallback when GitOps not configured)
 """
 
+import asyncio
 import logging
 import uuid
 
@@ -25,6 +26,9 @@ from app.services.deploy_service import DeployService, get_service_secret_names
 from app.services.git_queue_service import GitOperation, GitQueueService
 from app.services.gitops_service import GitOpsService
 from app.services.helm_values_builder import build_app_values
+
+# Maximum time (seconds) to wait for a deployment to become ready
+WAIT_FOR_READY_TIMEOUT = 120
 
 logger = logging.getLogger(__name__)
 
@@ -187,89 +191,131 @@ async def run_pipeline(
         return
 
     # --- WAIT FOR READY -------------------------------------------------
-    if use_gitops and argocd:
-        # Wait for ArgoCD to sync and report healthy
-        ready, msg = await argocd.wait_for_healthy(f"{tenant_slug}-{app_slug}")
+    try:
+        if use_gitops and argocd:
+            # Wait for ArgoCD to sync and report healthy
+            try:
+                ready, msg = await asyncio.wait_for(
+                    argocd.wait_for_healthy(f"{tenant_slug}-{app_slug}"),
+                    timeout=WAIT_FOR_READY_TIMEOUT,
+                )
+            except TimeoutError:
+                ready, msg = False, f"ArgoCD wait timed out after {WAIT_FOR_READY_TIMEOUT}s"
+            if not ready:
+                # Fallback: ArgoCD may be unreachable but pod might be running via auto-sync
+                logger.warning("ArgoCD wait failed (%s) — falling back to K8s check", msg)
+                try:
+                    ready, msg = await asyncio.wait_for(
+                        deploy_svc.wait_for_ready(namespace, app_slug, timeout=60),
+                        timeout=WAIT_FOR_READY_TIMEOUT,
+                    )
+                except TimeoutError:
+                    ready, msg = False, f"K8s readiness check timed out after {WAIT_FOR_READY_TIMEOUT}s"
+        else:
+            # Direct K8s mode: wait for deployment ready replicas
+            try:
+                ready, msg = await asyncio.wait_for(
+                    deploy_svc.wait_for_ready(namespace, app_slug),
+                    timeout=WAIT_FOR_READY_TIMEOUT,
+                )
+            except TimeoutError:
+                ready, msg = False, f"K8s readiness check timed out after {WAIT_FOR_READY_TIMEOUT}s"
+
         if not ready:
-            # Fallback: ArgoCD may be unreachable but pod might be running via auto-sync
-            logger.warning("ArgoCD wait failed (%s) — falling back to K8s check", msg)
-            ready, msg = await deploy_svc.wait_for_ready(namespace, app_slug, timeout=60)
-    else:
-        # Direct K8s mode: wait for deployment ready replicas
-        ready, msg = await deploy_svc.wait_for_ready(namespace, app_slug)
+            logger.error("Deployment not ready: %s (deployment=%s)", msg, deployment_id)
+            await _fail(deployment_id, msg, session_factory, environment_id)
+            return
 
-    if not ready:
-        logger.error("Deployment not ready: %s (deployment=%s)", msg, deployment_id)
-        await _fail(deployment_id, msg, session_factory, environment_id)
-        return
-
-    # --- RUNNING --------------------------------------------------------
-    async with session_factory() as db:
-        deployment = await db.get(Deployment, deployment_id)
-        if deployment:
-            deployment.status = DeploymentStatus.RUNNING
-            await db.commit()
-
-        app = await db.get(Application, app_id)
-        if app:
-            app.image_tag = image_name
-            await db.commit()
-
-        # Update environment status if this is a scoped deployment
-        if environment_id is not None:
-            env = await db.get(Environment, environment_id)
-            if env:
-                env.status = EnvironmentStatus.running
-                env.last_image_tag = image_name
+        # --- RUNNING --------------------------------------------------------
+        async with session_factory() as db:
+            deployment = await db.get(Deployment, deployment_id)
+            if deployment:
+                deployment.status = DeploymentStatus.RUNNING
                 await db.commit()
 
-    # Enqueue image tag update via git queue to keep gitops repo in sync
-    if queue is not None:
-        try:
-            values = build_app_values(
-                tenant_slug=tenant_slug,
-                app_slug=app_slug,
-                namespace=namespace,
-                image=image_name,
-                replicas=replicas,
-                env_vars=env_vars,
-                service_secret_names=list(secret_names),
-                port=port,
-                custom_domain=custom_domain,
-                health_check_path=health_check_path,
-                resource_cpu_request=resource_cpu_request,
-                resource_cpu_limit=resource_cpu_limit,
-                resource_memory_request=resource_memory_request,
-                resource_memory_limit=resource_memory_limit,
-                min_replicas=min_replicas,
-                max_replicas=max_replicas,
-                cpu_threshold=cpu_threshold,
-            )
-            await queue.enqueue(
-                GitOperation.UPDATE_FILE,
-                {
-                    "tenant_slug": tenant_slug,
-                    "app_slug": app_slug,
-                    "values": values,
-                    "repo": settings.gitea_gitops_repo,
-                    "path": f"tenants/{tenant_slug}/{app_slug}/values.yaml",
-                    "commit_message": f"[haven] deploy {tenant_slug}/{app_slug} image={commit_sha[:8]}",
-                    "author": "Haven Platform <haven@haven.dev>",
-                    "content": yaml.dump(values, default_flow_style=False, sort_keys=False),
-                },
-            )
-            logger.info("Enqueued image tag update for %s/%s", tenant_slug, app_slug)
-        except Exception:
-            logger.exception("Failed to enqueue image tag update for %s/%s", tenant_slug, app_slug)
+            app = await db.get(Application, app_id)
+            if app:
+                app.image_tag = image_name
+                await db.commit()
 
-    logger.info(
-        "Pipeline complete: deployment=%s image=%s namespace=%s app=%s mode=%s",
-        deployment_id,
-        image_name,
-        namespace,
-        app_slug,
-        "gitops" if use_gitops else "direct",
-    )
+            # Update environment status if this is a scoped deployment
+            if environment_id is not None:
+                env = await db.get(Environment, environment_id)
+                if env:
+                    env.status = EnvironmentStatus.running
+                    env.last_image_tag = image_name
+                    await db.commit()
+
+        # Enqueue image tag update via git queue to keep gitops repo in sync
+        if queue is not None:
+            try:
+                values = build_app_values(
+                    tenant_slug=tenant_slug,
+                    app_slug=app_slug,
+                    namespace=namespace,
+                    image=image_name,
+                    replicas=replicas,
+                    env_vars=env_vars,
+                    service_secret_names=list(secret_names),
+                    port=port,
+                    custom_domain=custom_domain,
+                    health_check_path=health_check_path,
+                    resource_cpu_request=resource_cpu_request,
+                    resource_cpu_limit=resource_cpu_limit,
+                    resource_memory_request=resource_memory_request,
+                    resource_memory_limit=resource_memory_limit,
+                    min_replicas=min_replicas,
+                    max_replicas=max_replicas,
+                    cpu_threshold=cpu_threshold,
+                )
+                await queue.enqueue(
+                    GitOperation.UPDATE_FILE,
+                    {
+                        "tenant_slug": tenant_slug,
+                        "app_slug": app_slug,
+                        "values": values,
+                        "repo": settings.gitea_gitops_repo,
+                        "path": f"tenants/{tenant_slug}/{app_slug}/values.yaml",
+                        "commit_message": f"[haven] deploy {tenant_slug}/{app_slug} image={commit_sha[:8]}",
+                        "author": "Haven Platform <haven@haven.dev>",
+                        "content": yaml.dump(values, default_flow_style=False, sort_keys=False),
+                    },
+                )
+                logger.info("Enqueued image tag update for %s/%s", tenant_slug, app_slug)
+            except Exception:
+                logger.exception("Failed to enqueue image tag update for %s/%s", tenant_slug, app_slug)
+
+        logger.info(
+            "Pipeline complete: deployment=%s image=%s namespace=%s app=%s mode=%s",
+            deployment_id,
+            image_name,
+            namespace,
+            app_slug,
+            "gitops" if use_gitops else "direct",
+        )
+    finally:
+        # Safety net: if status is still DEPLOYING after pipeline ends, resolve it
+        async with session_factory() as db:
+            deployment = await db.get(Deployment, deployment_id)
+            if deployment and deployment.status == DeploymentStatus.DEPLOYING:
+                logger.warning(
+                    "Deployment %s still in DEPLOYING state after pipeline — checking pod status",
+                    deployment_id,
+                )
+                try:
+                    pod_ready, pod_msg = await deploy_svc.wait_for_ready(namespace, app_slug, timeout=10)
+                    if pod_ready:
+                        deployment.status = DeploymentStatus.RUNNING
+                        logger.info("Deployment %s resolved to RUNNING via finally check", deployment_id)
+                    else:
+                        deployment.status = DeploymentStatus.FAILED
+                        deployment.error_message = f"Pipeline ended with DEPLOYING status: {pod_msg}"[:4096]
+                        logger.error("Deployment %s resolved to FAILED via finally check: %s", deployment_id, pod_msg)
+                except Exception:
+                    deployment.status = DeploymentStatus.FAILED
+                    deployment.error_message = "Pipeline ended unexpectedly while still in DEPLOYING status"
+                    logger.exception("Deployment %s finally check failed", deployment_id)
+                await db.commit()
 
 
 async def _fail(

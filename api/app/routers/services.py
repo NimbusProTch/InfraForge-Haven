@@ -17,6 +17,7 @@ from app.schemas.managed_service import (
     ServiceCredentials,
     ServiceRuntimeDetails,
 )
+from app.services.audit_service import audit
 from app.services.managed_service import ManagedServiceProvisioner
 
 _TRANSITIONAL_STATUSES = {ServiceStatus.PROVISIONING, ServiceStatus.UPDATING}
@@ -101,6 +102,17 @@ async def create_service(
         await db.rollback()
         raise HTTPException(status_code=409, detail=f"Service '{body.name}' already exists") from exc
     await db.refresh(svc)
+
+    await audit(
+        db,
+        tenant_id=tenant.id,
+        action="service.create",
+        user_id=current_user.get("sub", ""),
+        resource_type="managed_service",
+        resource_id=str(svc.id),
+        extra={"name": svc.name, "service_type": svc.service_type.value},
+    )
+
     return svc
 
 
@@ -227,6 +239,16 @@ async def delete_service(
     # Deprovision K8s/Everest resources
     provisioner = ManagedServiceProvisioner(k8s)
     await provisioner.deprovision(svc)
+
+    await audit(
+        db,
+        tenant_id=tenant.id,
+        action="service.delete",
+        user_id=current_user.get("sub", ""),
+        resource_type="managed_service",
+        resource_id=str(svc.id),
+        extra={"name": svc.name, "service_type": svc.service_type.value},
+    )
 
     await db.delete(svc)
     await db.commit()
