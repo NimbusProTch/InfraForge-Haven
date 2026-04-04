@@ -103,6 +103,7 @@ export default function AppSettings({ tenantSlug, app, accessToken, onSaved }: A
   const [branches, setBranches] = useState<GitHubBranch[]>([]);
   const [branchesLoading, setBranchesLoading] = useState(false);
   const [manualMode, setManualMode] = useState(false);
+  const [repoFilter, setRepoFilter] = useState("");
 
   const lastLoadedTokenRef = useRef<string | null>(null);
 
@@ -129,7 +130,14 @@ export default function AppSettings({ tenantSlug, app, accessToken, onSaved }: A
         await new Promise((r) => setTimeout(r, 1000));
         return loadRepos(token, retries - 1);
       }
-      setReposError(err instanceof Error ? err.message : "Failed to load repositories");
+      const msg = err instanceof Error ? err.message : "Failed to load repositories";
+      if (msg.includes("401") || msg.includes("403") || msg.includes("Unauthorized")) {
+        localStorage.removeItem(GITHUB_TOKEN_KEY);
+        setGithubToken(null);
+        setReposError("GitHub token expired. Please reconnect.");
+      } else {
+        setReposError(msg);
+      }
       return [];
     } finally {
       setReposLoading(false);
@@ -208,7 +216,7 @@ export default function AppSettings({ tenantSlug, app, accessToken, onSaved }: A
     }
   }
 
-  function disconnectGitHub() {
+  async function disconnectGitHub() {
     localStorage.removeItem(GITHUB_TOKEN_KEY);
     setGithubToken(null);
     setRepos([]);
@@ -216,6 +224,12 @@ export default function AppSettings({ tenantSlug, app, accessToken, onSaved }: A
     setBranches([]);
     setReposError("");
     setManualMode(true);
+    // Also clear server-side token
+    try {
+      await api.github.disconnect(tenantSlug, accessToken);
+    } catch {
+      // ignore — localStorage already cleared
+    }
   }
 
   async function loadBranches(repo: GitHubRepo, token: string) {
@@ -418,7 +432,19 @@ export default function AppSettings({ tenantSlug, app, accessToken, onSaved }: A
                         <div>
                           <label className="block text-xs text-gray-500 dark:text-[#666] mb-1">
                             Repository
+                            <span className="ml-1 text-[10px] text-gray-400 dark:text-[#555]">
+                              ({repos.length})
+                            </span>
                           </label>
+                          {repos.length > 10 && (
+                            <input
+                              type="text"
+                              value={repoFilter}
+                              onChange={(e) => setRepoFilter(e.target.value)}
+                              placeholder="Filter repositories..."
+                              className="w-full px-3 py-1 mb-1.5 rounded-md border border-gray-200 dark:border-[#2e2e2e] bg-white dark:bg-[#0a0a0a] text-gray-900 dark:text-white text-xs placeholder-gray-400 dark:placeholder-[#444] focus:outline-none focus:ring-1 focus:ring-blue-500 transition-colors"
+                            />
+                          )}
                           <div className="relative">
                             <select
                               value={selectedRepo?.full_name ?? ""}
@@ -429,9 +455,11 @@ export default function AppSettings({ tenantSlug, app, accessToken, onSaved }: A
                               className="w-full appearance-none px-3 py-1.5 pr-8 rounded-md border border-gray-200 dark:border-[#2e2e2e] bg-white dark:bg-[#0a0a0a] text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 transition-colors"
                             >
                               <option value="">Select a repository...</option>
-                              {repos.map((r) => (
+                              {repos
+                                .filter((r) => !repoFilter || r.full_name.toLowerCase().includes(repoFilter.toLowerCase()))
+                                .map((r) => (
                                 <option key={r.id} value={r.full_name}>
-                                  {r.private ? "private: " : ""}
+                                  {r.private ? "🔒 " : ""}
                                   {r.full_name}
                                 </option>
                               ))}

@@ -48,6 +48,7 @@ export default function NewAppPage() {
   const [branches, setBranches] = useState<GitHubBranch[]>([]);
   const [branchesLoading, setBranchesLoading] = useState(false);
   const [manualMode, setManualMode] = useState(false);
+  const [repoFilter, setRepoFilter] = useState("");
 
   // Session access token from NextAuth GitHub sign-in (fallback)
   const s = session as typeof session & { accessToken?: string; provider?: string };
@@ -56,10 +57,14 @@ export default function NewAppPage() {
   // Effective token: OAuth popup > NextAuth GitHub session
   const effectiveToken = githubToken ?? sessionToken ?? null;
 
-  // Restore OAuth token from localStorage
+  // Restore OAuth token from localStorage and validate it
   useEffect(() => {
     const stored = localStorage.getItem(GITHUB_TOKEN_KEY);
-    if (stored) setGithubToken(stored);
+    if (stored) {
+      // Validate the token by attempting to load repos
+      // If it fails, clear it and show reconnect
+      setGithubToken(stored);
+    }
   }, []);
 
   // Track the last token that triggered a repo load to detect reconnects
@@ -78,7 +83,15 @@ export default function NewAppPage() {
         await new Promise((r) => setTimeout(r, 1000));
         return loadRepos(token, retries - 1);
       }
-      setReposError(err instanceof Error ? err.message : "Failed to load repositories");
+      // Token likely expired — clear it so user sees "Reconnect"
+      const msg = err instanceof Error ? err.message : "Failed to load repositories";
+      if (msg.includes("401") || msg.includes("403") || msg.includes("Unauthorized")) {
+        localStorage.removeItem(GITHUB_TOKEN_KEY);
+        setGithubToken(null);
+        setReposError("GitHub token expired. Please reconnect.");
+      } else {
+        setReposError(msg);
+      }
     } finally {
       setReposLoading(false);
     }
@@ -147,7 +160,7 @@ export default function NewAppPage() {
     }
   }
 
-  function disconnectGitHub() {
+  async function disconnectGitHub() {
     localStorage.removeItem(GITHUB_TOKEN_KEY);
     setGithubToken(null);
     setRepos([]);
@@ -156,6 +169,12 @@ export default function NewAppPage() {
     setRepoUrl("");
     setBranch("main");
     setReposError("");
+    // Also clear server-side token
+    try {
+      await api.github.disconnect(tenantSlug, s?.accessToken);
+    } catch {
+      // ignore — localStorage already cleared
+    }
   }
 
   async function loadBranches(repo: GitHubRepo, token: string) {
@@ -353,7 +372,19 @@ export default function NewAppPage() {
                     <div>
                       <label className="block text-sm font-medium text-gray-700 dark:text-[#ccc] mb-1.5">
                         Repository
+                        <span className="ml-1.5 text-xs text-gray-400 dark:text-[#555] font-normal">
+                          ({repos.length})
+                        </span>
                       </label>
+                      {repos.length > 10 && (
+                        <input
+                          type="text"
+                          value={repoFilter}
+                          onChange={(e) => setRepoFilter(e.target.value)}
+                          placeholder="Filter repositories..."
+                          className="w-full px-3 py-1.5 mb-1.5 rounded-md border border-gray-200 dark:border-[#2e2e2e] bg-white dark:bg-[#0f0f0f] text-gray-900 dark:text-white text-xs placeholder-gray-400 dark:placeholder-[#444] focus:outline-none focus:ring-1 focus:ring-blue-500 transition-colors"
+                        />
+                      )}
                       <div className="relative">
                         <select
                           value={selectedRepo?.full_name ?? ""}
@@ -363,8 +394,10 @@ export default function NewAppPage() {
                           }}
                           className="w-full appearance-none px-3 py-2 pr-8 rounded-md border border-gray-200 dark:border-[#2e2e2e] bg-white dark:bg-[#0f0f0f] text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 transition-colors"
                         >
-                          <option value="">Select a repository…</option>
-                          {repos.map((r) => (
+                          <option value="">Select a repository...</option>
+                          {repos
+                            .filter((r) => !repoFilter || r.full_name.toLowerCase().includes(repoFilter.toLowerCase()))
+                            .map((r) => (
                             <option key={r.id} value={r.full_name}>
                               {r.private ? "🔒 " : ""}
                               {r.full_name}

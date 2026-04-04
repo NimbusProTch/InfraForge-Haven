@@ -19,11 +19,20 @@ router = APIRouter(prefix="/tenants/{tenant_slug}/apps/{app_slug}", tags=["deplo
 logger = logging.getLogger(__name__)
 
 
-async def _get_tenant_or_404(tenant_slug: str, db: DBSession) -> Tenant:
+async def _get_tenant_or_404(tenant_slug: str, db: DBSession, current_user: dict | None = None) -> Tenant:
     result = await db.execute(select(Tenant).where(Tenant.slug == tenant_slug))
     tenant = result.scalar_one_or_none()
     if tenant is None:
         raise HTTPException(status_code=404, detail="Tenant not found")
+    if current_user:
+        from app.models.tenant_member import TenantMember
+
+        uid = current_user.get("sub", "")
+        mem = await db.execute(
+            select(TenantMember).where(TenantMember.tenant_id == tenant.id, TenantMember.user_id == uid)
+        )
+        if mem.scalar_one_or_none() is None:
+            raise HTTPException(status_code=403, detail="You are not a member of this tenant")
     return tenant
 
 
@@ -49,7 +58,7 @@ async def list_deployments(
     limit: int = 20,
 ) -> list[Deployment]:
     """List recent deployments for an application (newest first)."""
-    tenant = await _get_tenant_or_404(tenant_slug, db)
+    tenant = await _get_tenant_or_404(tenant_slug, db, current_user)
     app = await _get_app_or_404(tenant.id, app_slug, db)
 
     result = await db.execute(
@@ -70,7 +79,7 @@ async def get_deployment(
     current_user: CurrentUser,
 ) -> Deployment:
     """Get a single deployment by ID."""
-    tenant = await _get_tenant_or_404(tenant_slug, db)
+    tenant = await _get_tenant_or_404(tenant_slug, db, current_user)
     app = await _get_app_or_404(tenant.id, app_slug, db)
 
     result = await db.execute(
@@ -83,6 +92,92 @@ async def get_deployment(
     if deployment is None:
         raise HTTPException(status_code=404, detail="Deployment not found")
     return deployment
+
+
+@router.get("/build-status")
+async def get_build_status(
+    tenant_slug: str,
+    app_slug: str,
+    db: DBSession,
+    k8s: K8sDep,
+    current_user: CurrentUser,
+) -> dict:
+    """Get per-container build status for the latest deployment's build job.
+
+    Returns status of each init container (git-clone, nixpacks, buildctl)
+    so the UI can show granular pipeline step progress.
+    """
+    tenant = await _get_tenant_or_404(tenant_slug, db, current_user)
+    app = await _get_app_or_404(tenant.id, app_slug, db)
+
+    # Find latest deployment with a build job
+    result = await db.execute(
+        select(Deployment)
+        .where(Deployment.application_id == app.id, Deployment.build_job_name.isnot(None))
+        .order_by(Deployment.created_at.desc())
+        .limit(1)
+    )
+    deployment = result.scalar_one_or_none()
+    if not deployment or not deployment.build_job_name:
+        return {"job_name": None, "containers": [], "status": "no_build"}
+
+    if not k8s.is_available():
+        return {"job_name": deployment.build_job_name, "containers": [], "status": "k8s_unavailable"}
+
+    # Query build pod status from K8s
+    containers = []
+    try:
+        pods = await asyncio.to_thread(
+            k8s.core_v1.list_namespaced_pod,
+            namespace=settings.build_namespace,
+            label_selector=f"job-name={deployment.build_job_name}",
+        )
+        if pods.items:
+            pod = pods.items[0]
+            # Init containers (git-clone, nixpacks, buildctl)
+            for cs in pod.status.init_container_statuses or []:
+                container = {
+                    "name": cs.name,
+                    "status": "pending",
+                    "exit_code": None,
+                    "duration": None,
+                }
+                if cs.state.terminated:
+                    t = cs.state.terminated
+                    container["status"] = "completed" if t.exit_code == 0 else "failed"
+                    container["exit_code"] = t.exit_code
+                    if t.started_at and t.finished_at:
+                        delta = t.finished_at - t.started_at
+                        container["duration"] = f"{delta.total_seconds():.1f}s"
+                elif cs.state.running:
+                    container["status"] = "running"
+                    if cs.state.running.started_at:
+                        from datetime import UTC, datetime
+
+                        delta = datetime.now(UTC) - cs.state.running.started_at.replace(tzinfo=UTC)
+                        container["duration"] = f"{delta.total_seconds():.0f}s"
+                elif cs.state.waiting:
+                    container["status"] = "waiting"
+                containers.append(container)
+
+            # Main container (buildctl)
+            for cs in pod.status.container_statuses or []:
+                container = {"name": cs.name, "status": "pending", "exit_code": None, "duration": None}
+                if cs.state.terminated:
+                    t = cs.state.terminated
+                    container["status"] = "completed" if t.exit_code == 0 else "failed"
+                    container["exit_code"] = t.exit_code
+                elif cs.state.running:
+                    container["status"] = "running"
+                containers.append(container)
+    except Exception as exc:
+        logger.warning("Failed to query build pod status: %s", exc)
+
+    return {
+        "job_name": deployment.build_job_name,
+        "deployment_status": deployment.status.value,
+        "containers": containers,
+    }
 
 
 @router.post("/build", response_model=DeploymentResponse, status_code=status.HTTP_202_ACCEPTED)
@@ -101,7 +196,7 @@ async def trigger_build(
     The GitHub token is retrieved from the tenant's stored token in the database
     rather than being passed as a query parameter.
     """
-    tenant = await _get_tenant_or_404(tenant_slug, db)
+    tenant = await _get_tenant_or_404(tenant_slug, db, current_user)
     app = await _get_app_or_404(tenant.id, app_slug, db)
 
     deployment = Deployment(
@@ -154,7 +249,7 @@ async def trigger_deploy(
     current_user: CurrentUser,
 ) -> Deployment:
     """Manually trigger a deployment for the current image_tag."""
-    tenant = await _get_tenant_or_404(tenant_slug, db)
+    tenant = await _get_tenant_or_404(tenant_slug, db, current_user)
     app = await _get_app_or_404(tenant.id, app_slug, db)
 
     if not app.image_tag:
@@ -209,7 +304,7 @@ async def rollback_deployment(
     current_user: CurrentUser,
 ) -> Deployment:
     """Roll back to a specific past deployment's image."""
-    tenant = await _get_tenant_or_404(tenant_slug, db)
+    tenant = await _get_tenant_or_404(tenant_slug, db, current_user)
     app = await _get_app_or_404(tenant.id, app_slug, db)
 
     result = await db.execute(
@@ -267,7 +362,7 @@ async def sync_app(
     current_user: CurrentUser,
 ) -> dict:
     """Trigger an ArgoCD sync for this application."""
-    tenant = await _get_tenant_or_404(tenant_slug, db)
+    tenant = await _get_tenant_or_404(tenant_slug, db, current_user)
     await _get_app_or_404(tenant.id, app_slug, db)
 
     app_name = f"{tenant_slug}-{app_slug}"
@@ -284,7 +379,7 @@ async def get_sync_status(
     current_user: CurrentUser,
 ) -> dict:
     """Get ArgoCD sync and health status for this application."""
-    tenant = await _get_tenant_or_404(tenant_slug, db)
+    tenant = await _get_tenant_or_404(tenant_slug, db, current_user)
     await _get_app_or_404(tenant.id, app_slug, db)
 
     app_name = f"{tenant_slug}-{app_slug}"
@@ -300,7 +395,7 @@ async def get_deploy_history(
     current_user: CurrentUser,
 ) -> list[dict]:
     """Get ArgoCD deployment history for this application."""
-    tenant = await _get_tenant_or_404(tenant_slug, db)
+    tenant = await _get_tenant_or_404(tenant_slug, db, current_user)
     await _get_app_or_404(tenant.id, app_slug, db)
 
     app_name = f"{tenant_slug}-{app_slug}"
@@ -317,7 +412,7 @@ async def argocd_rollback(
     current_user: CurrentUser,
 ) -> dict:
     """Trigger ArgoCD rollback to a specific history revision ID."""
-    tenant = await _get_tenant_or_404(tenant_slug, db)
+    tenant = await _get_tenant_or_404(tenant_slug, db, current_user)
     await _get_app_or_404(tenant.id, app_slug, db)
 
     app_name = f"{tenant_slug}-{app_slug}"
@@ -343,7 +438,7 @@ async def stream_logs(
     Accepts an optional `token` query param so that browser EventSource
     (which cannot set custom headers) can authenticate.
     """
-    tenant = await _get_tenant_or_404(tenant_slug, db)
+    tenant = await _get_tenant_or_404(tenant_slug, db, current_user)
     app = await _get_app_or_404(tenant.id, app_slug, db)
     namespace = tenant.namespace
     selector = f"app={app.slug}"

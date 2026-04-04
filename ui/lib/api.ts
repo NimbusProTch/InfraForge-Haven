@@ -403,6 +403,19 @@ export interface Deployment {
   updated_at: string;
 }
 
+export interface ContainerStatus {
+  name: string;
+  status: "pending" | "waiting" | "running" | "completed" | "failed";
+  exit_code: number | null;
+  duration: string | null;
+}
+
+export interface BuildStatus {
+  job_name: string | null;
+  deployment_status: string;
+  containers: ContainerStatus[];
+}
+
 export interface PodInfo {
   name: string;
   status: string;
@@ -583,6 +596,12 @@ export const api = {
       apiFetch<{ triggered: boolean; app_name: string; revision: number }>(
         `/tenants/${tenantSlug}/apps/${appSlug}/rollback/${revision}`,
         { method: "POST" },
+        token
+      ),
+    buildStatus: (tenantSlug: string, appSlug: string, token?: string) =>
+      apiFetch<BuildStatus>(
+        `/tenants/${tenantSlug}/apps/${appSlug}/build-status`,
+        {},
         token
       ),
   },

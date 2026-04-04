@@ -33,9 +33,11 @@ async def _tenant(db: AsyncSession, slug: str = "app-test") -> Tenant:
     await db.commit()
     await db.refresh(t)
     # Add test user as member (required by tenant auth)
-    from app.models.tenant_member import MemberRole, TenantMember
     import uuid as _uuid
-    db.add(TenantMember(id=_uuid.uuid4(), tenant_id=t.id, user_id='user-1', email='u@t.nl', role=MemberRole('owner')))
+
+    from app.models.tenant_member import MemberRole, TenantMember
+
+    db.add(TenantMember(id=_uuid.uuid4(), tenant_id=t.id, user_id="user-1", email="u@t.nl", role=MemberRole("owner")))
     await db.commit()
     return t
 

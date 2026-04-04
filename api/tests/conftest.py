@@ -17,6 +17,7 @@ from app.models.application import Application
 from app.models.base import Base
 from app.models.cluster import Cluster  # noqa: F401 — ensures table created
 from app.models.cronjob import CronJob  # noqa: F401 — registers table in metadata
+from app.models.deployment import Deployment  # noqa: F401 — ensures table created
 from app.models.tenant import Tenant
 from app.models.tenant_member import TenantMember  # noqa: F401 — ensures table created
 
@@ -34,7 +35,10 @@ TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
 def _patch_pipeline_globally():
     """Patch run_pipeline with a plain MagicMock so asyncio.create_task receives
     a non-coroutine value and no unawaited-coroutine RuntimeWarnings are raised."""
-    with patch("app.routers.webhooks.run_pipeline", MagicMock(return_value=None)):
+    with (
+        patch("app.routers.webhooks.run_pipeline", MagicMock(return_value=None)),
+        patch("app.routers.deployments.run_pipeline", MagicMock(return_value=None)),
+    ):
         yield
 
 

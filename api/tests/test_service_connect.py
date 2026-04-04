@@ -76,6 +76,15 @@ async def tenant_app_service(db_session: AsyncSession):
     db_session.add(tenant)
     await db_session.flush()
 
+    # Add test-user as owner (required by tenant membership check)
+    from app.models.tenant_member import MemberRole, TenantMember
+
+    db_session.add(
+        TenantMember(
+            id=uuid.uuid4(), tenant_id=tenant.id, user_id="test-user", email="test@t.nl", role=MemberRole("owner")
+        )
+    )
+
     app_obj = Application(
         id=uuid.uuid4(),
         tenant_id=tenant.id,
@@ -508,6 +517,13 @@ async def test_connect_service_rejected_without_credentials(async_client: AsyncC
         storage_limit="50Gi",
     )
     db_session.add(tenant)
+    from app.models.tenant_member import MemberRole, TenantMember
+
+    db_session.add(
+        TenantMember(
+            id=uuid.uuid4(), tenant_id=tenant.id, user_id="test-user", email="test@t.nl", role=MemberRole("owner")
+        )
+    )
     app_obj = Application(
         id=uuid.uuid4(),
         tenant_id=tenant.id,

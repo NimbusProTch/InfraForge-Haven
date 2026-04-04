@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Breadcrumb } from "@/components/Breadcrumb";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { useToast } from "@/components/Toast";
-import { api, type Application, type Deployment, getLogsUrl } from "@/lib/api";
+import { api, type Application, type Deployment, type BuildStatus, type ContainerStatus, getLogsUrl } from "@/lib/api";
 import AppSettings from "@/components/AppSettings";
 import ObservabilityTab from "@/components/ObservabilityTab";
 import EnvironmentsTab from "@/components/EnvironmentsTab";
@@ -53,9 +53,25 @@ interface PipelineStep {
   key: string;
   label: string;
   status: PipelineStepStatus;
+  duration?: string | null;
 }
 
-function derivePipelineSteps(deployment: Deployment): PipelineStep[] {
+// Map container name to pipeline step key
+const CONTAINER_TO_STEP: Record<string, string> = {
+  "git-clone": "clone",
+  "nixpacks": "detect",
+  "buildctl": "build",
+  "build": "build",
+};
+
+function containerStatusToPipeline(cs: ContainerStatus): PipelineStepStatus {
+  if (cs.status === "completed") return "success";
+  if (cs.status === "running") return "running";
+  if (cs.status === "failed") return "failed";
+  return "pending";
+}
+
+function derivePipelineSteps(deployment: Deployment, buildStatus?: BuildStatus | null): PipelineStep[] {
   const keys = [
     { key: "clone", label: "Clone" },
     { key: "detect", label: "Detect" },
@@ -64,6 +80,38 @@ function derivePipelineSteps(deployment: Deployment): PipelineStep[] {
     { key: "deploy", label: "Deploy" },
   ];
 
+  // Use real container status if available
+  if (buildStatus?.containers && buildStatus.containers.length > 0) {
+    const containerMap: Record<string, ContainerStatus> = {};
+    for (const c of buildStatus.containers) {
+      const stepKey = CONTAINER_TO_STEP[c.name] ?? c.name;
+      containerMap[stepKey] = c;
+    }
+
+    return keys.map((step) => {
+      const cs = containerMap[step.key];
+      if (cs) {
+        return { ...step, status: containerStatusToPipeline(cs), duration: cs.duration };
+      }
+      // Push = build completed, Deploy = deployment status
+      if (step.key === "push") {
+        const buildCs = containerMap["build"];
+        if (buildCs?.status === "completed") {
+          return { ...step, status: "success" as PipelineStepStatus, duration: null };
+        }
+        return { ...step, status: "pending" as PipelineStepStatus, duration: null };
+      }
+      if (step.key === "deploy") {
+        if (deployment.status === "deploying") return { ...step, status: "running" as PipelineStepStatus, duration: null };
+        if (deployment.status === "running") return { ...step, status: "success" as PipelineStepStatus, duration: null };
+        if (deployment.status === "failed" && deployment.image_tag) return { ...step, status: "failed" as PipelineStepStatus, duration: null };
+        return { ...step, status: "pending" as PipelineStepStatus, duration: null };
+      }
+      return { ...step, status: "pending" as PipelineStepStatus, duration: null };
+    });
+  }
+
+  // Fallback: derive from deployment status
   let statuses: PipelineStepStatus[];
 
   switch (deployment.status) {
@@ -90,7 +138,7 @@ function derivePipelineSteps(deployment: Deployment): PipelineStep[] {
       statuses = ["pending", "pending", "pending", "pending", "pending"];
   }
 
-  return keys.map((step, i) => ({ ...step, status: statuses[i] }));
+  return keys.map((step, i) => ({ ...step, status: statuses[i], duration: null }));
 }
 
 function StepStatusIcon({ status }: { status: PipelineStepStatus }) {
@@ -125,9 +173,13 @@ function StepStatusIcon({ status }: { status: PipelineStepStatus }) {
 function PipelineVisualization({
   steps,
   compact = false,
+  activeStep,
+  onStepClick,
 }: {
   steps: PipelineStep[];
   compact?: boolean;
+  activeStep?: string | null;
+  onStepClick?: (stepKey: string) => void;
 }) {
   const connectorColor = (prev: PipelineStepStatus) => {
     if (prev === "success") return "bg-emerald-500/30";
@@ -142,46 +194,61 @@ function PipelineVisualization({
     return "text-zinc-600";
   };
 
+  const isClickable = !!onStepClick;
+
   return (
     <div className={`flex items-center ${compact ? "gap-1" : "gap-0"} w-full`}>
-      {steps.map((step, i) => (
-        <div key={step.key} className="flex items-center flex-1 last:flex-none">
-          <div className="flex flex-col items-center gap-1.5">
-            {compact ? (
-              <StepStatusIcon status={step.status} />
-            ) : (
-              <div
-                className={`
-                  flex items-center gap-2 px-3 py-2 rounded-lg border transition-colors
-                  ${step.status === "running" ? "border-blue-500/30 bg-blue-500/5" : ""}
-                  ${step.status === "success" ? "border-emerald-500/20 bg-emerald-500/5" : ""}
-                  ${step.status === "failed" ? "border-red-500/30 bg-red-500/5" : ""}
-                  ${step.status === "pending" ? "border-zinc-800 bg-zinc-900/50" : ""}
-                `}
-              >
+      {steps.map((step, i) => {
+        const isActive = activeStep === step.key;
+        return (
+          <div key={step.key} className="flex items-center flex-1 last:flex-none">
+            <div
+              className={`flex flex-col items-center gap-1.5 ${isClickable && step.status !== "pending" ? "cursor-pointer" : ""}`}
+              onClick={() => isClickable && step.status !== "pending" && onStepClick?.(step.key)}
+            >
+              {compact ? (
                 <StepStatusIcon status={step.status} />
-                <span className={`text-xs font-medium ${textColor(step.status)}`}>
+              ) : (
+                <div
+                  className={`
+                    flex items-center gap-2 px-3 py-2 rounded-lg border transition-all
+                    ${step.status === "running" ? "border-blue-500/30 bg-blue-500/5" : ""}
+                    ${step.status === "success" ? "border-emerald-500/20 bg-emerald-500/5" : ""}
+                    ${step.status === "failed" ? "border-red-500/30 bg-red-500/5" : ""}
+                    ${step.status === "pending" ? "border-zinc-800 bg-zinc-900/50" : ""}
+                    ${isActive ? "ring-1 ring-blue-400/50 scale-105" : ""}
+                    ${isClickable && step.status !== "pending" ? "hover:scale-105 hover:brightness-110" : ""}
+                  `}
+                >
+                  <StepStatusIcon status={step.status} />
+                  <div className="flex flex-col">
+                    <span className={`text-xs font-medium ${textColor(step.status)}`}>
+                      {step.label}
+                    </span>
+                    {step.duration && (
+                      <span className="text-[10px] text-zinc-600">{step.duration}</span>
+                    )}
+                  </div>
+                </div>
+              )}
+              {compact && (
+                <span
+                  className={`text-[10px] font-medium ${
+                    step.status === "pending" ? "text-zinc-700" : textColor(step.status)
+                  }`}
+                >
                   {step.label}
                 </span>
-              </div>
-            )}
-            {compact && (
-              <span
-                className={`text-[10px] font-medium ${
-                  step.status === "pending" ? "text-zinc-700" : textColor(step.status)
-                }`}
-              >
-                {step.label}
-              </span>
+              )}
+            </div>
+            {i < steps.length - 1 && (
+              <div
+                className={`flex-1 h-px mx-2 ${compact ? "min-w-2" : "min-w-4"} ${connectorColor(step.status)}`}
+              />
             )}
           </div>
-          {i < steps.length - 1 && (
-            <div
-              className={`flex-1 h-px mx-2 ${compact ? "min-w-2" : "min-w-4"} ${connectorColor(step.status)}`}
-            />
-          )}
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
@@ -397,6 +464,9 @@ export default function AppDetailPage() {
   const [logs, setLogs] = useState<string>("");
   const [streaming, setStreaming] = useState(false);
   const logsEndRef = useRef<HTMLDivElement>(null);
+
+  const [buildStatus, setBuildStatus] = useState<BuildStatus | null>(null);
+  const [activeLogStep, setActiveLogStep] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const deployPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const prevActiveRef = useRef(false);
@@ -467,11 +537,27 @@ export default function AppDetailPage() {
     latestDeployment != null &&
     ["building", "deploying", "pending"].includes(latestDeployment.status);
 
+  const loadBuildStatus = useCallback(async () => {
+    if (status !== "authenticated") return;
+    try {
+      const bs = await api.deployments.buildStatus(tenantSlug, appSlug, accessToken);
+      setBuildStatus(bs);
+    } catch {
+      /* ignore */
+    }
+  }, [tenantSlug, appSlug, status, accessToken]);
+
   useEffect(() => {
     if (isActiveBuild) {
       deployPollRef.current = setInterval(() => {
         loadDeployments();
+        loadBuildStatus();
       }, 5000);
+      // Initial load
+      loadBuildStatus();
+    } else {
+      setBuildStatus(null);
+      setActiveLogStep(null);
     }
     return () => {
       if (deployPollRef.current) {
@@ -479,7 +565,7 @@ export default function AppDetailPage() {
         deployPollRef.current = null;
       }
     };
-  }, [isActiveBuild, loadDeployments]);
+  }, [isActiveBuild, loadDeployments, loadBuildStatus]);
 
   useEffect(() => {
     const shouldStream =
@@ -750,7 +836,30 @@ export default function AppDetailPage() {
                 </span>
               )}
             </div>
-            <PipelineVisualization steps={derivePipelineSteps(latestDeployment)} />
+            <PipelineVisualization
+              steps={derivePipelineSteps(latestDeployment, buildStatus)}
+              activeStep={activeLogStep}
+              onStepClick={(key) => setActiveLogStep(activeLogStep === key ? null : key)}
+            />
+            {/* Per-container status summary */}
+            {buildStatus?.containers && buildStatus.containers.length > 0 && (
+              <div className="flex items-center gap-3 mt-3 px-1">
+                {buildStatus.containers.map((c) => (
+                  <div key={c.name} className="flex items-center gap-1.5">
+                    <span className={`w-1.5 h-1.5 rounded-full ${
+                      c.status === "completed" ? "bg-emerald-500" :
+                      c.status === "running" ? "bg-blue-500 animate-pulse" :
+                      c.status === "failed" ? "bg-red-500" : "bg-zinc-600"
+                    }`} />
+                    <span className="text-[10px] text-zinc-500 font-mono">{c.name}</span>
+                    {c.duration && <span className="text-[10px] text-zinc-600">{c.duration}</span>}
+                    {c.exit_code !== null && c.exit_code !== 0 && (
+                      <span className="text-[10px] text-red-400">exit {c.exit_code}</span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
             <BuildLogTerminal logs={logs} streaming={streaming} onStop={stopLogs} />
           </div>
         )}

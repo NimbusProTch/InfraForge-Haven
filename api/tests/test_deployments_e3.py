@@ -43,6 +43,15 @@ async def _make_tenant(db: AsyncSession, slug: str = "deploy-test") -> Tenant:
     db.add(tenant)
     await db.commit()
     await db.refresh(tenant)
+    # Add test-user as owner (required by tenant membership check)
+    from app.models.tenant_member import MemberRole, TenantMember
+
+    db.add(
+        TenantMember(
+            id=uuid.uuid4(), tenant_id=tenant.id, user_id="test-user", email="test@t.nl", role=MemberRole("owner")
+        )
+    )
+    await db.commit()
     return tenant
 
 
@@ -282,7 +291,7 @@ async def test_log_streaming_failed_deployment(deploy_client, db_session):
 
     app.dependency_overrides[get_db] = _override_db
     app.dependency_overrides[get_k8s] = lambda: mock_k8s
-    app.dependency_overrides[verify_token] = lambda: {"sub": "test", "email": "t@t.nl"}
+    app.dependency_overrides[verify_token] = lambda: {"sub": "test-user", "email": "test@t.nl"}
 
     tenant = await _make_tenant(db_session, "fail-log")
     application = await _make_app(db_session, tenant)

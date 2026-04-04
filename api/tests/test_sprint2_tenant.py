@@ -9,7 +9,6 @@ from collections.abc import AsyncGenerator
 from unittest.mock import MagicMock
 
 import pytest
-import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -89,9 +88,7 @@ async def test_b2_03_creator_auto_owner(db_session):
         r = await c.post("/api/v1/tenants", json={"name": "Owner Test", "slug": "owner-test"})
         assert r.status_code == 201
 
-    result = await db_session.execute(
-        select(TenantMember).where(TenantMember.user_id == "creator-user")
-    )
+    result = await db_session.execute(select(TenantMember).where(TenantMember.user_id == "creator-user"))
     member = result.scalar_one_or_none()
     assert member is not None
     assert member.role == MemberRole("owner")
@@ -207,6 +204,7 @@ async def test_b2_10_delete_tenant(db_session):
 async def test_b2_11_no_keycloak_realm():
     """Per-tenant realm creation is disabled in code."""
     import inspect
+
     from app.routers import tenants
 
     source = inspect.getsource(tenants.create_tenant)
