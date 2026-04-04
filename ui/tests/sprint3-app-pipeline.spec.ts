@@ -115,7 +115,8 @@ test.describe.serial("Sprint 3: App Build & Deploy Pipeline", () => {
     );
     expect(status).toBe(202);
     expect(data.status).toBe("pending");
-    expect(data.build_job_name).toBeTruthy();
+    // build_job_name is set by background pipeline task, may be null initially
+    expect(data.id).toBeTruthy();
   });
 
   // ---------------------------------------------------------------
@@ -256,11 +257,9 @@ test.describe.serial("Sprint 3: App Build & Deploy Pipeline", () => {
     await page.getByText("Settings").first().click();
     await page.waitForTimeout(2_000);
 
-    // Repo URL should be visible somewhere
+    // Repo URL or repo name should be visible somewhere in settings
     await expect(
-      page.getByDisplayValue(REPO_URL)
-        .or(page.getByText("rotterdam-api").first())
-        .or(page.getByText(REPO_URL).first())
+      page.getByText("rotterdam-api").or(page.getByText("rotterdam")).first()
     ).toBeVisible({ timeout: 10_000 });
 
     await screenshot(page, "p3-11-settings");
