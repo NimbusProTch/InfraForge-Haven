@@ -81,8 +81,8 @@ test.describe("Real E2E — Full Customer Journey", () => {
     // Should redirect back to dashboard
     await page.waitForURL(/dashboard|tenants/, { timeout: 15_000 });
 
-    // Dashboard should be visible
-    await expect(page.getByText(/Welcome|Dashboard|Projects/i).first()).toBeVisible();
+    // Wait for dashboard data to load (stat cards)
+    await expect(page.getByText("Projects", { exact: true }).first()).toBeVisible({ timeout: 15_000 });
 
     await page.screenshot({ path: "test-results/real-e2e-dashboard.png" });
   });

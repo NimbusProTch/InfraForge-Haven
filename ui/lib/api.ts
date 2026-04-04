@@ -491,8 +491,10 @@ export function getLogsUrl(tenantSlug: string, appSlug: string, token?: string):
 
 export const api = {
   health: {
-    status: () => apiFetch<{ status: string }>("/health"),
-    cluster: () => apiFetch<ClusterHealth>("/health/cluster"),
+    status: () =>
+      fetch(`${API_BASE}/health`).then((r) => r.json() as Promise<{ status: string }>),
+    cluster: () =>
+      fetch(`${API_BASE}/health/cluster`).then((r) => r.json() as Promise<ClusterHealth>),
   },
   tenants: {
     list: (token?: string) => apiFetch<Tenant[]>("/tenants", {}, token),
