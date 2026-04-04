@@ -144,8 +144,9 @@ def test_b04_jwt_module_enforces_aud():
     from app.auth import jwt as jwt_module
 
     source = inspect.getsource(jwt_module.verify_token)
-    assert "verify_aud" in source
-    assert '"verify_aud": True' in source or "'verify_aud': True" in source
+    # Manual audience validation after decode (python-jose doesn't support list audience)
+    assert "_ACCEPTED_AUDIENCES" in source
+    assert "aud_set" in source or "token_aud" in source
 
 
 def test_b05_accepted_audiences_defined():

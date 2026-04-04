@@ -56,17 +56,25 @@ async def verify_token(
     jwks = await _fetch_jwks()
 
     try:
+        # python-jose requires audience as string, not list.
+        # We disable built-in aud check and validate manually after decode.
         payload = jwt.decode(
             token,
             jwks,
             algorithms=["RS256"],
-            audience=list(_ACCEPTED_AUDIENCES),
             options={
-                "verify_aud": True,
+                "verify_aud": False,
                 "verify_exp": True,
-                "verify_iss": False,  # Disabled: Keycloak internal URL (http) vs external (https) mismatch
+                "verify_iss": False,
             },
         )
+
+        # Manual audience validation: token's aud must intersect with accepted audiences
+        token_aud = payload.get("aud")
+        if token_aud:
+            aud_set = {token_aud} if isinstance(token_aud, str) else set(token_aud)
+            if not aud_set & _ACCEPTED_AUDIENCES:
+                raise JWTError(f"Invalid audience: {token_aud}")
         logger.debug("Token verified: sub=%s", payload.get("sub"))
         return payload
 
