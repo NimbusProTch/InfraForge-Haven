@@ -35,7 +35,10 @@ TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
 def _patch_pipeline_globally():
     """Patch run_pipeline with a plain MagicMock so asyncio.create_task receives
     a non-coroutine value and no unawaited-coroutine RuntimeWarnings are raised."""
-    with patch("app.routers.webhooks.run_pipeline", MagicMock(return_value=None)):
+    with (
+        patch("app.routers.webhooks.run_pipeline", MagicMock(return_value=None)),
+        patch("app.routers.deployments.run_pipeline", MagicMock(return_value=None)),
+    ):
         yield
 
 
