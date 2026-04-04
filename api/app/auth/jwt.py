@@ -20,8 +20,9 @@ bearer_scheme = HTTPBearer(auto_error=False)
 # In-memory JWKS cache — refreshed on decode failure (key rotation)
 _jwks_cache: dict[str, Any] | None = None
 
-# Accepted JWT audiences (only our client IDs — NOT the generic "account" audience)
-_ACCEPTED_AUDIENCES = {"haven-portal", "haven-api", "haven-ui"}
+# Accepted JWT audiences — includes Keycloak's default "account" audience
+# which is set on all tokens issued by Keycloak realms
+_ACCEPTED_AUDIENCES = {"haven-portal", "haven-api", "haven-ui", "account"}
 
 
 async def _fetch_jwks() -> dict[str, Any]:
@@ -60,11 +61,10 @@ async def verify_token(
             jwks,
             algorithms=["RS256"],
             audience=list(_ACCEPTED_AUDIENCES),
-            issuer=f"{settings.keycloak_url}/realms/{settings.keycloak_realm}",
             options={
                 "verify_aud": True,
                 "verify_exp": True,
-                "verify_iss": True,
+                "verify_iss": False,  # Disabled: Keycloak internal URL (http) vs external (https) mismatch
             },
         )
         logger.debug("Token verified: sub=%s", payload.get("sub"))

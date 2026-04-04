@@ -154,6 +154,7 @@ def test_b05_accepted_audiences_defined():
 
     assert "haven-portal" in _ACCEPTED_AUDIENCES
     assert "haven-api" in _ACCEPTED_AUDIENCES
+    assert "account" in _ACCEPTED_AUDIENCES
 
 
 # ---------------------------------------------------------------------------
