@@ -79,7 +79,11 @@ async def tenant_app_service(db_session: AsyncSession):
     # Add test-user as owner (required by tenant membership check)
     from app.models.tenant_member import MemberRole, TenantMember
 
-    db_session.add(TenantMember(id=uuid.uuid4(), tenant_id=tenant.id, user_id="test-user", email="test@t.nl", role=MemberRole("owner")))
+    db_session.add(
+        TenantMember(
+            id=uuid.uuid4(), tenant_id=tenant.id, user_id="test-user", email="test@t.nl", role=MemberRole("owner")
+        )
+    )
 
     app_obj = Application(
         id=uuid.uuid4(),
@@ -515,7 +519,11 @@ async def test_connect_service_rejected_without_credentials(async_client: AsyncC
     db_session.add(tenant)
     from app.models.tenant_member import MemberRole, TenantMember
 
-    db_session.add(TenantMember(id=uuid.uuid4(), tenant_id=tenant.id, user_id="test-user", email="test@t.nl", role=MemberRole("owner")))
+    db_session.add(
+        TenantMember(
+            id=uuid.uuid4(), tenant_id=tenant.id, user_id="test-user", email="test@t.nl", role=MemberRole("owner")
+        )
+    )
     app_obj = Application(
         id=uuid.uuid4(),
         tenant_id=tenant.id,

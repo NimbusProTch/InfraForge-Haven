@@ -36,7 +36,8 @@ async def _tenant(db: AsyncSession, slug: str = "app-test") -> Tenant:
     import uuid as _uuid
 
     from app.models.tenant_member import MemberRole, TenantMember
-    db.add(TenantMember(id=_uuid.uuid4(), tenant_id=t.id, user_id='user-1', email='u@t.nl', role=MemberRole('owner')))
+
+    db.add(TenantMember(id=_uuid.uuid4(), tenant_id=t.id, user_id="user-1", email="u@t.nl", role=MemberRole("owner")))
     await db.commit()
     return t
 

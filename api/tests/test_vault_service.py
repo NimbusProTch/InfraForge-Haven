@@ -223,7 +223,12 @@ async def test_put_secrets_endpoint_vault_path(async_client, db_session):
     db_session.add(tenant)
 
     from app.models.tenant_member import MemberRole, TenantMember
-    db_session.add(TenantMember(id=uuid.uuid4(), tenant_id=tenant.id, user_id="test-user", email="test@t.nl", role=MemberRole("owner")))
+
+    db_session.add(
+        TenantMember(
+            id=uuid.uuid4(), tenant_id=tenant.id, user_id="test-user", email="test@t.nl", role=MemberRole("owner")
+        )
+    )
     app_obj = Application(
         id=uuid.uuid4(),
         tenant_id=tenant.id,
@@ -271,7 +276,12 @@ async def test_get_secrets_endpoint_lists_keys(async_client, db_session):
     )
     db_session.add(tenant)
     from app.models.tenant_member import MemberRole, TenantMember
-    db_session.add(TenantMember(id=uuid.uuid4(), tenant_id=tenant.id, user_id="test-user", email="test@t.nl", role=MemberRole("owner")))
+
+    db_session.add(
+        TenantMember(
+            id=uuid.uuid4(), tenant_id=tenant.id, user_id="test-user", email="test@t.nl", role=MemberRole("owner")
+        )
+    )
     app_obj = Application(
         id=uuid.uuid4(),
         tenant_id=tenant.id,

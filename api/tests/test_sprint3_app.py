@@ -43,8 +43,14 @@ def _mock_k8s():
 
 async def _tenant(db: AsyncSession, slug: str, uid: str) -> Tenant:
     t = Tenant(
-        id=uuid.uuid4(), slug=slug, name=slug.title(), namespace=f"tenant-{slug}",
-        keycloak_realm=f"tenant-{slug}", cpu_limit="4", memory_limit="8Gi", storage_limit="50Gi",
+        id=uuid.uuid4(),
+        slug=slug,
+        name=slug.title(),
+        namespace=f"tenant-{slug}",
+        keycloak_realm=f"tenant-{slug}",
+        cpu_limit="4",
+        memory_limit="8Gi",
+        storage_limit="50Gi",
     )
     db.add(t)
     await db.commit()

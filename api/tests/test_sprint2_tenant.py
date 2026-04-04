@@ -88,9 +88,7 @@ async def test_b2_03_creator_auto_owner(db_session):
         r = await c.post("/api/v1/tenants", json={"name": "Owner Test", "slug": "owner-test"})
         assert r.status_code == 201
 
-    result = await db_session.execute(
-        select(TenantMember).where(TenantMember.user_id == "creator-user")
-    )
+    result = await db_session.execute(select(TenantMember).where(TenantMember.user_id == "creator-user"))
     member = result.scalar_one_or_none()
     assert member is not None
     assert member.role == MemberRole("owner")

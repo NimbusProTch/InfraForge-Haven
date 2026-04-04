@@ -46,7 +46,11 @@ async def _make_tenant(db: AsyncSession, slug: str = "deploy-test") -> Tenant:
     # Add test-user as owner (required by tenant membership check)
     from app.models.tenant_member import MemberRole, TenantMember
 
-    db.add(TenantMember(id=uuid.uuid4(), tenant_id=tenant.id, user_id="test-user", email="test@t.nl", role=MemberRole("owner")))
+    db.add(
+        TenantMember(
+            id=uuid.uuid4(), tenant_id=tenant.id, user_id="test-user", email="test@t.nl", role=MemberRole("owner")
+        )
+    )
     await db.commit()
     return tenant
 
