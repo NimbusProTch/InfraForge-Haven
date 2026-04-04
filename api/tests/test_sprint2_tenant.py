@@ -9,7 +9,6 @@ from collections.abc import AsyncGenerator
 from unittest.mock import MagicMock
 
 import pytest
-import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -207,6 +206,7 @@ async def test_b2_10_delete_tenant(db_session):
 async def test_b2_11_no_keycloak_realm():
     """Per-tenant realm creation is disabled in code."""
     import inspect
+
     from app.routers import tenants
 
     source = inspect.getsource(tenants.create_tenant)

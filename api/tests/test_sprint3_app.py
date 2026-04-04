@@ -9,16 +9,13 @@ from collections.abc import AsyncGenerator
 from unittest.mock import MagicMock
 
 import pytest
-import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.jwt import verify_token
 from app.deps import get_db, get_k8s
 from app.main import app
-from app.models.application import Application
-from app.models.deployment import Deployment, DeploymentStatus
+from app.models.deployment import DeploymentStatus
 from app.models.tenant import Tenant
 from app.models.tenant_member import MemberRole, TenantMember
 
@@ -212,7 +209,7 @@ async def test_b3_10_cross_tenant_app_forbidden(db_session):
     await _tenant(db_session, "ct-b", "user-b")
 
     async with _client(db_session, "user-a") as c:
-        r = await c.post(f"/api/v1/tenants/ct-b/apps", json=APP_BODY)
+        r = await c.post("/api/v1/tenants/ct-b/apps", json=APP_BODY)
         assert r.status_code == 403
     app.dependency_overrides.clear()
 

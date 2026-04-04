@@ -43,8 +43,9 @@ async def _tenant(db: AsyncSession, slug: str = "scale-test") -> Tenant:
     db.add(t)
     await db.commit()
     await db.refresh(t)
-    from app.models.tenant_member import MemberRole, TenantMember
     import uuid as _uuid
+
+    from app.models.tenant_member import MemberRole, TenantMember
     db.add(TenantMember(id=_uuid.uuid4(), tenant_id=t.id, user_id="test", email="test@t.nl", role=MemberRole("owner")))
     await db.commit()
     return t
