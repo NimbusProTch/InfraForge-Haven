@@ -139,6 +139,12 @@ async def sample_tenant(db_session: AsyncSession) -> Tenant:
     db_session.add(tenant)
     await db_session.commit()
     await db_session.refresh(tenant)
+    # Add test-user as owner (required by tenant membership checks)
+    from app.models.tenant_member import MemberRole
+
+    member = TenantMember(tenant_id=tenant.id, user_id="test-user", email="test@haven.nl", role=MemberRole("owner"))
+    db_session.add(member)
+    await db_session.commit()
     return tenant
 
 

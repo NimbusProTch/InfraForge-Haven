@@ -50,17 +50,27 @@ async def _enqueue_app_values_update(
         logger.exception("Failed to enqueue gitops update for %s/%s", tenant_slug, app.slug)
 
 
-async def _get_tenant_or_404(tenant_slug: str, db: DBSession) -> Tenant:
+async def _get_tenant_or_404(tenant_slug: str, db: DBSession, current_user: dict | None = None) -> Tenant:
     result = await db.execute(select(Tenant).where(Tenant.slug == tenant_slug))
     tenant = result.scalar_one_or_none()
     if tenant is None:
         raise HTTPException(status_code=404, detail="Tenant not found")
+    # Membership check if user provided
+    if current_user:
+        from app.models.tenant_member import TenantMember
+
+        uid = current_user.get("sub", "")
+        mem = await db.execute(
+            select(TenantMember).where(TenantMember.tenant_id == tenant.id, TenantMember.user_id == uid)
+        )
+        if mem.scalar_one_or_none() is None:
+            raise HTTPException(status_code=403, detail="You are not a member of this tenant")
     return tenant
 
 
 @router.get("", response_model=list[ApplicationResponse])
 async def list_applications(tenant_slug: str, db: DBSession, current_user: CurrentUser) -> list[Application]:
-    tenant = await _get_tenant_or_404(tenant_slug, db)
+    tenant = await _get_tenant_or_404(tenant_slug, db, current_user)
     result = await db.execute(
         select(Application).where(Application.tenant_id == tenant.id).order_by(Application.created_at.desc())
     )

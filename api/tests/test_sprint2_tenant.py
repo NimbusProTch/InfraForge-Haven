@@ -224,3 +224,81 @@ async def test_b2_12_default_quotas(db_session):
         assert d["storage_limit"] == "100Gi"
         assert d["tier"] == "free"
     app.dependency_overrides.clear()
+
+
+# ---------------------------------------------------------------------------
+# Architect Review Fixes
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_b2_13_slug_validation_min_length(db_session):
+    """Slug too short (< 3 chars) → 422."""
+    async with _client(db_session) as c:
+        r = await c.post("/api/v1/tenants", json={"name": "Short", "slug": "ab"})
+        assert r.status_code == 422
+    app.dependency_overrides.clear()
+
+
+@pytest.mark.asyncio
+async def test_b2_14_slug_validation_special_chars(db_session):
+    """Slug with special chars → 422."""
+    async with _client(db_session) as c:
+        for bad_slug in ["../hack", "kube system", "UPPER", "test_underscore", "-leading"]:
+            r = await c.post("/api/v1/tenants", json={"name": "Bad", "slug": bad_slug})
+            assert r.status_code == 422, f"Slug '{bad_slug}' should be rejected"
+    app.dependency_overrides.clear()
+
+
+@pytest.mark.asyncio
+async def test_b2_15_cross_tenant_apps_forbidden(db_session):
+    """Member of tenant A cannot access tenant B's apps."""
+    # Create tenant A (user-a is owner)
+    async with _client(db_session, "user-a") as c:
+        await c.post("/api/v1/tenants", json={"name": "Tenant A", "slug": "tenant-a"})
+    app.dependency_overrides.clear()
+
+    # Create tenant B (user-b is owner)
+    async with _client(db_session, "user-b") as c:
+        await c.post("/api/v1/tenants", json={"name": "Tenant B", "slug": "tenant-b"})
+    app.dependency_overrides.clear()
+
+    # user-a tries to access tenant-b's apps → 403
+    async with _client(db_session, "user-a") as c:
+        r = await c.get("/api/v1/tenants/tenant-b/apps")
+        assert r.status_code == 403
+    app.dependency_overrides.clear()
+
+
+@pytest.mark.asyncio
+async def test_b2_16_cross_tenant_services_forbidden(db_session):
+    """Member of tenant A cannot access tenant B's services."""
+    async with _client(db_session, "svc-a") as c:
+        await c.post("/api/v1/tenants", json={"name": "SVC A", "slug": "svc-tenant-a"})
+    app.dependency_overrides.clear()
+
+    async with _client(db_session, "svc-b") as c:
+        await c.post("/api/v1/tenants", json={"name": "SVC B", "slug": "svc-tenant-b"})
+    app.dependency_overrides.clear()
+
+    async with _client(db_session, "svc-a") as c:
+        r = await c.get("/api/v1/tenants/svc-tenant-b/services")
+        assert r.status_code == 403
+    app.dependency_overrides.clear()
+
+
+@pytest.mark.asyncio
+async def test_b2_17_cross_tenant_members_forbidden(db_session):
+    """Member of tenant A cannot access tenant B's members."""
+    async with _client(db_session, "mem-a") as c:
+        await c.post("/api/v1/tenants", json={"name": "Mem A", "slug": "mem-tenant-a"})
+    app.dependency_overrides.clear()
+
+    async with _client(db_session, "mem-b") as c:
+        await c.post("/api/v1/tenants", json={"name": "Mem B", "slug": "mem-tenant-b"})
+    app.dependency_overrides.clear()
+
+    async with _client(db_session, "mem-a") as c:
+        r = await c.get("/api/v1/tenants/mem-tenant-b/members")
+        assert r.status_code == 403
+    app.dependency_overrides.clear()

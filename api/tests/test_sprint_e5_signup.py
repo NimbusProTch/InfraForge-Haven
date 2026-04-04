@@ -158,12 +158,13 @@ def test_keycloak_service_has_create_realm():
 async def test_list_members(auth_client, db_session):
     """GET /members returns all members of a tenant."""
     t = await _tenant(db_session, "members-list")
+    await _member(db_session, t, "user-123", "user@haven.nl", MemberRole("owner"))  # RBAC
     await _member(db_session, t, "user-1", "a@test.nl", MemberRole("owner"))
     await _member(db_session, t, "user-2", "b@test.nl", MemberRole("member"))
 
     resp = await auth_client.get(f"/api/v1/tenants/{t.slug}/members")
     assert resp.status_code == 200
-    assert len(resp.json()) == 2
+    assert len(resp.json()) == 3  # user-123 (RBAC owner) + user-1 + user-2
 
 
 @pytest.mark.asyncio

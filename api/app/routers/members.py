@@ -18,11 +18,18 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/tenants/{tenant_slug}/members", tags=["members"])
 
 
-async def _get_tenant_or_404(tenant_slug: str, db: DBSession) -> Tenant:
+async def _get_tenant_or_404(tenant_slug: str, db: DBSession, current_user: dict | None = None) -> Tenant:
     result = await db.execute(select(Tenant).where(Tenant.slug == tenant_slug))
     tenant = result.scalar_one_or_none()
     if tenant is None:
         raise HTTPException(status_code=404, detail="Tenant not found")
+    if current_user:
+        uid = current_user.get("sub", "")
+        mem = await db.execute(
+            select(TenantMember).where(TenantMember.tenant_id == tenant.id, TenantMember.user_id == uid)
+        )
+        if mem.scalar_one_or_none() is None:
+            raise HTTPException(status_code=403, detail="You are not a member of this tenant")
     return tenant
 
 
@@ -41,7 +48,7 @@ async def _get_member_or_404(tenant_id: uuid.UUID, user_id: str, db: DBSession) 
 
 @router.get("", response_model=list[TenantMemberResponse])
 async def list_members(tenant_slug: str, db: DBSession, current_user: CurrentUser) -> list[TenantMember]:
-    tenant = await _get_tenant_or_404(tenant_slug, db)
+    tenant = await _get_tenant_or_404(tenant_slug, db, current_user)
     result = await db.execute(
         select(TenantMember).where(TenantMember.tenant_id == tenant.id).order_by(TenantMember.created_at)
     )
