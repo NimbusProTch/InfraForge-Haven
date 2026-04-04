@@ -1,18 +1,27 @@
+"""JWT token verification via Keycloak JWKS.
+
+Validates RS256 tokens against the shared "haven" realm.
+Enforces: expiration (exp), audience (aud), algorithm (RS256).
+"""
+
 import logging
 from typing import Any
 
 import httpx
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from jose import JWTError, jwt
+from jose import ExpiredSignatureError, JWTError, jwt
 
 from app.config import settings
 
 logger = logging.getLogger(__name__)
 bearer_scheme = HTTPBearer(auto_error=False)
 
-# Simple in-memory JWKS cache (refresh on 401)
+# In-memory JWKS cache — refreshed on decode failure (key rotation)
 _jwks_cache: dict[str, Any] | None = None
+
+# Accepted JWT audiences (Keycloak client IDs + default "account" audience)
+_ACCEPTED_AUDIENCES = {"haven-portal", "haven-api", "haven-ui", "account"}
 
 
 async def _fetch_jwks() -> dict[str, Any]:
@@ -20,7 +29,7 @@ async def _fetch_jwks() -> dict[str, Any]:
     if _jwks_cache is not None:
         return _jwks_cache
     jwks_url = f"{settings.keycloak_url}/realms/{settings.keycloak_realm}/protocol/openid-connect/certs"
-    async with httpx.AsyncClient(timeout=10) as http:
+    async with httpx.AsyncClient(timeout=10, verify=False) as http:
         response = await http.get(jwks_url)
         response.raise_for_status()
     _jwks_cache = response.json()
@@ -28,8 +37,17 @@ async def _fetch_jwks() -> dict[str, Any]:
 
 
 async def verify_token(
-    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),  # noqa: B008
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
 ) -> dict[str, Any]:
+    """Verify and decode a Keycloak JWT token.
+
+    Enforces:
+    - RS256 algorithm
+    - Token expiration (exp claim)
+    - Audience validation (aud claim must include an accepted client ID)
+
+    Returns the decoded JWT payload dict.
+    """
     if credentials is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing token")
 
@@ -41,12 +59,25 @@ async def verify_token(
             token,
             jwks,
             algorithms=["RS256"],
-            audience="account",
-            options={"verify_aud": False},
+            audience=list(_ACCEPTED_AUDIENCES),
+            options={
+                "verify_aud": True,
+                "verify_exp": True,
+            },
         )
+        logger.debug("Token verified: sub=%s", payload.get("sub"))
         return payload
+
+    except ExpiredSignatureError as e:
+        logger.warning("Expired token presented: %s", e)
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Token expired"
+        ) from e
+
     except JWTError as e:
-        # Invalidate cache on decode failure — key may have rotated
-        global _jwks_cache
+        global _jwks_cache  # noqa: PLW0603
+        logger.warning("Token validation failed: %s", e)
         _jwks_cache = None
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=f"Invalid token: {e}") from e
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail=f"Invalid token: {e}"
+        ) from e

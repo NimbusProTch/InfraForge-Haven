@@ -88,11 +88,11 @@ async def create_tenant(body: TenantCreate, db: DBSession, k8s: K8sDep, current_
         logger.exception("K8s provisioning failed for tenant %s — rolling back", body.slug)
         raise HTTPException(status_code=500, detail=f"Tenant provisioning failed: {exc}") from exc
 
-    # Create per-tenant Keycloak realm (non-blocking — log on failure, don't abort)
-    try:
-        await keycloak_service.create_realm(body.slug)
-    except Exception as exc:
-        logger.warning("Keycloak realm creation failed for %s: %s", body.slug, exc)
+    # Per-tenant Keycloak realm: DISABLED in Sprint 1 (shared "haven" realm used).
+    # Tenant isolation is DB-based (TenantMember table + RBAC).
+    # Per-tenant realms will be activated in Sprint 5+ for IdP federation (Azure AD, SAML).
+    # Code preserved but not called:
+    # await keycloak_service.create_realm(body.slug)
 
     # GitOps scaffold: create tenant directory in haven-gitops (non-blocking)
     await gitops_scaffold.scaffold_tenant(body.slug)
@@ -152,11 +152,8 @@ async def delete_tenant(tenant_slug: str, db: DBSession, k8s: K8sDep, current_us
     tenant_svc = TenantService(k8s)
     await tenant_svc.deprovision(tenant.namespace, slug=tenant.slug)
 
-    # 3. Delete per-tenant Keycloak realm
-    try:
-        await keycloak_service.delete_realm(tenant.slug)
-    except Exception as exc:
-        logger.warning("Keycloak realm deletion failed for %s: %s", tenant.slug, exc)
+    # 3. Per-tenant Keycloak realm deletion: DISABLED (shared realm model)
+    # await keycloak_service.delete_realm(tenant.slug)
 
     # 4. GitOps scaffold: remove tenant directory from haven-gitops
     await gitops_scaffold.delete_tenant(tenant.slug)
