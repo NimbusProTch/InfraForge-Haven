@@ -32,6 +32,9 @@ export default function NewAppPage() {
   const [repoUrl, setRepoUrl] = useState("");
   const [branch, setBranch] = useState("main");
   const [replicas, setReplicas] = useState(1);
+  const [dockerfilePath, setDockerfilePath] = useState("");
+  const [buildContext, setBuildContext] = useState("");
+  const [showMonorepo, setShowMonorepo] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -229,7 +232,15 @@ export default function NewAppPage() {
     try {
       await api.apps.create(
         tenantSlug,
-        { slug, name, repo_url: repoUrl, branch, replicas },
+        {
+          slug,
+          name,
+          repo_url: repoUrl,
+          branch,
+          replicas,
+          ...(dockerfilePath ? { dockerfile_path: dockerfilePath, use_dockerfile: true } : {}),
+          ...(buildContext ? { build_context: buildContext } : {}),
+        },
         s?.accessToken
       );
       router.push(`/tenants/${tenantSlug}/apps/${slug}`);
@@ -520,6 +531,52 @@ export default function NewAppPage() {
                 Number of Kubernetes pod replicas.
               </p>
             </div>
+          </div>
+
+          {/* Monorepo settings (collapsible) */}
+          <div>
+            <button
+              type="button"
+              onClick={() => setShowMonorepo(!showMonorepo)}
+              className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
+            >
+              <ChevronDown className={`w-3 h-3 transition-transform ${showMonorepo ? "rotate-180" : ""}`} />
+              Monorepo Settings (optional)
+            </button>
+            {showMonorepo && (
+              <div className="mt-3 space-y-3 pl-4 border-l-2 border-gray-200 dark:border-gray-700">
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                    Dockerfile Path
+                  </label>
+                  <input
+                    type="text"
+                    value={dockerfilePath}
+                    onChange={(e) => setDockerfilePath(e.target.value)}
+                    placeholder="e.g. backend/Dockerfile"
+                    className="w-full px-3 py-2 rounded-md border border-gray-200 dark:border-[#2e2e2e] bg-white dark:bg-[#0f0f0f] text-gray-900 dark:text-white text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500/50"
+                  />
+                  <p className="text-[11px] text-gray-400 dark:text-gray-600 mt-1">
+                    Path to Dockerfile relative to repo root. Leave empty for auto-detect.
+                  </p>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                    Build Context
+                  </label>
+                  <input
+                    type="text"
+                    value={buildContext}
+                    onChange={(e) => setBuildContext(e.target.value)}
+                    placeholder="e.g. backend"
+                    className="w-full px-3 py-2 rounded-md border border-gray-200 dark:border-[#2e2e2e] bg-white dark:bg-[#0f0f0f] text-gray-900 dark:text-white text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500/50"
+                  />
+                  <p className="text-[11px] text-gray-400 dark:text-gray-600 mt-1">
+                    Build root directory relative to repo root. Defaults to repo root.
+                  </p>
+                </div>
+              </div>
+            )}
           </div>
 
           {error && (
