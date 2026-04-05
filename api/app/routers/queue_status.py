@@ -27,11 +27,12 @@ router = APIRouter(
 )
 
 
-def _get_queue_service() -> GitQueueService:
+def _get_queue_service() -> GitQueueService | None:
     """Dependency: return a GitQueueService backed by the app-wide Redis client.
 
     Falls back gracefully if Redis is not configured so that other API routes
     remain available even in environments without Redis.
+    Returns None when Redis client library is missing.
     """
     try:
         import redis.asyncio as aioredis
@@ -42,13 +43,14 @@ def _get_queue_service() -> GitQueueService:
         client = aioredis.from_url(redis_url, decode_responses=False)
         return GitQueueService(client)
     except ImportError:
-        raise HTTPException(  # noqa: B904
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Redis client library not installed. Add 'redis[asyncio]' to dependencies.",
-        )
+        logger.warning("Redis client library not installed — queue status unavailable.")
+        return None
+    except Exception as exc:
+        logger.warning("Failed to create GitQueueService: %s", exc)
+        return None
 
 
-QueueDep = Annotated[GitQueueService, Depends(_get_queue_service)]
+QueueDep = Annotated[GitQueueService | None, Depends(_get_queue_service)]
 
 
 @router.get("/status", summary="Queue aggregate statistics")
@@ -63,31 +65,50 @@ async def get_queue_status(queue_svc: QueueDep) -> dict[str, Any]:
     }
     ```
     """
-    pending = await queue_svc.queue_length()
-    dead = await queue_svc.dead_letter_length()
+    if queue_svc is None:
+        return {
+            "pending": 0,
+            "processing": 0,
+            "dead_letter": 0,
+            "worker_alive": False,
+            "error_message": "Redis not available — queue service could not be initialised.",
+        }
 
-    # Check if git-worker is alive by looking for heartbeat key or worker pod
-    worker_alive = False
     try:
-        # Worker sets a heartbeat key with TTL
-        heartbeat = await queue_svc._redis.get("haven:git:worker:alive")
-        worker_alive = heartbeat is not None
-        if not worker_alive:
-            # Fallback: check if any processing job exists (worker is busy)
-            processing = await queue_svc._redis.get("haven:git:processing")
-            worker_alive = processing is not None
-            if not worker_alive:
-                # Fallback 2: if queue is empty and DLQ is empty, assume worker is OK
-                worker_alive = pending == 0 and dead == 0
-    except Exception:
-        pass
+        pending = await queue_svc.queue_length()
+        dead = await queue_svc.dead_letter_length()
 
-    return {
-        "pending": pending,
-        "processing": 0,
-        "dead_letter": dead,
-        "worker_alive": worker_alive,
-    }
+        # Check if git-worker is alive by looking for heartbeat key or worker pod
+        worker_alive = False
+        try:
+            # Worker sets a heartbeat key with TTL
+            heartbeat = await queue_svc._redis.get("haven:git:worker:alive")
+            worker_alive = heartbeat is not None
+            if not worker_alive:
+                # Fallback: check if any processing job exists (worker is busy)
+                processing = await queue_svc._redis.get("haven:git:processing")
+                worker_alive = processing is not None
+                if not worker_alive:
+                    # Fallback 2: if queue is empty and DLQ is empty, assume worker is OK
+                    worker_alive = pending == 0 and dead == 0
+        except Exception:
+            pass
+
+        return {
+            "pending": pending,
+            "processing": 0,
+            "dead_letter": dead,
+            "worker_alive": worker_alive,
+        }
+    except Exception as exc:
+        logger.warning("Redis connection failed during queue status check: %s", exc)
+        return {
+            "pending": 0,
+            "processing": 0,
+            "dead_letter": 0,
+            "worker_alive": False,
+            "error_message": f"Redis connection failed: {exc}",
+        }
 
 
 @router.get("/jobs/{job_id}", summary="Single job status")

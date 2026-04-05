@@ -29,6 +29,7 @@ export default function NewAppPage() {
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
   const [slugManual, setSlugManual] = useState(false);
+  const [slugError, setSlugError] = useState("");
   const [repoUrl, setRepoUrl] = useState("");
   const [branch, setBranch] = useState("main");
   const [replicas, setReplicas] = useState(1);
@@ -215,12 +216,28 @@ export default function NewAppPage() {
 
   function handleNameChange(v: string) {
     setName(v);
-    if (!slugManual) setSlug(slugify(v));
+    if (!slugManual) {
+      const s = slugify(v);
+      setSlug(s);
+      if (s && s.length < 2) {
+        setSlugError("Slug must be at least 2 characters");
+      } else {
+        setSlugError("");
+      }
+    }
   }
 
   function handleSlugChange(v: string) {
     setSlugManual(true);
-    setSlug(slugify(v));
+    const s = slugify(v);
+    setSlug(s);
+    if (s && !/^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/.test(s)) {
+      setSlugError("Slug must start and end with a letter or number");
+    } else if (s && s.length < 2) {
+      setSlugError("Slug must be at least 2 characters");
+    } else {
+      setSlugError("");
+    }
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -306,9 +323,11 @@ export default function NewAppPage() {
                 onChange={(e) => handleSlugChange(e.target.value)}
                 placeholder="my-app"
                 required
-                pattern="^[a-z0-9][a-z0-9-]*[a-z0-9]$"
                 className="w-full px-3 py-2 rounded-md border border-gray-200 dark:border-[#2e2e2e] bg-white dark:bg-[#0f0f0f] text-gray-900 dark:text-white text-sm font-mono placeholder-gray-400 dark:placeholder-[#444] focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 transition-colors"
               />
+              {slugError && (
+                <p className="text-xs text-red-500 mt-1">{slugError}</p>
+              )}
             </div>
           </div>
 
@@ -585,10 +604,19 @@ export default function NewAppPage() {
             </p>
           )}
 
+          {(!name.trim() || !slug.trim() || !repoUrl.trim() || !!slugError) && !loading && (
+            <p className="text-xs text-gray-400 dark:text-[#555] mt-2">
+              {!name.trim() ? "Enter an application name" :
+               !slug.trim() ? "Enter a slug" :
+               slugError ? slugError :
+               !repoUrl.trim() ? "Select a repository or enter a URL" : ""}
+            </p>
+          )}
+
           <div className="flex items-center gap-3">
             <button
               type="submit"
-              disabled={loading || !name.trim() || !slug.trim() || !repoUrl.trim()}
+              disabled={loading || !name.trim() || !slug.trim() || !repoUrl.trim() || !!slugError}
               className="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium transition-colors"
             >
               {loading && <Loader2 className="w-3.5 h-3.5 animate-spin" />}

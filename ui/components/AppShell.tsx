@@ -48,16 +48,32 @@ export function AppShell({ children, userEmail }: AppShellProps) {
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
 
+  const [sessionExpired, setSessionExpired] = useState(false);
+
   // Auto-logout when Keycloak refresh token expires
   useEffect(() => {
     const s = session as typeof session & { error?: string };
     if (s?.error === "RefreshTokenExpired" || s?.error === "RefreshTokenError") {
-      signOut({ callbackUrl: "/auth/signin" });
+      setSessionExpired(true);
+      const timer = setTimeout(() => {
+        signOut({ callbackUrl: "/auth/signin" });
+      }, 3000);
+      return () => clearTimeout(timer);
     }
   }, [session]);
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">
+      {/* Session expired toast */}
+      {sessionExpired && (
+        <div className="fixed top-4 right-4 z-[100] flex items-center gap-3 bg-red-600 text-white px-5 py-3 rounded-lg shadow-xl animate-in slide-in-from-top-2 duration-300">
+          <LogOut className="w-4 h-4 shrink-0" />
+          <div>
+            <p className="text-sm font-semibold">Session expired</p>
+            <p className="text-xs text-red-100">Redirecting to login...</p>
+          </div>
+        </div>
+      )}
       {/* Sidebar — Creative Tim Material Dashboard style */}
       <aside className="w-64 flex flex-col shrink-0 bg-gradient-to-b from-gray-900 via-gray-800 to-gray-900 shadow-xl"
         style={{ backgroundImage: "linear-gradient(180deg, rgba(0,0,0,0.8) 0%, rgba(0,0,0,0.9) 100%), url('/sidebar-bg.jpg')", backgroundSize: "cover" }}

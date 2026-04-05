@@ -1,10 +1,25 @@
+import { getSession, signOut } from "next-auth/react";
+
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 const API_PREFIX = "/api/v1";
+
+// Promise-based mutex for token refresh — prevents concurrent 401 race conditions
+let _refreshPromise: Promise<string | null> | null = null;
+
+async function _refreshToken(): Promise<string | null> {
+  try {
+    const session = await getSession();
+    return (session as typeof session & { accessToken?: string })?.accessToken ?? null;
+  } catch {
+    return null;
+  }
+}
 
 async function apiFetch<T>(
   path: string,
   options: RequestInit = {},
-  accessToken?: string
+  accessToken?: string,
+  _retried = false
 ): Promise<T> {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
@@ -18,6 +33,25 @@ async function apiFetch<T>(
     ...options,
     headers,
   });
+
+  // 401 interceptor: try refreshing the session token once
+  if (res.status === 401 && accessToken && !_retried) {
+    // Use mutex: if another request is already refreshing, wait for it
+    if (!_refreshPromise) {
+      _refreshPromise = _refreshToken();
+    }
+    const newToken = await _refreshPromise;
+    _refreshPromise = null;
+
+    if (newToken && newToken !== accessToken) {
+      return apiFetch<T>(path, options, newToken, true);
+    }
+    // Token could not be refreshed — force sign out
+    if (typeof window !== "undefined") {
+      await signOut({ callbackUrl: "/auth/signin" });
+    }
+    throw new Error("Session expired. Please sign in again.");
+  }
 
   if (!res.ok) {
     const detail = await res.text();
@@ -478,6 +512,7 @@ export interface QueueStatus {
   dead_letter: number;
   worker_alive: boolean;
   oldest_pending_age_seconds: number | null;
+  error_message?: string;
 }
 
 export interface QueueJob {
@@ -489,6 +524,17 @@ export interface QueueJob {
   created_at: string;
   attempts: number;
   error: string | null;
+}
+
+// Build Queue
+export interface BuildQueueStatus {
+  pending: number;
+  active: number;
+  active_jobs: string[];
+  dlq: number;
+  max_concurrent: number;
+  max_per_tenant: number;
+  error_message?: string;
 }
 
 // ---- Logs SSE URL helper ----
@@ -1094,11 +1140,49 @@ export const api = {
         token
       ),
   },
+  backups: {
+    list: (tenantSlug: string, serviceName: string, token?: string) =>
+      apiFetch<BackupItem[]>(
+        `/tenants/${tenantSlug}/services/${serviceName}/backups`,
+        {},
+        token
+      ),
+    trigger: (tenantSlug: string, serviceName: string, token?: string) =>
+      apiFetch<{ backup_name: string }>(
+        `/tenants/${tenantSlug}/services/${serviceName}/backup`,
+        { method: "POST" },
+        token
+      ),
+    restore: (
+      tenantSlug: string,
+      serviceName: string,
+      backupId: string,
+      body?: { target_time?: string },
+      token?: string
+    ) =>
+      apiFetch<{ restore_name: string }>(
+        `/tenants/${tenantSlug}/services/${serviceName}/restore/${backupId}`,
+        { method: "POST", ...(body ? { body: JSON.stringify(body) } : {}) },
+        token
+      ),
+    schedule: (
+      tenantSlug: string,
+      body: { schedule?: string; retention_days?: number; storage_location?: string },
+      token?: string
+    ) =>
+      apiFetch<{ schedule: string; retention_days: number }>(
+        `/tenants/${tenantSlug}/backup/schedule`,
+        { method: "PUT", body: JSON.stringify(body) },
+        token
+      ),
+  },
   platform: {
     queueStatus: (token?: string) =>
       apiFetch<QueueStatus>("/platform/queue/status", {}, token),
     queueJob: (jobId: string, token?: string) =>
       apiFetch<QueueJob>(`/platform/queue/jobs/${jobId}`, {}, token),
+    buildQueueStatus: (token?: string) =>
+      apiFetch<BuildQueueStatus>("/platform/build-queue/status", {}, token),
   },
   clusters: {
     list: (token?: string) => apiFetch<Cluster[]>("/clusters", {}, token),

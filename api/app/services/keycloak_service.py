@@ -85,6 +85,11 @@ class KeycloakService:
                     "duplicateEmailsAllowed": False,
                     "sslRequired": "external",
                     "bruteForceProtected": True,
+                    "accessTokenLifespan": 3600,
+                    "ssoSessionIdleTimeout": 28800,
+                    "ssoSessionMaxLifespan": 28800,
+                    "offlineSessionMaxLifespan": 604800,
+                    "offlineSessionIdleTimeout": 172800,
                 },
                 headers={"Authorization": f"Bearer {token}"},
             )

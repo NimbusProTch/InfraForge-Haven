@@ -33,10 +33,12 @@ class Deployment(Base, TimestampMixin):
     status: Mapped[DeploymentStatus] = mapped_column(
         Enum(DeploymentStatus, values_callable=lambda e: [x.value for x in e]),
         default=DeploymentStatus.PENDING,
+        index=True,
     )
     build_job_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     image_tag: Mapped[str | None] = mapped_column(String(512), nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    gitops_commit_sha: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     application: Mapped["Application"] = relationship(back_populates="deployments")
     environment: Mapped["Environment | None"] = relationship(back_populates="deployments")
