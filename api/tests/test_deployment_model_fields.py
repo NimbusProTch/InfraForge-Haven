@@ -79,7 +79,7 @@ class TestDeploymentStatusEnum:
         assert DeploymentStatus.FAILED.value == "failed"
 
     def test_enum_has_all_expected_values(self):
-        expected = {"pending", "building", "deploying", "running", "failed"}
+        expected = {"pending", "building", "built", "deploying", "running", "failed"}
         actual = {s.value for s in DeploymentStatus}
         assert expected == actual
 
