@@ -105,6 +105,9 @@ async def create_application(
         canary_enabled=body.canary_enabled,
         canary_weight=body.canary_weight,
         volumes=body.volumes,
+        dockerfile_path=body.dockerfile_path,
+        build_context=body.build_context,
+        use_dockerfile=body.use_dockerfile,
     )
     db.add(app)
     try:

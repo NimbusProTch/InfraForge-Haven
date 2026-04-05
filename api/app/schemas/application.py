@@ -2,7 +2,7 @@ import re
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 class ApplicationCreate(BaseModel):
@@ -29,6 +29,15 @@ class ApplicationCreate(BaseModel):
     dockerfile_path: str | None = Field(default=None, max_length=512)
     build_context: str | None = Field(default=None, max_length=512)
     use_dockerfile: bool = Field(default=False)
+
+    @field_validator("dockerfile_path", "build_context")
+    @classmethod
+    def no_path_traversal(cls, v: str | None) -> str | None:
+        if v is None:
+            return v
+        if ".." in v or v.startswith("/"):
+            raise ValueError("Path must be relative and cannot contain '..'")
+        return v
 
     # Production hardening
     custom_domain: str | None = Field(default=None, max_length=255)
@@ -58,9 +67,18 @@ class ApplicationUpdate(BaseModel):
     port: int | None = Field(default=None, ge=1, le=65535)
 
     # Monorepo support
-    dockerfile_path: str | None = None
-    build_context: str | None = None
+    dockerfile_path: str | None = Field(default=None, max_length=512)
+    build_context: str | None = Field(default=None, max_length=512)
     use_dockerfile: bool | None = None
+
+    @field_validator("dockerfile_path", "build_context")
+    @classmethod
+    def no_path_traversal(cls, v: str | None) -> str | None:
+        if v is None:
+            return v
+        if ".." in v or v.startswith("/"):
+            raise ValueError("Path must be relative and cannot contain '..'")
+        return v
 
     # Production hardening
     custom_domain: str | None = None

@@ -295,6 +295,9 @@ export default function AppSettings({ tenantSlug, app, accessToken, onSaved }: A
           branch: editBranch,
           replicas: editReplicas,
           env_vars: envVars,
+          dockerfile_path: dockerfilePath || null,
+          build_context: buildContext || null,
+          use_dockerfile: useDockerfile,
         },
         accessToken
       );
