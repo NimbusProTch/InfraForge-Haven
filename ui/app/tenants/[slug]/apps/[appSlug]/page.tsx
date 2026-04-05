@@ -42,6 +42,8 @@ import {
   Circle,
   ExternalLink,
   RefreshCw,
+  Search,
+  Upload,
 } from "lucide-react";
 
 const LB_IP = process.env.NEXT_PUBLIC_LB_IP ?? "";
@@ -142,7 +144,16 @@ function derivePipelineSteps(deployment: Deployment, buildStatus?: BuildStatus |
   return keys.map((step, i) => ({ ...step, status: statuses[i], duration: null }));
 }
 
-// ---- Enterprise Pipeline Visualization ----
+// ---- Premium Pipeline Visualization ----
+
+// Step-specific icons
+const STEP_ICONS: Record<string, React.ElementType> = {
+  clone: GitBranch,
+  detect: Search,
+  build: Hammer,
+  push: Upload,
+  deploy: Rocket,
+};
 
 const STEP_STYLES: Record<PipelineStepStatus, { border: string; bg: string; icon: string; text: string }> = {
   success: {
@@ -171,19 +182,48 @@ const STEP_STYLES: Record<PipelineStepStatus, { border: string; bg: string; icon
   },
 };
 
-function StepStatusIcon({ status, size = "md" }: { status: PipelineStepStatus; size?: "sm" | "md" }) {
-  const s = size === "sm" ? "w-5 h-5" : "w-7 h-7";
-  const iconSize = size === "sm" ? "w-2.5 h-2.5" : "w-3.5 h-3.5";
-  const style = STEP_STYLES[status];
+function StepStatusIcon({
+  status,
+  stepKey,
+  size = "md",
+}: {
+  status: PipelineStepStatus;
+  stepKey?: string;
+  size?: "sm" | "md";
+}) {
+  const s = size === "sm" ? "w-7 h-7" : "w-10 h-10";
+  const iconSize = size === "sm" ? "w-3.5 h-3.5" : "w-4.5 h-4.5";
+  const StepIcon = stepKey ? STEP_ICONS[stepKey] : null;
 
-  const icon = status === "success" ? <Check className={iconSize} /> :
-    status === "running" ? <Loader2 className={`${iconSize} animate-spin`} /> :
-    status === "failed" ? <X className={iconSize} /> :
-    <Circle className={size === "sm" ? "w-2 h-2" : "w-2.5 h-2.5"} />;
-
+  if (status === "success") {
+    return (
+      <div className={`${s} rounded-full bg-emerald-500 flex items-center justify-center shadow-sm transition-all duration-300`}>
+        <Check className={`${iconSize} text-white`} strokeWidth={2.5} />
+      </div>
+    );
+  }
+  if (status === "running") {
+    return (
+      <div className={`${s} rounded-full bg-blue-500/10 border-2 border-blue-500 flex items-center justify-center shadow-[0_0_0_4px_rgba(59,130,246,0.15)] transition-all duration-300`}>
+        <Loader2 className={`${iconSize} text-blue-500 animate-spin`} />
+      </div>
+    );
+  }
+  if (status === "failed") {
+    return (
+      <div className={`${s} rounded-full bg-red-500 flex items-center justify-center shadow-sm transition-all duration-300`}>
+        <X className={`${iconSize} text-white`} strokeWidth={2.5} />
+      </div>
+    );
+  }
+  // pending
   return (
-    <div className={`${s} rounded-full border flex items-center justify-center ${style.icon}`}>
-      {icon}
+    <div className={`${s} rounded-full border-2 border-dashed border-gray-300 dark:border-zinc-600 bg-transparent flex items-center justify-center transition-all duration-300`}>
+      {StepIcon ? (
+        <StepIcon className={`${iconSize} text-gray-400 dark:text-zinc-500`} />
+      ) : (
+        <Circle className={`${size === "sm" ? "w-2.5 h-2.5" : "w-3 h-3"} text-gray-400 dark:text-zinc-500`} />
+      )}
     </div>
   );
 }
@@ -203,21 +243,30 @@ function PipelineVisualization({
 
   if (compact) {
     return (
-      <div className="flex items-center gap-1 w-full">
+      <div className="flex items-center w-full">
         {steps.map((step, i) => (
           <div key={step.key} className="flex items-center flex-1 last:flex-none">
-            <div className="flex flex-col items-center gap-1">
-              <StepStatusIcon status={step.status} size="sm" />
-              <span className={`text-[10px] font-medium ${STEP_STYLES[step.status].text}`}>
+            <div className="flex flex-col items-center gap-1.5">
+              <StepStatusIcon status={step.status} stepKey={step.key} size="sm" />
+              <span className={`text-xs font-medium ${
+                step.status === "success" ? "text-emerald-600 dark:text-emerald-400" :
+                step.status === "running" ? "text-blue-600 dark:text-blue-400" :
+                step.status === "failed" ? "text-red-600 dark:text-red-400" :
+                "text-gray-400 dark:text-zinc-500"
+              }`}>
                 {step.label}
               </span>
             </div>
             {i < steps.length - 1 && (
-              <div className={`flex-1 h-px mx-1 min-w-2 ${
-                step.status === "success" ? "bg-emerald-300 dark:bg-emerald-500/30" :
-                step.status === "failed" ? "bg-red-300 dark:bg-red-500/20" :
-                "bg-gray-200 dark:bg-zinc-800"
-              }`} />
+              <div className="flex-1 mx-2 min-w-3 relative">
+                <div className="h-1 rounded-full bg-gray-200 dark:bg-zinc-700" />
+                {step.status === "success" && (
+                  <div className="absolute top-0 left-0 h-1 rounded-full bg-emerald-500 w-full transition-all duration-500" />
+                )}
+                {step.status === "failed" && (
+                  <div className="absolute top-0 left-0 h-1 rounded-full bg-red-400 w-full" />
+                )}
+              </div>
             )}
           </div>
         ))}
@@ -225,39 +274,52 @@ function PipelineVisualization({
     );
   }
 
+  // Full size pipeline
   return (
-    <div className="flex items-stretch gap-0 w-full">
+    <div className="flex items-center w-full py-2">
       {steps.map((step, i) => {
-        const style = STEP_STYLES[step.status];
         const isActive = activeStep === step.key;
         return (
           <div key={step.key} className="flex items-center flex-1 last:flex-none">
+            {/* Step circle + label */}
             <div
-              className={`
-                flex items-center gap-2.5 px-4 py-3 rounded-xl border-l-4 border shadow-sm transition-all w-full
-                ${style.border} ${style.bg}
-                ${isActive ? "ring-2 ring-blue-400/50 shadow-md scale-[1.02]" : ""}
-                ${isClickable && step.status !== "pending" ? "cursor-pointer hover:shadow-md hover:scale-[1.02]" : ""}
-              `}
+              className={`flex flex-col items-center gap-2 ${
+                isClickable && step.status !== "pending" ? "cursor-pointer group" : ""
+              }`}
               onClick={() => isClickable && step.status !== "pending" && onStepClick?.(step.key)}
             >
-              <StepStatusIcon status={step.status} />
-              <div className="flex flex-col min-w-0">
-                <span className={`text-xs font-semibold ${style.text}`}>
+              <div className={`transition-transform duration-200 ${
+                isActive ? "scale-110" : ""
+              } ${isClickable && step.status !== "pending" ? "group-hover:scale-110" : ""}`}>
+                <StepStatusIcon status={step.status} stepKey={step.key} />
+              </div>
+              <div className="text-center">
+                <span className={`text-sm font-semibold block ${
+                  step.status === "success" ? "text-emerald-700 dark:text-emerald-400" :
+                  step.status === "running" ? "text-blue-700 dark:text-blue-400" :
+                  step.status === "failed" ? "text-red-700 dark:text-red-400" :
+                  "text-gray-400 dark:text-zinc-500"
+                }`}>
                   {step.label}
                 </span>
-                {step.duration && (
-                  <span className="text-[10px] text-gray-400 dark:text-zinc-500 font-mono">{step.duration}</span>
-                )}
+                <span className="text-xs font-medium text-gray-500 dark:text-zinc-500 tabular-nums">
+                  {step.duration ?? (step.status === "pending" ? "—" : "")}
+                </span>
               </div>
             </div>
+            {/* Connector line with fill animation */}
             {i < steps.length - 1 && (
-              <div className="flex items-center px-1 shrink-0">
-                <ChevronRight className={`w-4 h-4 ${
-                  step.status === "success" ? "text-emerald-400" :
-                  step.status === "failed" ? "text-red-400" :
-                  "text-gray-300 dark:text-zinc-700"
-                }`} />
+              <div className="flex-1 mx-3 min-w-6 relative self-start mt-5">
+                <div className="h-1 rounded-full bg-gray-200 dark:bg-zinc-700" />
+                {step.status === "success" && (
+                  <div className="absolute top-0 left-0 h-1 rounded-full bg-emerald-500 w-full transition-all duration-500 ease-out" />
+                )}
+                {step.status === "running" && (
+                  <div className="absolute top-0 left-0 h-1 rounded-full bg-gradient-to-r from-blue-500 to-blue-300 w-1/2 animate-pulse" />
+                )}
+                {step.status === "failed" && (
+                  <div className="absolute top-0 left-0 h-1 rounded-full bg-red-400 w-full" />
+                )}
               </div>
             )}
           </div>
@@ -282,18 +344,31 @@ const STATUS_DOT_COLORS: Record<string, string> = {
   running: "bg-emerald-500",
   building: "bg-amber-500 animate-pulse",
   deploying: "bg-blue-500 animate-pulse",
-  pending: "bg-zinc-500",
+  pending: "bg-gray-400",
   failed: "bg-red-500",
 };
+
+function relativeTime(dateStr: string): string {
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
+}
 
 function DeploymentCard({
   deployment,
   onRollback,
   rolling,
+  isFirst,
 }: {
   deployment: Deployment;
   onRollback: (id: string) => void;
   rolling: string | null;
+  isFirst?: boolean;
 }) {
   const [expanded, setExpanded] = useState(false);
   const isActive = ["building", "deploying"].includes(deployment.status);
@@ -303,34 +378,34 @@ function DeploymentCard({
   return (
     <div
       className={`border-b border-gray-100 dark:border-zinc-800/60 last:border-0 transition-colors ${
-        isActive ? "bg-blue-500/3" : ""
-      }`}
+        isActive ? "bg-blue-50 dark:bg-blue-500/5" : ""
+      } ${isFirst && deployment.status === "running" ? "border-l-3 border-l-emerald-500" : ""}`}
     >
-      <div className="flex items-center justify-between px-4 py-3.5">
+      <div className="flex items-center justify-between px-5 py-4">
         <div className="flex items-center gap-3 min-w-0 flex-1">
           <div className="shrink-0">
             <div
-              className={`w-2 h-2 rounded-full ${
-                STATUS_DOT_COLORS[deployment.status] ?? "bg-zinc-500"
+              className={`w-2.5 h-2.5 rounded-full ${
+                STATUS_DOT_COLORS[deployment.status] ?? "bg-gray-400"
               }`}
             />
           </div>
 
           <div className="min-w-0 shrink-0">
             <div className="flex items-center gap-2">
-              <span className="text-xs font-mono text-gray-700 dark:text-zinc-300">
+              <span className="text-sm font-mono font-medium text-gray-800 dark:text-zinc-200">
                 {deployment.commit_sha ? deployment.commit_sha.slice(0, 7) : "manual"}
               </span>
               <Badge variant={DEPLOY_STATUS_VARIANT[deployment.status] ?? "secondary"}>
                 {deployment.status}
               </Badge>
             </div>
-            <div className="flex items-center gap-2 mt-0.5">
-              <span className="text-xs text-gray-400 dark:text-zinc-600">
-                {new Date(deployment.created_at).toLocaleString()}
+            <div className="flex items-center gap-2 mt-1">
+              <span className="text-xs font-medium text-gray-500 dark:text-zinc-500" title={new Date(deployment.created_at).toLocaleString()}>
+                {relativeTime(deployment.created_at)}
               </span>
               {deployment.image_tag && deployment.status === "running" && (
-                <span className="text-xs font-mono text-gray-400 dark:text-zinc-700">
+                <span className="text-xs font-mono text-gray-500 dark:text-zinc-500">
                   {deployment.image_tag.split(":").pop()}
                 </span>
               )}
@@ -475,7 +550,7 @@ function BuildLogTerminal({
                 <button
                   key={tab.key ?? "all"}
                   onClick={() => onStepFilter(tab.key)}
-                  className={`px-2 py-1 rounded text-[10px] font-medium transition-colors ${
+                  className={`px-2 py-1 rounded text-xs font-medium transition-colors ${
                     activeLogStep === tab.key
                       ? "bg-white dark:bg-zinc-700 text-gray-900 dark:text-zinc-100 shadow-sm"
                       : "text-gray-500 dark:text-zinc-500 hover:text-gray-700 dark:hover:text-zinc-300"
@@ -999,10 +1074,10 @@ export default function AppDetailPage() {
                       c.status === "running" ? "bg-blue-500 animate-pulse" :
                       c.status === "failed" ? "bg-red-500" : "bg-zinc-600"
                     }`} />
-                    <span className="text-[10px] text-gray-500 dark:text-zinc-500 font-mono">{c.name}</span>
-                    {c.duration && <span className="text-[10px] text-gray-400 dark:text-zinc-600">{c.duration}</span>}
+                    <span className="text-xs text-gray-500 dark:text-zinc-500 font-mono">{c.name}</span>
+                    {c.duration && <span className="text-xs text-gray-400 dark:text-zinc-600">{c.duration}</span>}
                     {c.exit_code !== null && c.exit_code !== 0 && (
-                      <span className="text-[10px] text-red-400">exit {c.exit_code}</span>
+                      <span className="text-xs text-red-400">exit {c.exit_code}</span>
                     )}
                   </div>
                 ))}
@@ -1032,7 +1107,7 @@ export default function AppDetailPage() {
                   <InfoIcon className="w-5 h-5 text-white" />
                 </div>
                 <div className="min-w-0">
-                  <p className="text-[10px] text-gray-400 dark:text-zinc-500 uppercase tracking-wider">{label}</p>
+                  <p className="text-xs text-gray-400 dark:text-zinc-500 uppercase tracking-wider">{label}</p>
                   <p className="text-sm font-semibold text-gray-800 dark:text-zinc-200 font-mono truncate">{value}</p>
                 </div>
               </div>
@@ -1106,13 +1181,14 @@ export default function AppDetailPage() {
                 <p className="text-xs mt-1 text-gray-400 dark:text-zinc-600">Click &quot;Build&quot; to trigger the first build.</p>
               </div>
             ) : (
-              <div className="bg-white dark:bg-zinc-900/50 border border-gray-200 dark:border-zinc-800 rounded-xl overflow-hidden shadow-sm">
-                {deployments.map((d) => (
+              <div className="bg-white dark:bg-zinc-900 border border-gray-100 dark:border-zinc-800 rounded-xl overflow-hidden shadow-md">
+                {deployments.map((d, idx) => (
                   <DeploymentCard
                     key={d.id}
                     deployment={d}
                     onRollback={handleRollback}
                     rolling={rolling}
+                    isFirst={idx === 0}
                   />
                 ))}
               </div>

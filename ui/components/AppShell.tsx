@@ -76,7 +76,7 @@ export function AppShell({ children, userEmail }: AppShellProps) {
         <nav className="flex-1 px-3 py-4 overflow-y-auto">
           {NAV_SECTIONS.map((section) => (
             <div key={section.label} className="mb-5">
-              <p className="px-3 mb-2 text-[10px] font-bold uppercase tracking-widest text-white/40">
+              <p className="px-3 mb-2 text-xs font-bold uppercase tracking-widest text-white/40">
                 {section.label}
               </p>
               <div className="space-y-1">

@@ -92,10 +92,10 @@ export function BuildModal({
             <div className="min-w-0">
               <p className="text-xs text-gray-500 dark:text-zinc-400 font-mono truncate">{repoShort}</p>
               {useDockerfile && dockerfilePath && (
-                <p className="text-[10px] text-gray-400 dark:text-zinc-600 mt-0.5">Dockerfile: {dockerfilePath}</p>
+                <p className="text-xs text-gray-400 dark:text-zinc-600 mt-0.5">Dockerfile: {dockerfilePath}</p>
               )}
               {!useDockerfile && (
-                <p className="text-[10px] text-gray-400 dark:text-zinc-600 mt-0.5">Auto-detect via Nixpacks</p>
+                <p className="text-xs text-gray-400 dark:text-zinc-600 mt-0.5">Auto-detect via Nixpacks</p>
               )}
             </div>
           </div>
@@ -126,7 +126,7 @@ export function BuildModal({
 
           {showAdvanced && (
             <div className="space-y-2 pl-4 border-l-2 border-gray-200 dark:border-zinc-800">
-              <p className="text-[11px] text-gray-400 dark:text-zinc-600 mb-2">
+              <p className="text-xs text-gray-400 dark:text-zinc-600 mb-2">
                 Override environment variables for this build only.
               </p>
               {envVars.map((ev, i) => (
@@ -168,7 +168,7 @@ export function BuildModal({
             <div className="flex items-center gap-2">
               {["Clone", "Detect", "Build", "Push", "Deploy"].map((step, i) => (
                 <div key={step} className="flex items-center gap-2">
-                  <span className="text-[10px] text-gray-500 dark:text-zinc-400 bg-gray-100 dark:bg-zinc-800 px-2 py-0.5 rounded font-medium">{step}</span>
+                  <span className="text-xs text-gray-500 dark:text-zinc-400 bg-gray-100 dark:bg-zinc-800 px-2 py-0.5 rounded font-medium">{step}</span>
                   {i < 4 && <span className="text-gray-400 dark:text-zinc-700">→</span>}
                 </div>
               ))}
@@ -271,7 +271,7 @@ export function DeployModal({
 
           {/* Replicas */}
           <div>
-            <p className="text-[10px] text-gray-500 dark:text-zinc-500 uppercase tracking-wider mb-2">Replicas</p>
+            <p className="text-xs text-gray-500 dark:text-zinc-500 uppercase tracking-wider mb-2">Replicas</p>
             <div className="flex items-center gap-2">
               {[1, 2, 3, 5].map((n) => (
                 <button
@@ -292,7 +292,7 @@ export function DeployModal({
           {/* Resource Limits */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <p className="text-[10px] text-gray-500 dark:text-zinc-500 uppercase tracking-wider mb-1.5">CPU Limit</p>
+              <p className="text-xs text-gray-500 dark:text-zinc-500 uppercase tracking-wider mb-1.5">CPU Limit</p>
               <input
                 type="text"
                 value={cpu}
@@ -302,7 +302,7 @@ export function DeployModal({
               />
             </div>
             <div>
-              <p className="text-[10px] text-gray-500 dark:text-zinc-500 uppercase tracking-wider mb-1.5">Memory Limit</p>
+              <p className="text-xs text-gray-500 dark:text-zinc-500 uppercase tracking-wider mb-1.5">Memory Limit</p>
               <input
                 type="text"
                 value={memory}
@@ -315,7 +315,7 @@ export function DeployModal({
 
           {/* Strategy info */}
           <div className="bg-gray-50 dark:bg-zinc-800/50 rounded-lg px-3 py-2.5">
-            <p className="text-[10px] text-gray-500 dark:text-zinc-500 uppercase tracking-wider mb-1">Strategy</p>
+            <p className="text-xs text-gray-500 dark:text-zinc-500 uppercase tracking-wider mb-1">Strategy</p>
             <p className="text-sm text-gray-800 dark:text-zinc-200 font-medium">Rolling Update</p>
           </div>
 

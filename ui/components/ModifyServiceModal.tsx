@@ -78,7 +78,7 @@ export function ModifyServiceModal({
         <div className="px-5 py-4 space-y-4">
           {/* Tier selector */}
           <div>
-            <p className="text-[10px] text-gray-500 dark:text-zinc-500 uppercase tracking-wider mb-2">Tier</p>
+            <p className="text-xs text-gray-500 dark:text-zinc-500 uppercase tracking-wider mb-2">Tier</p>
             <div className="flex items-center gap-2">
               {["dev", "prod"].map((t) => (
                 <button
@@ -106,7 +106,7 @@ export function ModifyServiceModal({
                     <p className="text-xs text-amber-300/80">
                       Upgrade to PROD: 3 replicas, larger storage, HA failover.
                     </p>
-                    <p className="text-[10px] text-amber-300/60 mt-0.5">Requires service restart.</p>
+                    <p className="text-xs text-amber-300/60 mt-0.5">Requires service restart.</p>
                   </div>
                 </div>
               </div>
@@ -115,7 +115,7 @@ export function ModifyServiceModal({
 
           {/* Replicas */}
           <div>
-            <p className="text-[10px] text-gray-500 dark:text-zinc-500 uppercase tracking-wider mb-2">Replicas</p>
+            <p className="text-xs text-gray-500 dark:text-zinc-500 uppercase tracking-wider mb-2">Replicas</p>
             <div className="flex items-center gap-2">
               {Array.from({ length: maxReplicas }, (_, i) => i + 1)
                 .filter((n) => [1, 2, 3, 5, 7].includes(n) && n <= maxReplicas)
@@ -138,7 +138,7 @@ export function ModifyServiceModal({
           {/* Storage (Everest + RabbitMQ only) */}
           {(isEverest || isRabbitMQ) && (
             <div>
-              <p className="text-[10px] text-gray-500 dark:text-zinc-500 uppercase tracking-wider mb-1.5">Storage</p>
+              <p className="text-xs text-gray-500 dark:text-zinc-500 uppercase tracking-wider mb-1.5">Storage</p>
               <div className="flex items-center gap-2">
                 <input
                   type="number"
@@ -149,7 +149,7 @@ export function ModifyServiceModal({
                 />
                 <span className="text-xs text-gray-500 dark:text-zinc-500">Gi</span>
               </div>
-              <p className="text-[10px] text-gray-400 dark:text-zinc-600 mt-1">Storage can only be increased.</p>
+              <p className="text-xs text-gray-400 dark:text-zinc-600 mt-1">Storage can only be increased.</p>
             </div>
           )}
 
@@ -157,7 +157,7 @@ export function ModifyServiceModal({
           {isEverest && (
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <p className="text-[10px] text-gray-500 dark:text-zinc-500 uppercase tracking-wider mb-1.5">CPU (cores)</p>
+                <p className="text-xs text-gray-500 dark:text-zinc-500 uppercase tracking-wider mb-1.5">CPU (cores)</p>
                 <input
                   type="text"
                   value={cpu}
@@ -166,7 +166,7 @@ export function ModifyServiceModal({
                 />
               </div>
               <div>
-                <p className="text-[10px] text-gray-500 dark:text-zinc-500 uppercase tracking-wider mb-1.5">Memory (Gi)</p>
+                <p className="text-xs text-gray-500 dark:text-zinc-500 uppercase tracking-wider mb-1.5">Memory (Gi)</p>
                 <input
                   type="text"
                   value={memory}

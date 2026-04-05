@@ -198,7 +198,7 @@ export default function ObservabilityTab({
           <p className="text-lg font-semibold text-gray-900 dark:text-white font-mono">
             {pods.length === 0 ? "No pods" : `${pods.filter((p) => p.status === "Running").length}/${pods.length}`}
           </p>
-          <p className="text-[10px] text-gray-400 dark:text-[#555]">{pods.length > 0 ? "ready" : ""}</p>
+          <p className="text-xs text-gray-400 dark:text-[#555]">{pods.length > 0 ? "ready" : ""}</p>
         </div>
         <div className="bg-white dark:bg-[#141414] border border-gray-200 dark:border-[#222] rounded-lg px-4 py-3">
           <div className="flex items-center gap-1.5 mb-2">
@@ -208,7 +208,7 @@ export default function ObservabilityTab({
           <p className="text-lg font-semibold text-gray-900 dark:text-white font-mono">
             {deployments.length}
           </p>
-          <p className="text-[10px] text-gray-400 dark:text-[#555]">total</p>
+          <p className="text-xs text-gray-400 dark:text-[#555]">total</p>
         </div>
       </div>
 
@@ -253,7 +253,7 @@ export default function ObservabilityTab({
                 </div>
                 <Badge
                   variant={POD_STATUS_BADGE[pod.status] ?? "secondary"}
-                  className="text-[10px] w-fit"
+                  className="text-xs w-fit"
                 >
                   {pod.status}
                 </Badge>
@@ -270,11 +270,11 @@ export default function ObservabilityTab({
                   {pod.cpu_value ? (
                     <>
                       <div className="flex items-center justify-between">
-                        <span className="text-[10px] font-mono text-gray-500 dark:text-[#666]">
+                        <span className="text-xs font-mono text-gray-500 dark:text-[#666]">
                           {pod.cpu_value}
                         </span>
                         {pod.cpu_usage !== null && (
-                          <span className="text-[10px] font-mono text-gray-400 dark:text-[#555]">
+                          <span className="text-xs font-mono text-gray-400 dark:text-[#555]">
                             {pod.cpu_usage}%
                           </span>
                         )}
@@ -287,7 +287,7 @@ export default function ObservabilityTab({
                       )}
                     </>
                   ) : (
-                    <span className="text-[10px] text-gray-400 dark:text-[#555]">—</span>
+                    <span className="text-xs text-gray-400 dark:text-[#555]">—</span>
                   )}
                 </div>
                 {/* Memory */}
@@ -295,11 +295,11 @@ export default function ObservabilityTab({
                   {pod.memory_value ? (
                     <>
                       <div className="flex items-center justify-between">
-                        <span className="text-[10px] font-mono text-gray-500 dark:text-[#666]">
+                        <span className="text-xs font-mono text-gray-500 dark:text-[#666]">
                           {pod.memory_value}
                         </span>
                         {pod.memory_usage !== null && (
-                          <span className="text-[10px] font-mono text-gray-400 dark:text-[#555]">
+                          <span className="text-xs font-mono text-gray-400 dark:text-[#555]">
                             {pod.memory_usage}%
                           </span>
                         )}
@@ -312,7 +312,7 @@ export default function ObservabilityTab({
                       )}
                     </>
                   ) : (
-                    <span className="text-[10px] text-gray-400 dark:text-[#555]">—</span>
+                    <span className="text-xs text-gray-400 dark:text-[#555]">—</span>
                   )}
                 </div>
               </div>
@@ -388,12 +388,12 @@ export default function ObservabilityTab({
                   </div>
                   <div className="text-right shrink-0">
                     {ev.count > 1 && (
-                      <span className="text-[10px] text-gray-400 dark:text-[#555]">
+                      <span className="text-xs text-gray-400 dark:text-[#555]">
                         ×{ev.count}
                       </span>
                     )}
                     {ev.last_time && (
-                      <p className="text-[10px] text-gray-400 dark:text-[#555]">
+                      <p className="text-xs text-gray-400 dark:text-[#555]">
                         {new Date(ev.last_time).toLocaleTimeString()}
                       </p>
                     )}
@@ -452,12 +452,12 @@ export default function ObservabilityTab({
                                 ? "warning"
                                 : "secondary"
                             }
-                            className="text-[10px]"
+                            className="text-xs"
                           >
                             {d.status}
                           </Badge>
                           {i === 0 && d.status === "running" && (
-                            <span className="text-[10px] font-medium text-emerald-500">
+                            <span className="text-xs font-medium text-emerald-500">
                               current
                             </span>
                           )}
@@ -465,7 +465,7 @@ export default function ObservabilityTab({
                         <p className="text-xs text-gray-400 dark:text-[#555] mt-0.5">
                           {new Date(d.created_at).toLocaleString()}
                           {d.image_tag && (
-                            <span className="ml-2 font-mono text-[10px] text-gray-400 dark:text-[#444]">
+                            <span className="ml-2 font-mono text-xs text-gray-400 dark:text-[#444]">
                               {d.image_tag.split(":").pop()}
                             </span>
                           )}

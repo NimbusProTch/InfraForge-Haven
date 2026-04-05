@@ -55,7 +55,7 @@ export default function SignInPage() {
               <>
                 <div className="flex items-center gap-3 my-1">
                   <div className="flex-1 h-px bg-gray-200 dark:bg-zinc-800" />
-                  <span className="text-[10px] text-gray-400 dark:text-zinc-600 uppercase tracking-widest">or</span>
+                  <span className="text-xs text-gray-400 dark:text-zinc-600 uppercase tracking-widest">or</span>
                   <div className="flex-1 h-px bg-gray-200 dark:bg-zinc-800" />
                 </div>
                 <button
@@ -86,14 +86,14 @@ export default function SignInPage() {
             <div className="flex items-center justify-center gap-4">
               <div className="flex items-center gap-1.5">
                 <Globe className="w-3 h-3 text-emerald-600" />
-                <span className="text-[10px] text-gray-400 dark:text-zinc-600">EU Data Sovereignty</span>
+                <span className="text-xs text-gray-400 dark:text-zinc-600">EU Data Sovereignty</span>
               </div>
               <div className="flex items-center gap-1.5">
                 <Shield className="w-3 h-3 text-emerald-600" />
-                <span className="text-[10px] text-gray-400 dark:text-zinc-600">VNG Haven Certified</span>
+                <span className="text-xs text-gray-400 dark:text-zinc-600">VNG Haven Certified</span>
               </div>
             </div>
-            <p className="text-center text-[10px] text-gray-400 dark:text-zinc-700 mt-2">
+            <p className="text-center text-xs text-gray-400 dark:text-zinc-700 mt-2">
               GDPR Compliant · Haven 15/15 Infrastructure
             </p>
           </div>
