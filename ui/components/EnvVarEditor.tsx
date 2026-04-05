@@ -121,7 +121,7 @@ export default function EnvVarEditor({ value, onChange, disabled }: EnvVarEditor
                   }`}
                 />
                 {isDuplicate && (
-                  <p className="text-[10px] text-red-400 mt-0.5 flex items-center gap-1">
+                  <p className="text-xs text-red-400 mt-0.5 flex items-center gap-1">
                     <AlertCircle className="w-2.5 h-2.5" />
                     Duplicate key
                   </p>

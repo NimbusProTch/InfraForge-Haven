@@ -40,7 +40,7 @@ function PresetPicker({
           type="button"
           disabled={disabled}
           onClick={() => onSelect(p)}
-          className={`px-2 py-0.5 rounded text-[11px] font-mono border transition-colors disabled:opacity-50 ${
+          className={`px-2 py-0.5 rounded text-xs font-mono border transition-colors disabled:opacity-50 ${
             current === p
               ? "border-blue-500 bg-blue-500/10 text-blue-500 dark:text-blue-400"
               : "border-gray-200 dark:border-[#2e2e2e] text-gray-500 dark:text-[#666] hover:border-gray-400 dark:hover:border-[#444] hover:text-gray-700 dark:hover:text-[#999]"
@@ -204,9 +204,9 @@ export default function ResourceConfig({ value, onChange, disabled }: ResourceCo
             className="w-full h-1.5 rounded-full appearance-none cursor-pointer bg-gray-200 dark:bg-[#2a2a2a] accent-blue-600"
           />
           <div className="flex justify-between mt-1">
-            <span className="text-[10px] text-gray-400 dark:text-[#555]">10%</span>
-            <span className="text-[10px] text-gray-400 dark:text-[#555]">50%</span>
-            <span className="text-[10px] text-gray-400 dark:text-[#555]">100%</span>
+            <span className="text-xs text-gray-400 dark:text-[#555]">10%</span>
+            <span className="text-xs text-gray-400 dark:text-[#555]">50%</span>
+            <span className="text-xs text-gray-400 dark:text-[#555]">100%</span>
           </div>
         </div>
       </div>

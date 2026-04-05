@@ -556,7 +556,7 @@ export default function NewAppPage() {
                     placeholder="e.g. backend/Dockerfile"
                     className="w-full px-3 py-2 rounded-md border border-gray-200 dark:border-[#2e2e2e] bg-white dark:bg-[#0f0f0f] text-gray-900 dark:text-white text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500/50"
                   />
-                  <p className="text-[11px] text-gray-400 dark:text-gray-600 mt-1">
+                  <p className="text-xs text-gray-400 dark:text-gray-600 mt-1">
                     Path to Dockerfile relative to repo root. Leave empty for auto-detect.
                   </p>
                 </div>
@@ -571,7 +571,7 @@ export default function NewAppPage() {
                     placeholder="e.g. backend"
                     className="w-full px-3 py-2 rounded-md border border-gray-200 dark:border-[#2e2e2e] bg-white dark:bg-[#0f0f0f] text-gray-900 dark:text-white text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500/50"
                   />
-                  <p className="text-[11px] text-gray-400 dark:text-gray-600 mt-1">
+                  <p className="text-xs text-gray-400 dark:text-gray-600 mt-1">
                     Build root directory relative to repo root. Defaults to repo root.
                   </p>
                 </div>

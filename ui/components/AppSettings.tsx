@@ -443,7 +443,7 @@ export default function AppSettings({ tenantSlug, app, accessToken, onSaved }: A
                         <div>
                           <label className="block text-xs text-gray-500 dark:text-[#666] mb-1">
                             Repository
-                            <span className="ml-1 text-[10px] text-gray-400 dark:text-[#555]">
+                            <span className="ml-1 text-xs text-gray-400 dark:text-[#555]">
                               ({repos.length})
                             </span>
                           </label>
