@@ -18,6 +18,8 @@ import {
   Plus,
   Zap,
   Activity,
+  TrendingUp,
+  Server,
 } from "lucide-react";
 
 interface RecentDeployment {
@@ -48,35 +50,39 @@ const STATUS_DOT: Record<string, string> = {
   running: "bg-emerald-500",
   building: "bg-amber-500 animate-pulse",
   deploying: "bg-blue-500 animate-pulse",
-  pending: "bg-gray-400 dark:bg-zinc-500",
+  pending: "bg-gray-400",
   failed: "bg-red-500",
 };
 
+// Material Dashboard style stat card with floating colored icon
 function StatCard({
   label,
   value,
   icon: Icon,
-  sub,
-  accent,
-  iconColor,
+  footer,
+  gradient,
 }: {
   label: string;
   value: string | number;
   icon: React.ElementType;
-  sub?: string;
-  accent?: string;
-  iconColor?: string;
+  footer?: string;
+  gradient: string;
 }) {
   return (
-    <div className="bg-white dark:bg-zinc-900/50 border border-gray-200 dark:border-zinc-800 rounded-xl p-5 shadow-sm hover:shadow-md dark:hover:border-zinc-700 transition-all">
-      <div className="flex items-center justify-between mb-4">
-        <span className="text-xs font-medium text-gray-500 dark:text-zinc-500 uppercase tracking-wider">{label}</span>
-        <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${accent ?? "bg-gray-100 dark:bg-zinc-800"}`}>
-          <Icon className={`w-4 h-4 ${iconColor ?? "text-gray-500 dark:text-zinc-400"}`} />
-        </div>
+    <div className="stat-card">
+      <div className={`stat-card-icon ${gradient}`}>
+        <Icon className="w-7 h-7" />
       </div>
-      <p className="text-3xl font-bold text-gray-900 dark:text-zinc-100">{value}</p>
-      {sub && <p className="text-xs text-gray-500 dark:text-zinc-500 mt-1.5">{sub}</p>}
+      <div className="pl-20">
+        <p className="stat-card-label">{label}</p>
+        <p className="stat-card-value">{value}</p>
+      </div>
+      {footer && (
+        <div className="stat-card-footer flex items-center gap-1">
+          <TrendingUp className="w-3 h-3 text-emerald-500" />
+          <span>{footer}</span>
+        </div>
+      )}
     </div>
   );
 }
@@ -175,7 +181,7 @@ export default function DashboardPage() {
     return (
       <AppShell userEmail={session?.user?.email}>
         <div className="flex items-center justify-center h-full min-h-[400px]">
-          <Loader2 className="w-5 h-5 animate-spin text-gray-400 dark:text-zinc-600" />
+          <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
         </div>
       </AppShell>
     );
@@ -186,197 +192,150 @@ export default function DashboardPage() {
 
   return (
     <AppShell userEmail={session?.user?.email}>
-      <div className="p-6 max-w-5xl">
+      <div className="p-6 lg:p-8">
         {/* Header */}
         <div className="mb-8">
-          <p className="text-xs text-gray-400 dark:text-zinc-500 mb-1 uppercase tracking-wider">Overview</p>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-zinc-100">Welcome back, {userName}</h1>
-          <p className="text-sm text-gray-500 dark:text-zinc-500 mt-1">Haven Platform · Self-Service DevOps</p>
+          <h1 className="text-2xl font-bold text-gray-800 dark:text-white">Dashboard</h1>
+          <p className="text-sm text-gray-500 mt-1">Welcome back, {userName}</p>
         </div>
 
-        {/* Stats grid */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+        {/* Material Dashboard Stat Cards */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8 pt-4">
           <StatCard
             label="Projects"
             value={stats?.tenantCount ?? 0}
             icon={FolderKanban}
-            sub="namespaces"
-            accent="bg-violet-500/10"
-            iconColor="text-violet-500"
+            gradient="bg-gradient-to-br from-orange-400 to-orange-600"
+            footer={`${stats?.tenantCount ?? 0} namespaces`}
           />
           <StatCard
             label="Applications"
             value={stats?.appCount ?? 0}
             icon={Box}
-            sub={`${stats?.runningCount ?? 0} running`}
-            accent="bg-blue-500/10"
-            iconColor="text-blue-500"
+            gradient="bg-gradient-to-br from-emerald-400 to-emerald-600"
+            footer={`${stats?.runningCount ?? 0} running`}
           />
           <StatCard
-            label="Running"
+            label="Running Pods"
             value={stats?.runningCount ?? 0}
             icon={Activity}
-            sub="healthy pods"
-            accent="bg-emerald-500/10"
-            iconColor="text-emerald-500"
+            gradient="bg-gradient-to-br from-red-400 to-red-600"
+            footer="healthy instances"
           />
-          <div className="bg-white dark:bg-zinc-900/50 border border-gray-200 dark:border-zinc-800 rounded-xl p-5 shadow-sm hover:shadow-md dark:hover:border-zinc-700 transition-all">
-            <div className="flex items-center justify-between mb-4">
-              <span className="text-xs font-medium text-gray-500 dark:text-zinc-500 uppercase tracking-wider">Cluster</span>
-              <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${clusterOk ? "bg-emerald-500/10" : "bg-red-500/10"}`}>
-                {clusterOk ? (
-                  <CheckCircle2 className="w-4 h-4 text-emerald-500" />
-                ) : (
-                  <AlertCircle className="w-4 h-4 text-red-500" />
-                )}
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <p className="text-3xl font-bold text-gray-900 dark:text-zinc-100 capitalize">
-                {cluster?.status ?? "—"}
-              </p>
-            </div>
-            <div className="flex items-center gap-1.5 mt-1.5">
-              <span className={`w-1.5 h-1.5 rounded-full ${clusterOk ? "bg-emerald-500" : "bg-red-500"}`} />
-              <p className="text-xs text-gray-500 dark:text-zinc-500">{clusterOk ? "healthy" : "degraded"}</p>
-            </div>
-          </div>
+          <StatCard
+            label="Cluster"
+            value={clusterOk ? "Healthy" : "Degraded"}
+            icon={Server}
+            gradient={clusterOk ? "bg-gradient-to-br from-blue-400 to-blue-600" : "bg-gradient-to-br from-red-400 to-red-600"}
+            footer={clusterOk ? "All nodes ready" : "Check cluster status"}
+          />
         </div>
 
         {/* Quick Actions */}
-        <div className="mb-8">
-          <h2 className="text-xs font-medium text-gray-500 dark:text-zinc-500 uppercase tracking-wider mb-3">
-            Quick Actions
-          </h2>
-          <div className="flex items-center gap-3">
-            <Link
-              href="/tenants/new"
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium transition-colors shadow-sm"
-            >
-              <Plus className="w-4 h-4" />
-              New Project
-            </Link>
-            <Link
-              href="/tenants"
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-gray-300 dark:border-zinc-800 hover:border-gray-400 dark:hover:border-zinc-700 text-gray-600 dark:text-zinc-400 hover:text-gray-900 dark:hover:text-zinc-200 text-sm font-medium transition-colors"
-            >
-              <Zap className="w-4 h-4" />
-              View All Projects
-            </Link>
-          </div>
+        <div className="mb-8 flex items-center gap-3">
+          <Link
+            href="/tenants/new"
+            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 text-white text-sm font-medium transition-all shadow-md shadow-emerald-500/20"
+          >
+            <Plus className="w-4 h-4" />
+            New Project
+          </Link>
+          <Link
+            href="/tenants"
+            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-white dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700 text-gray-600 dark:text-zinc-300 hover:bg-gray-50 dark:hover:bg-zinc-700 text-sm font-medium transition-colors shadow-sm"
+          >
+            <Zap className="w-4 h-4" />
+            View All Projects
+          </Link>
         </div>
 
-        {/* Recent projects */}
-        {stats && stats.tenants.length > 0 && (
-          <div className="mb-8">
-            <div className="flex items-center justify-between mb-3">
-              <h2 className="text-xs font-medium text-gray-500 dark:text-zinc-500 uppercase tracking-wider">
-                Recent Projects
-              </h2>
-              <Link
-                href="/tenants"
-                className="text-xs text-gray-400 dark:text-zinc-600 hover:text-gray-700 dark:hover:text-zinc-300 flex items-center gap-1 transition-colors"
-              >
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Recent Projects */}
+          <div className="bg-white dark:bg-zinc-900 rounded-xl shadow-md border border-gray-100 dark:border-zinc-800 overflow-hidden">
+            <div className="px-5 py-4 border-b border-gray-100 dark:border-zinc-800 flex items-center justify-between">
+              <h2 className="text-sm font-semibold text-gray-800 dark:text-white">Recent Projects</h2>
+              <Link href="/tenants" className="text-xs text-blue-500 hover:text-blue-600 flex items-center gap-1">
                 View all <ArrowRight className="w-3 h-3" />
               </Link>
             </div>
-            <div className="bg-white dark:bg-zinc-900/50 border border-gray-200 dark:border-zinc-800 rounded-xl overflow-hidden shadow-sm">
-              {stats.tenants.slice(0, 5).map((tenant, i) => (
-                <Link
-                  key={tenant.id}
-                  href={`/tenants/${tenant.slug}`}
-                  className={`flex items-center justify-between px-4 py-3.5 hover:bg-gray-50 dark:hover:bg-zinc-800/50 transition-colors group ${
-                    i > 0 ? "border-t border-gray-100 dark:border-zinc-800/60" : ""
-                  }`}
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-lg bg-violet-500/10 border border-violet-500/20 flex items-center justify-center">
-                      <FolderKanban className="w-3.5 h-3.5 text-violet-400" />
+            {stats && stats.tenants.length > 0 ? (
+              <div>
+                {stats.tenants.slice(0, 5).map((tenant, i) => (
+                  <Link
+                    key={tenant.id}
+                    href={`/tenants/${tenant.slug}`}
+                    className={`flex items-center justify-between px-5 py-3.5 hover:bg-gray-50 dark:hover:bg-zinc-800/50 transition-colors group ${
+                      i > 0 ? "border-t border-gray-50 dark:border-zinc-800/60" : ""
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-violet-400 to-violet-600 shadow-sm flex items-center justify-center">
+                        <FolderKanban className="w-4 h-4 text-white" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium text-gray-700 dark:text-zinc-200">{tenant.name}</p>
+                        <p className="text-xs text-gray-400 font-mono">{tenant.slug}</p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="text-sm font-medium text-gray-800 dark:text-zinc-200 group-hover:text-gray-900 dark:group-hover:text-zinc-100 transition-colors">
-                        {tenant.name}
-                      </p>
-                      <p className="text-xs text-gray-400 dark:text-zinc-600 font-mono">{tenant.slug}</p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
                     <Badge variant={tenant.active ? "success" : "secondary"}>
                       {tenant.active ? "active" : "inactive"}
                     </Badge>
-                    <ArrowRight className="w-3.5 h-3.5 text-gray-300 dark:text-zinc-700 group-hover:text-gray-500 dark:group-hover:text-zinc-500 transition-colors" />
-                  </div>
+                  </Link>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-12">
+                <FolderKanban className="w-10 h-10 mx-auto mb-3 text-gray-300" />
+                <p className="text-sm text-gray-500">No projects yet.</p>
+                <Link href="/tenants/new" className="inline-block mt-3 text-sm text-emerald-500 hover:text-emerald-600">
+                  Create your first project →
                 </Link>
-              ))}
+              </div>
+            )}
+          </div>
+
+          {/* Recent Activity */}
+          <div className="bg-white dark:bg-zinc-900 rounded-xl shadow-md border border-gray-100 dark:border-zinc-800 overflow-hidden">
+            <div className="px-5 py-4 border-b border-gray-100 dark:border-zinc-800">
+              <h2 className="text-sm font-semibold text-gray-800 dark:text-white">Recent Activity</h2>
             </div>
-          </div>
-        )}
-
-        {stats?.tenants.length === 0 && (
-          <div className="text-center py-16 border border-dashed border-gray-300 dark:border-zinc-800 rounded-xl bg-white dark:bg-transparent">
-            <FolderKanban className="w-10 h-10 mx-auto mb-3 text-gray-300 dark:text-zinc-700" />
-            <p className="text-sm text-gray-500 dark:text-zinc-500">No projects yet.</p>
-            <Link
-              href="/tenants/new"
-              className="inline-block mt-3 text-sm text-emerald-500 hover:text-emerald-400 transition-colors"
-            >
-              Create your first project →
-            </Link>
-          </div>
-        )}
-
-        {/* Recent Deployments */}
-        {stats && stats.recentDeployments.length > 0 && (
-          <div>
-            <h2 className="text-xs font-medium text-gray-500 dark:text-zinc-500 uppercase tracking-wider mb-3">
-              Recent Activity
-            </h2>
-            <div className="bg-white dark:bg-zinc-900/50 border border-gray-200 dark:border-zinc-800 rounded-xl overflow-hidden shadow-sm">
-              {stats.recentDeployments.map((item, i) => (
-                <Link
-                  key={item.deployment.id}
-                  href={`/tenants/${item.tenantSlug}/apps/${item.appSlug}`}
-                  className={`flex items-center justify-between px-4 py-3.5 hover:bg-gray-50 dark:hover:bg-zinc-800/50 transition-colors group ${
-                    i > 0 ? "border-t border-gray-100 dark:border-zinc-800/60" : ""
-                  }`}
-                >
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div
-                      className={`w-2 h-2 rounded-full shrink-0 ${STATUS_DOT[item.deployment.status] ?? "bg-gray-400 dark:bg-zinc-500"}`}
-                    />
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2">
-                        <p className="text-sm font-medium text-gray-800 dark:text-zinc-200 truncate">
+            {stats && stats.recentDeployments.length > 0 ? (
+              <div>
+                {stats.recentDeployments.map((item, i) => (
+                  <Link
+                    key={item.deployment.id}
+                    href={`/tenants/${item.tenantSlug}/apps/${item.appSlug}`}
+                    className={`flex items-center justify-between px-5 py-3.5 hover:bg-gray-50 dark:hover:bg-zinc-800/50 transition-colors ${
+                      i > 0 ? "border-t border-gray-50 dark:border-zinc-800/60" : ""
+                    }`}
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className={`w-2.5 h-2.5 rounded-full shrink-0 ${STATUS_DOT[item.deployment.status] ?? "bg-gray-400"}`} />
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-gray-700 dark:text-zinc-200 truncate">
                           {item.appName}
+                          <span className="ml-2 text-xs text-gray-400 font-mono">{item.tenantSlug}</span>
                         </p>
-                        <span className="text-xs text-gray-400 dark:text-zinc-600 shrink-0 font-mono">
-                          {item.tenantSlug}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-2 mt-0.5">
-                        {item.deployment.commit_sha && (
-                          <span className="text-xs font-mono text-gray-400 dark:text-zinc-600">
-                            {item.deployment.commit_sha.slice(0, 7)}
-                          </span>
-                        )}
-                        <span className="flex items-center gap-1 text-xs text-gray-400 dark:text-zinc-600">
+                        <span className="flex items-center gap-1 text-xs text-gray-400">
                           <Clock className="w-3 h-3" />
                           {new Date(item.deployment.created_at).toLocaleString()}
                         </span>
                       </div>
                     </div>
-                  </div>
-                  <div className="flex items-center gap-2 shrink-0 ml-3">
                     <Badge variant={DEPLOY_STATUS_VARIANT[item.deployment.status] ?? "secondary"}>
                       {item.deployment.status}
                     </Badge>
-                    <ArrowRight className="w-3.5 h-3.5 text-gray-300 dark:text-zinc-700 group-hover:text-gray-500 dark:group-hover:text-zinc-500 transition-colors" />
-                  </div>
-                </Link>
-              ))}
-            </div>
+                  </Link>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-12">
+                <Activity className="w-10 h-10 mx-auto mb-3 text-gray-300" />
+                <p className="text-sm text-gray-500">No recent deployments.</p>
+              </div>
+            )}
           </div>
-        )}
+        </div>
       </div>
     </AppShell>
   );

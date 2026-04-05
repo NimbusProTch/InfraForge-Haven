@@ -4,7 +4,7 @@
 
 @layer base {
   :root {
-    --background: 0 0% 98%;
+    --background: 0 0% 96%;
     --foreground: 222 47% 11%;
     --card: 0 0% 100%;
     --card-foreground: 222 47% 11%;
@@ -23,7 +23,7 @@
     --border: 214 32% 91%;
     --input: 214 32% 91%;
     --ring: 217 91% 60%;
-    --radius: 0.5rem;
+    --radius: 0.75rem;
   }
 
   .dark {
@@ -55,5 +55,24 @@
   }
   body {
     @apply bg-background text-foreground;
+  }
+}
+
+/* Material Dashboard inspired stat cards */
+@layer components {
+  .stat-card {
+    @apply relative bg-white dark:bg-zinc-900 rounded-xl shadow-md border border-gray-100 dark:border-zinc-800 p-4 overflow-visible;
+  }
+  .stat-card-icon {
+    @apply absolute -top-4 left-4 w-16 h-16 rounded-xl shadow-lg flex items-center justify-center text-white;
+  }
+  .stat-card-value {
+    @apply text-right text-2xl font-bold text-gray-800 dark:text-zinc-100;
+  }
+  .stat-card-label {
+    @apply text-right text-xs text-gray-400 dark:text-zinc-500 uppercase tracking-wider;
+  }
+  .stat-card-footer {
+    @apply mt-3 pt-3 border-t border-gray-100 dark:border-zinc-800 text-xs text-gray-500 dark:text-zinc-500;
   }
 }

@@ -313,7 +313,7 @@ export default function TenantDetailPage() {
 
   return (
     <AppShell userEmail={session?.user?.email}>
-      <div className="p-6 max-w-5xl">
+      <div className="p-6 lg:p-8">
         <Breadcrumb
           items={[
             { label: "Projects", href: "/tenants" },

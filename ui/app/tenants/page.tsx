@@ -51,7 +51,7 @@ export default function TenantsPage() {
 
   return (
     <AppShell userEmail={session?.user?.email}>
-      <div className="p-6 max-w-5xl">
+      <div className="p-6 lg:p-8">
         {/* Page header */}
         <div className="flex items-start justify-between mb-6">
           <div>
