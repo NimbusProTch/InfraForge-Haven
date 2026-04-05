@@ -18,7 +18,7 @@ import {
 interface BuildModalProps {
   open: boolean;
   onClose: () => void;
-  onConfirm: (options: { branch?: string }) => void;
+  onConfirm: (options: { branch?: string; build_env_vars?: Record<string, string> }) => void;
   loading: boolean;
   appName: string;
   currentBranch: string;
@@ -40,10 +40,30 @@ export function BuildModal({
 }: BuildModalProps) {
   const [branch, setBranch] = useState(currentBranch);
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [envVars, setEnvVars] = useState<Array<{ key: string; value: string }>>([]);
 
   if (!open) return null;
 
   const repoShort = repoUrl.replace("https://github.com/", "");
+
+  const addEnvVar = () => setEnvVars([...envVars, { key: "", value: "" }]);
+  const removeEnvVar = (i: number) => setEnvVars(envVars.filter((_, idx) => idx !== i));
+  const updateEnvVar = (i: number, field: "key" | "value", val: string) => {
+    const updated = [...envVars];
+    updated[i][field] = val;
+    setEnvVars(updated);
+  };
+
+  const handleConfirm = () => {
+    const buildEnvVars: Record<string, string> = {};
+    envVars.forEach(({ key, value }) => {
+      if (key.trim()) buildEnvVars[key.trim()] = value;
+    });
+    onConfirm({
+      branch: branch !== currentBranch ? branch : undefined,
+      build_env_vars: Object.keys(buildEnvVars).length > 0 ? buildEnvVars : undefined,
+    });
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={onClose}>
@@ -94,21 +114,51 @@ export function BuildModal({
             />
           </div>
 
-          {/* Advanced toggle */}
+          {/* Build Environment (collapsible) */}
           <button
             type="button"
             onClick={() => setShowAdvanced(!showAdvanced)}
             className="flex items-center gap-1.5 text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
           >
             <ChevronDown className={`w-3 h-3 transition-transform ${showAdvanced ? "rotate-180" : ""}`} />
-            Advanced options
+            Build Environment (optional)
           </button>
 
           {showAdvanced && (
-            <div className="space-y-3 pl-4 border-l-2 border-zinc-800">
-              <p className="text-[11px] text-zinc-600">
-                Environment variables and Dockerfile settings can be configured in the Settings tab before building.
+            <div className="space-y-2 pl-4 border-l-2 border-zinc-800">
+              <p className="text-[11px] text-zinc-600 mb-2">
+                Override environment variables for this build only.
               </p>
+              {envVars.map((ev, i) => (
+                <div key={i} className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    placeholder="KEY"
+                    value={ev.key}
+                    onChange={(e) => updateEnvVar(i, "key", e.target.value)}
+                    className="flex-1 px-2 py-1.5 rounded border border-zinc-700 bg-zinc-800 text-xs text-zinc-200 font-mono focus:outline-none focus:ring-1 focus:ring-amber-500/50"
+                  />
+                  <span className="text-zinc-600 text-xs">=</span>
+                  <input
+                    type="text"
+                    placeholder="value"
+                    value={ev.value}
+                    onChange={(e) => updateEnvVar(i, "value", e.target.value)}
+                    className="flex-1 px-2 py-1.5 rounded border border-zinc-700 bg-zinc-800 text-xs text-zinc-200 font-mono focus:outline-none focus:ring-1 focus:ring-amber-500/50"
+                  />
+                  <button onClick={() => removeEnvVar(i)} className="text-zinc-600 hover:text-red-400 transition-colors">
+                    <Trash2 className="w-3 h-3" />
+                  </button>
+                </div>
+              ))}
+              <button
+                type="button"
+                onClick={addEnvVar}
+                className="inline-flex items-center gap-1 text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
+              >
+                <Plus className="w-3 h-3" />
+                Add variable
+              </button>
             </div>
           )}
 
@@ -135,7 +185,7 @@ export function BuildModal({
             Cancel
           </button>
           <button
-            onClick={() => onConfirm({ branch })}
+            onClick={handleConfirm}
             disabled={loading}
             className="inline-flex items-center gap-1.5 px-5 py-2 rounded-lg bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white text-xs font-medium transition-colors"
           >
@@ -153,11 +203,13 @@ export function BuildModal({
 interface DeployModalProps {
   open: boolean;
   onClose: () => void;
-  onConfirm: () => void;
+  onConfirm: (options: { replicas?: number; resource_cpu_limit?: string; resource_memory_limit?: string }) => void;
   loading: boolean;
   appName: string;
   imageTag: string | null;
   replicas?: number;
+  cpuLimit?: string;
+  memoryLimit?: string;
 }
 
 export function DeployModal({
@@ -168,11 +220,25 @@ export function DeployModal({
   appName,
   imageTag,
   replicas = 1,
+  cpuLimit = "500m",
+  memoryLimit = "512Mi",
 }: DeployModalProps) {
+  const [selectedReplicas, setSelectedReplicas] = useState(replicas);
+  const [cpu, setCpu] = useState(cpuLimit);
+  const [memory, setMemory] = useState(memoryLimit);
+
   if (!open) return null;
 
   const imageShort = imageTag?.split(":").pop() ?? "latest";
   const imageRepo = imageTag?.split(":")[0]?.split("/").pop() ?? "";
+
+  const handleConfirm = () => {
+    onConfirm({
+      replicas: selectedReplicas !== replicas ? selectedReplicas : undefined,
+      resource_cpu_limit: cpu !== cpuLimit ? cpu : undefined,
+      resource_memory_limit: memory !== memoryLimit ? memory : undefined,
+    });
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={onClose}>
@@ -203,23 +269,60 @@ export function DeployModal({
             </div>
           </div>
 
-          {/* Deployment info */}
+          {/* Replicas */}
+          <div>
+            <p className="text-[10px] text-zinc-500 uppercase tracking-wider mb-2">Replicas</p>
+            <div className="flex items-center gap-2">
+              {[1, 2, 3, 5].map((n) => (
+                <button
+                  key={n}
+                  onClick={() => setSelectedReplicas(n)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                    selectedReplicas === n
+                      ? "bg-emerald-600 text-white"
+                      : "bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200 border border-zinc-700"
+                  }`}
+                >
+                  {n}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Resource Limits */}
           <div className="grid grid-cols-2 gap-3">
-            <div className="bg-zinc-800/50 rounded-lg px-3 py-2.5">
-              <p className="text-[10px] text-zinc-500 uppercase tracking-wider mb-1">Replicas</p>
-              <p className="text-sm text-zinc-200 font-medium">{replicas}</p>
+            <div>
+              <p className="text-[10px] text-zinc-500 uppercase tracking-wider mb-1.5">CPU Limit</p>
+              <input
+                type="text"
+                value={cpu}
+                onChange={(e) => setCpu(e.target.value)}
+                placeholder="500m"
+                className="w-full px-3 py-2 rounded-lg border border-zinc-700 bg-zinc-800 text-sm text-zinc-200 font-mono focus:outline-none focus:ring-1 focus:ring-emerald-500/50"
+              />
             </div>
-            <div className="bg-zinc-800/50 rounded-lg px-3 py-2.5">
-              <p className="text-[10px] text-zinc-500 uppercase tracking-wider mb-1">Strategy</p>
-              <p className="text-sm text-zinc-200 font-medium">Rolling Update</p>
+            <div>
+              <p className="text-[10px] text-zinc-500 uppercase tracking-wider mb-1.5">Memory Limit</p>
+              <input
+                type="text"
+                value={memory}
+                onChange={(e) => setMemory(e.target.value)}
+                placeholder="512Mi"
+                className="w-full px-3 py-2 rounded-lg border border-zinc-700 bg-zinc-800 text-sm text-zinc-200 font-mono focus:outline-none focus:ring-1 focus:ring-emerald-500/50"
+              />
             </div>
+          </div>
+
+          {/* Strategy info */}
+          <div className="bg-zinc-800/50 rounded-lg px-3 py-2.5">
+            <p className="text-[10px] text-zinc-500 uppercase tracking-wider mb-1">Strategy</p>
+            <p className="text-sm text-zinc-200 font-medium">Rolling Update</p>
           </div>
 
           {/* Warning */}
           <div className="bg-amber-500/5 border border-amber-500/10 rounded-lg p-3">
             <p className="text-xs text-amber-300/80">
-              This will replace the running pods with the new image version.
-              Existing connections will be gracefully terminated.
+              Pods will be restarted. Existing connections will be gracefully terminated.
             </p>
           </div>
         </div>
@@ -233,7 +336,7 @@ export function DeployModal({
             Cancel
           </button>
           <button
-            onClick={onConfirm}
+            onClick={handleConfirm}
             disabled={loading}
             className="inline-flex items-center gap-1.5 px-5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-medium transition-colors"
           >

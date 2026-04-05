@@ -68,6 +68,7 @@ class ManagedServiceUpdate(BaseModel):
     storage: str | None = Field(None, pattern=r"^\d+Gi$")
     cpu: str | None = Field(None, pattern=r"^\d+m?$")
     memory: str | None = Field(None, pattern=r"^\d+(Mi|Gi)$")
+    tier: ServiceTier | None = Field(None, description="Upgrade/downgrade tier (DEV/PROD)")
 
 
 class ServiceCredentials(BaseModel):

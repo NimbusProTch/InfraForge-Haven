@@ -2,7 +2,7 @@
 
 import uuid
 from collections.abc import AsyncGenerator
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 import pytest_asyncio
@@ -40,6 +40,18 @@ def _patch_pipeline_globally():
         patch("app.routers.deployments.run_pipeline", MagicMock(return_value=None)),
     ):
         yield
+
+
+@pytest.fixture(autouse=True)
+def _clear_oauth_state():
+    """Clear in-memory OAuth state store and force in-memory mode (no Redis)."""
+    import app.routers.github as gh
+
+    gh._oauth_states.clear()
+    gh._oauth_redis = None  # Force in-memory fallback
+    with patch.object(gh, "_get_oauth_redis", new_callable=AsyncMock, return_value=None):
+        yield
+    gh._oauth_states.clear()
 
 
 # ---------------------------------------------------------------------------

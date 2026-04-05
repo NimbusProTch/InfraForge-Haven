@@ -7,7 +7,7 @@ import httpx
 import pytest
 
 from app.models.tenant import Tenant
-from app.routers.github import _resolve_token
+from app.routers.github import _oauth_states, _resolve_token, _store_oauth_state, _validate_oauth_state
 
 
 async def _make_tenant(db):
@@ -101,9 +101,18 @@ async def test_auth_url_503_when_no_client_id(async_client):
 # ---------------------------------------------------------------------------
 
 
+async def _get_valid_state() -> str:
+    """Helper: store a state token in the in-memory fallback and return it."""
+    state = "test-state-" + uuid.uuid4().hex[:8]
+    # Directly add to the in-memory store (bypasses Redis)
+    _oauth_states[state] = "test-tenant"
+    return state
+
+
 @pytest.mark.asyncio
 async def test_oauth_callback_exchanges_code(async_client):
-    """GET /github/auth/callback exchanges code for access_token."""
+    """GET /github/auth/callback exchanges code for access_token with valid state."""
+    state = await _get_valid_state()
     mock_response = MagicMock()
     mock_response.is_success = True
     mock_response.json.return_value = {"access_token": "gho_exchanged_token"}
@@ -112,13 +121,14 @@ async def test_oauth_callback_exchanges_code(async_client):
         mock_settings.github_client_id = "cid"
         mock_settings.github_client_secret = "secret"
         mock_settings.github_redirect_uri = "http://localhost/callback"
+        mock_settings.redis_url = ""
 
         mock_http_instance = AsyncMock()
         mock_http_instance.post = AsyncMock(return_value=mock_response)
         mock_httpx.return_value.__aenter__ = AsyncMock(return_value=mock_http_instance)
         mock_httpx.return_value.__aexit__ = AsyncMock(return_value=False)
 
-        response = await async_client.get("/api/v1/github/auth/callback?code=test-code")
+        response = await async_client.get(f"/api/v1/github/auth/callback?code=test-code&state={state}")
 
     assert response.status_code == 200
     data = response.json()
@@ -128,6 +138,7 @@ async def test_oauth_callback_exchanges_code(async_client):
 @pytest.mark.asyncio
 async def test_oauth_callback_github_error_response(async_client):
     """GET /github/auth/callback returns 400 when GitHub says code is bad."""
+    state = await _get_valid_state()
     mock_response = MagicMock()
     mock_response.is_success = True
     mock_response.json.return_value = {"error": "bad_verification_code", "error_description": "Code expired"}
@@ -139,13 +150,14 @@ async def test_oauth_callback_github_error_response(async_client):
         mock_settings.github_client_id = "cid"
         mock_settings.github_client_secret = "secret"
         mock_settings.github_redirect_uri = "http://localhost/callback"
+        mock_settings.redis_url = ""
 
         mock_http_instance = AsyncMock()
         mock_http_instance.post = AsyncMock(return_value=mock_response)
         mock_httpx.return_value.__aenter__ = AsyncMock(return_value=mock_http_instance)
         mock_httpx.return_value.__aexit__ = AsyncMock(return_value=False)
 
-        response = await async_client.get("/api/v1/github/auth/callback?code=expired")
+        response = await async_client.get(f"/api/v1/github/auth/callback?code=expired&state={state}")
 
     assert response.status_code == 400
     assert "Code expired" in response.json()["detail"]
@@ -154,6 +166,7 @@ async def test_oauth_callback_github_error_response(async_client):
 @pytest.mark.asyncio
 async def test_oauth_callback_http_failure(async_client):
     """GET /github/auth/callback returns 502 when GitHub HTTP call fails."""
+    state = await _get_valid_state()
     mock_response = MagicMock()
     mock_response.is_success = False
     mock_response.status_code = 500
@@ -165,13 +178,14 @@ async def test_oauth_callback_http_failure(async_client):
         mock_settings.github_client_id = "cid"
         mock_settings.github_client_secret = "secret"
         mock_settings.github_redirect_uri = "http://localhost/callback"
+        mock_settings.redis_url = ""
 
         mock_http_instance = AsyncMock()
         mock_http_instance.post = AsyncMock(return_value=mock_response)
         mock_httpx.return_value.__aenter__ = AsyncMock(return_value=mock_http_instance)
         mock_httpx.return_value.__aexit__ = AsyncMock(return_value=False)
 
-        response = await async_client.get("/api/v1/github/auth/callback?code=abc")
+        response = await async_client.get(f"/api/v1/github/auth/callback?code=abc&state={state}")
 
     assert response.status_code == 502
 
@@ -179,12 +193,82 @@ async def test_oauth_callback_http_failure(async_client):
 @pytest.mark.asyncio
 async def test_oauth_callback_503_when_not_configured(async_client):
     """GET /github/auth/callback returns 503 if GitHub OAuth is not configured."""
+    state = await _get_valid_state()
     with patch("app.routers.github.settings") as mock_settings:
         mock_settings.github_client_id = ""
         mock_settings.github_client_secret = ""
-        response = await async_client.get("/api/v1/github/auth/callback?code=abc")
+        mock_settings.redis_url = ""
+        response = await async_client.get(f"/api/v1/github/auth/callback?code=abc&state={state}")
 
     assert response.status_code == 503
+
+
+# ---------------------------------------------------------------------------
+# CSRF State Validation Tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_oauth_csrf_no_state_returns_422(async_client):
+    """Callback without state query param returns 422 (FastAPI validation)."""
+    response = await async_client.get("/api/v1/github/auth/callback?code=abc")
+    assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_oauth_csrf_invalid_state_returns_400(async_client):
+    """Callback with unknown state token returns 400."""
+    with patch("app.routers.github.settings") as mock_settings:
+        mock_settings.github_client_id = "cid"
+        mock_settings.github_client_secret = "secret"
+        mock_settings.redis_url = ""
+        response = await async_client.get("/api/v1/github/auth/callback?code=abc&state=invalid-state-xxx")
+    assert response.status_code == 400
+    assert "Invalid or expired" in response.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_oauth_csrf_replay_attack_returns_400(async_client):
+    """State token can only be used once (replay attack prevention)."""
+    state = await _get_valid_state()
+    mock_response = MagicMock()
+    mock_response.is_success = True
+    mock_response.json.return_value = {"access_token": "gho_token"}
+
+    with patch("app.routers.github.settings") as mock_settings, patch("httpx.AsyncClient") as mock_httpx:
+        mock_settings.github_client_id = "cid"
+        mock_settings.github_client_secret = "secret"
+        mock_settings.github_redirect_uri = "http://localhost/callback"
+        mock_settings.redis_url = ""
+
+        mock_http_instance = AsyncMock()
+        mock_http_instance.post = AsyncMock(return_value=mock_response)
+        mock_httpx.return_value.__aenter__ = AsyncMock(return_value=mock_http_instance)
+        mock_httpx.return_value.__aexit__ = AsyncMock(return_value=False)
+
+        # First use — should succeed
+        r1 = await async_client.get(f"/api/v1/github/auth/callback?code=abc&state={state}")
+        assert r1.status_code == 200
+
+        # Second use — state consumed, should fail
+        r2 = await async_client.get(f"/api/v1/github/auth/callback?code=abc&state={state}")
+        assert r2.status_code == 400
+        assert "Invalid or expired" in r2.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_oauth_state_store_and_validate():
+    """State storage and validation works correctly."""
+    state = "test-state-unit"
+    await _store_oauth_state(state, "my-tenant")
+
+    # First validate — should return context
+    ctx = await _validate_oauth_state(state)
+    assert ctx == "my-tenant"
+
+    # Second validate — consumed, should return None
+    ctx2 = await _validate_oauth_state(state)
+    assert ctx2 is None
 
 
 # ---------------------------------------------------------------------------

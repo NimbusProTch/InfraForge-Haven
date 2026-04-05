@@ -535,6 +535,18 @@ export default function AppDetailPage() {
     load();
   }, [tenantSlug, appSlug, status, accessToken, router, loadSyncStatus, loadArgoHistory]);
 
+  const loadApp = useCallback(async () => {
+    if (status !== "authenticated") return;
+    try {
+      const a = await api.apps.get(tenantSlug, appSlug, accessToken);
+      setApp(a);
+      setEditName(a.name);
+      setEditRepoUrl(a.repo_url);
+      setEditBranch(a.branch);
+      setEditReplicas(a.replicas);
+    } catch { /* ignore */ }
+  }, [tenantSlug, appSlug, status, accessToken]);
+
   const latestDeployment = deployments[0];
   const isActiveBuild =
     latestDeployment != null &&
@@ -660,11 +672,12 @@ export default function AppDetailPage() {
     };
   }, []);
 
-  async function handleBuildConfirm(_opts: { branch?: string }) {
+  async function handleBuildConfirm(opts: { branch?: string; build_env_vars?: Record<string, string> }) {
     setShowBuildModal(false);
     setActionLoading("build");
     try {
-      await api.deployments.build(tenantSlug, appSlug, accessToken);
+      const body = (opts.branch || opts.build_env_vars) ? opts : undefined;
+      await api.deployments.build(tenantSlug, appSlug, accessToken, body);
       await loadDeployments();
       toastSuccess("Build started");
     } catch (err) {
@@ -674,12 +687,14 @@ export default function AppDetailPage() {
     }
   }
 
-  async function handleDeployConfirm() {
+  async function handleDeployConfirm(opts: { replicas?: number; resource_cpu_limit?: string; resource_memory_limit?: string }) {
     setShowDeployModal(false);
     setActionLoading("deploy");
     try {
-      await api.deployments.deploy(tenantSlug, appSlug, accessToken);
+      const body = (opts.replicas || opts.resource_cpu_limit || opts.resource_memory_limit) ? opts : undefined;
+      await api.deployments.deploy(tenantSlug, appSlug, accessToken, body);
       await loadDeployments();
+      if (opts.replicas) await loadApp();
       toastSuccess("Deploy started");
     } catch (err) {
       toastError(err instanceof Error ? err.message : "Deploy failed");
@@ -810,6 +825,56 @@ export default function AppDetailPage() {
                 <Rocket className="w-3.5 h-3.5" />
               )}
               Deploy
+            </button>
+            {/* Scale dropdown */}
+            <div className="relative group">
+              <button
+                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-zinc-800 hover:border-zinc-700 bg-zinc-900/50 hover:bg-zinc-800/50 text-zinc-400 hover:text-zinc-200 text-xs font-medium transition-colors"
+              >
+                <Layers className="w-3.5 h-3.5" />
+                Scale
+                <ChevronDown className="w-3 h-3" />
+              </button>
+              <div className="absolute right-0 mt-1 w-36 bg-zinc-900 border border-zinc-800 rounded-lg shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-10">
+                {[1, 2, 3, 5].map((n) => (
+                  <button
+                    key={n}
+                    onClick={async () => {
+                      try {
+                        await api.apps.update(tenantSlug, appSlug, { replicas: n }, accessToken);
+                        await loadApp();
+                        toastSuccess(`Scaled to ${n} replica${n > 1 ? "s" : ""}`);
+                      } catch (err) {
+                        toastError(err instanceof Error ? err.message : "Scale failed");
+                      }
+                    }}
+                    className={`w-full text-left px-3 py-2 text-xs transition-colors ${
+                      app.replicas === n
+                        ? "text-emerald-400 bg-emerald-500/10"
+                        : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800"
+                    }`}
+                  >
+                    {n} replica{n > 1 ? "s" : ""} {app.replicas === n ? "✓" : ""}
+                  </button>
+                ))}
+              </div>
+            </div>
+            {/* Restart */}
+            <button
+              onClick={async () => {
+                if (!confirm("This will restart all pods. Continue?")) return;
+                try {
+                  await api.apps.restart(tenantSlug, appSlug, accessToken);
+                  toastSuccess("Restart initiated");
+                } catch (err) {
+                  toastError(err instanceof Error ? err.message : "Restart failed");
+                }
+              }}
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-zinc-800 hover:border-zinc-700 bg-zinc-900/50 hover:bg-zinc-800/50 text-zinc-400 hover:text-zinc-200 text-xs font-medium transition-colors"
+              title="Restart all pods"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              Restart
             </button>
             <button
               onClick={handleSync}
@@ -1168,6 +1233,8 @@ export default function AppDetailPage() {
         appName={app.name}
         imageTag={app.image_tag}
         replicas={app.replicas}
+        cpuLimit={app.resource_cpu_limit || "500m"}
+        memoryLimit={app.resource_memory_limit || "512Mi"}
       />
     </AppShell>
   );

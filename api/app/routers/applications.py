@@ -1,4 +1,5 @@
 import logging
+from datetime import UTC
 
 import yaml
 from fastapi import APIRouter, HTTPException, status
@@ -166,6 +167,12 @@ async def update_application(
         raise HTTPException(status_code=404, detail="Application not found")
 
     updated_fields = body.model_dump(exclude_none=True)
+
+    # If repo_url changes, clear image_tag to prevent deploying old repo's image
+    if "repo_url" in updated_fields and updated_fields["repo_url"] != app.repo_url:
+        app.image_tag = None
+        logger.info("Cleared image_tag for app %s due to repo_url change", app_slug)
+
     for field, value in updated_fields.items():
         setattr(app, field, value)
 
@@ -262,6 +269,56 @@ async def list_secret_keys(
     else:
         keys = svc.list_secret_keys(tenant.namespace, app.slug)
     return {"keys": keys, "vault": svc.uses_vault()}
+
+
+@router.post("/{app_slug}/restart", status_code=status.HTTP_202_ACCEPTED)
+async def restart_application(
+    tenant_slug: str, app_slug: str, db: DBSession, k8s: K8sDep, current_user: CurrentUser
+) -> dict:
+    """Restart all pods of an application via rollout restart."""
+    tenant = await _get_tenant_or_404(tenant_slug, db, current_user)
+    app = await _get_app_or_404(tenant.id, app_slug, db)
+
+    if not k8s.is_available():
+        raise HTTPException(status_code=503, detail="Kubernetes cluster not available")
+
+    import asyncio
+    from datetime import datetime
+
+    try:
+        # Patch deployment with restart annotation to trigger rollout restart
+        patch_body = {
+            "spec": {
+                "template": {
+                    "metadata": {
+                        "annotations": {
+                            "haven.nl/restartedAt": datetime.now(UTC).isoformat(),
+                        }
+                    }
+                }
+            }
+        }
+        await asyncio.to_thread(
+            k8s.apps_v1.patch_namespaced_deployment,
+            name=app.slug,
+            namespace=tenant.namespace,
+            body=patch_body,
+        )
+        logger.info("Restarted app %s in namespace %s", app.slug, tenant.namespace)
+    except Exception as exc:
+        logger.warning("Failed to restart app %s: %s", app.slug, exc)
+        raise HTTPException(status_code=500, detail=f"Restart failed: {exc}") from exc
+
+    await audit(
+        db,
+        tenant_id=tenant.id,
+        action="app.restart",
+        user_id=current_user.get("sub", ""),
+        resource_type="application",
+        resource_id=str(app.id),
+    )
+
+    return {"status": "restarting", "app_slug": app.slug}
 
 
 @router.delete("/{app_slug}", status_code=status.HTTP_204_NO_CONTENT)

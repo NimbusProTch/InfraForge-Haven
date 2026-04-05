@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Breadcrumb } from "@/components/Breadcrumb";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { AddServiceModal } from "@/components/AddServiceModal";
+import { ModifyServiceModal } from "@/components/ModifyServiceModal";
 import { ServiceIcon } from "@/components/icons/ServiceIcons";
 import MembersTab from "@/components/MembersTab";
 import BillingTab from "@/components/BillingTab";
@@ -41,6 +42,7 @@ import {
   BarChart3,
   FileText,
   Shield,
+  Settings,
 } from "lucide-react";
 
 const LB_IP = process.env.NEXT_PUBLIC_LB_IP ?? "";
@@ -180,6 +182,8 @@ export default function TenantDetailPage() {
   const [credentialsModal, setCredentialsModal] = useState<{ service: ManagedService; creds: ServiceCredentials | null; loading: boolean } | null>(null);
   const [showPassword, setShowPassword] = useState<Record<string, boolean>>({});
   const [connectModal, setConnectModal] = useState<ManagedService | null>(null);
+  const [modifyModal, setModifyModal] = useState<ManagedService | null>(null);
+  const [modifyLoading, setModifyLoading] = useState(false);
   const [connectingApp, setConnectingApp] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
@@ -565,6 +569,13 @@ export default function TenantDetailPage() {
                             <Link2 className="w-3 h-3" />
                             Connect
                           </button>
+                          <button
+                            onClick={() => setModifyModal(svc)}
+                            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-xs font-medium text-zinc-300 hover:text-zinc-100 transition-colors"
+                          >
+                            <Settings className="w-3 h-3" />
+                            Modify
+                          </button>
                         </>
                       )}
                       <button
@@ -747,6 +758,29 @@ export default function TenantDetailPage() {
           </TabsContent>
         </Tabs>
       </div>
+
+      {/* Modify Service Modal */}
+      {modifyModal && (
+        <ModifyServiceModal
+          open={!!modifyModal}
+          onClose={() => setModifyModal(null)}
+          onConfirm={async (updates) => {
+            setModifyLoading(true);
+            try {
+              await api.services.update(slug, modifyModal.name, updates, accessToken);
+              toastSuccess(`${modifyModal.name} update started`);
+              setModifyModal(null);
+              load();
+            } catch (err) {
+              toastError(err instanceof Error ? err.message : "Update failed");
+            } finally {
+              setModifyLoading(false);
+            }
+          }}
+          loading={modifyLoading}
+          service={modifyModal}
+        />
+      )}
     </AppShell>
   );
 }
