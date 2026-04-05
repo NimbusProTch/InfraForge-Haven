@@ -73,8 +73,14 @@ async def run_pipeline(
     build_context: str | None = None,
     # Optional: environment context (staging/preview)
     environment_id: uuid.UUID | None = None,
+    # Build-only mode: if False, stops after successful build (BUILT status)
+    deploy: bool = True,
 ) -> None:
-    """Run full build → deploy pipeline, persisting status to DB at each step."""
+    """Run build → deploy pipeline, persisting status to DB at each step.
+
+    When deploy=False, stops after a successful build and sets status to BUILT.
+    The image is pushed to Harbor but not deployed to K8s.
+    """
     harbor_host = settings.harbor_url.removeprefix("https://").removeprefix("http://")
     image_name = f"{harbor_host}/{settings.harbor_project}/{namespace}/{app_slug}:{commit_sha[:8]}"
     build_svc = BuildService(k8s)
@@ -123,6 +129,26 @@ async def run_pipeline(
             error_msg += f"\n\n{all_logs[-3000:]}"
         logger.error(error_msg)
         await _fail(deployment_id, error_msg, session_factory, environment_id)
+        return
+
+    # --- BUILD-ONLY MODE ------------------------------------------------
+    if not deploy:
+        async with session_factory() as db:
+            deployment = await db.get(Deployment, deployment_id)
+            if deployment:
+                deployment.status = DeploymentStatus.BUILT
+                deployment.image_tag = image_name
+                await db.commit()
+
+            app = await db.get(Application, app_id)
+            if app:
+                app.image_tag = image_name
+                await db.commit()
+
+        logger.info(
+            "Build-only pipeline complete: deployment=%s image=%s app=%s",
+            deployment_id, image_name, app_slug,
+        )
         return
 
     # --- DEPLOYING ------------------------------------------------------

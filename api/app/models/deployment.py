@@ -15,6 +15,7 @@ if TYPE_CHECKING:
 class DeploymentStatus(PyEnum):
     PENDING = "pending"
     BUILDING = "building"
+    BUILT = "built"
     DEPLOYING = "deploying"
     RUNNING = "running"
     FAILED = "failed"
