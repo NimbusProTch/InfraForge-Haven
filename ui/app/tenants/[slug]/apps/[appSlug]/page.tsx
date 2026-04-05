@@ -142,33 +142,50 @@ function derivePipelineSteps(deployment: Deployment, buildStatus?: BuildStatus |
   return keys.map((step, i) => ({ ...step, status: statuses[i], duration: null }));
 }
 
-function StepStatusIcon({ status }: { status: PipelineStepStatus }) {
-  switch (status) {
-    case "success":
-      return (
-        <div className="w-6 h-6 rounded-full bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center">
-          <Check className="w-3 h-3 text-emerald-400" />
-        </div>
-      );
-    case "running":
-      return (
-        <div className="w-6 h-6 rounded-full bg-blue-500/15 border border-blue-500/30 flex items-center justify-center">
-          <Loader2 className="w-3 h-3 text-blue-400 animate-spin" />
-        </div>
-      );
-    case "failed":
-      return (
-        <div className="w-6 h-6 rounded-full bg-red-500/15 border border-red-500/30 flex items-center justify-center">
-          <X className="w-3 h-3 text-red-400" />
-        </div>
-      );
-    default:
-      return (
-        <div className="w-6 h-6 rounded-full bg-gray-100 dark:bg-zinc-800 border border-gray-300 dark:border-zinc-700 flex items-center justify-center">
-          <Circle className="w-2.5 h-2.5 text-gray-400 dark:text-zinc-600" />
-        </div>
-      );
-  }
+// ---- Enterprise Pipeline Visualization ----
+
+const STEP_STYLES: Record<PipelineStepStatus, { border: string; bg: string; icon: string; text: string }> = {
+  success: {
+    border: "border-l-emerald-500 border-emerald-200 dark:border-emerald-500/20",
+    bg: "bg-emerald-50 dark:bg-emerald-500/5",
+    icon: "bg-emerald-500/15 border-emerald-500/30 text-emerald-500",
+    text: "text-emerald-700 dark:text-emerald-400",
+  },
+  running: {
+    border: "border-l-blue-500 border-blue-200 dark:border-blue-500/20",
+    bg: "bg-blue-50 dark:bg-blue-500/5",
+    icon: "bg-blue-500/15 border-blue-500/30 text-blue-500",
+    text: "text-blue-700 dark:text-blue-400",
+  },
+  failed: {
+    border: "border-l-red-500 border-red-200 dark:border-red-500/20",
+    bg: "bg-red-50 dark:bg-red-500/5",
+    icon: "bg-red-500/15 border-red-500/30 text-red-500",
+    text: "text-red-700 dark:text-red-400",
+  },
+  pending: {
+    border: "border-l-gray-300 dark:border-l-zinc-700 border-gray-200 dark:border-zinc-800 border-dashed",
+    bg: "bg-gray-50 dark:bg-zinc-900/30",
+    icon: "bg-gray-100 dark:bg-zinc-800 border-gray-300 dark:border-zinc-700 text-gray-400 dark:text-zinc-600",
+    text: "text-gray-400 dark:text-zinc-600",
+  },
+};
+
+function StepStatusIcon({ status, size = "md" }: { status: PipelineStepStatus; size?: "sm" | "md" }) {
+  const s = size === "sm" ? "w-5 h-5" : "w-7 h-7";
+  const iconSize = size === "sm" ? "w-2.5 h-2.5" : "w-3.5 h-3.5";
+  const style = STEP_STYLES[status];
+
+  const icon = status === "success" ? <Check className={iconSize} /> :
+    status === "running" ? <Loader2 className={`${iconSize} animate-spin`} /> :
+    status === "failed" ? <X className={iconSize} /> :
+    <Circle className={size === "sm" ? "w-2 h-2" : "w-2.5 h-2.5"} />;
+
+  return (
+    <div className={`${s} rounded-full border flex items-center justify-center ${style.icon}`}>
+      {icon}
+    </div>
+  );
 }
 
 function PipelineVisualization({
@@ -182,70 +199,66 @@ function PipelineVisualization({
   activeStep?: string | null;
   onStepClick?: (stepKey: string) => void;
 }) {
-  const connectorColor = (prev: PipelineStepStatus) => {
-    if (prev === "success") return "bg-emerald-500/30";
-    if (prev === "failed") return "bg-red-500/20";
-    return "bg-gray-200 dark:bg-zinc-800";
-  };
-
-  const textColor = (s: PipelineStepStatus) => {
-    if (s === "running") return "text-blue-400";
-    if (s === "success") return "text-emerald-400";
-    if (s === "failed") return "text-red-400";
-    return "text-gray-400 dark:text-zinc-600";
-  };
-
   const isClickable = !!onStepClick;
 
+  if (compact) {
+    return (
+      <div className="flex items-center gap-1 w-full">
+        {steps.map((step, i) => (
+          <div key={step.key} className="flex items-center flex-1 last:flex-none">
+            <div className="flex flex-col items-center gap-1">
+              <StepStatusIcon status={step.status} size="sm" />
+              <span className={`text-[10px] font-medium ${STEP_STYLES[step.status].text}`}>
+                {step.label}
+              </span>
+            </div>
+            {i < steps.length - 1 && (
+              <div className={`flex-1 h-px mx-1 min-w-2 ${
+                step.status === "success" ? "bg-emerald-300 dark:bg-emerald-500/30" :
+                step.status === "failed" ? "bg-red-300 dark:bg-red-500/20" :
+                "bg-gray-200 dark:bg-zinc-800"
+              }`} />
+            )}
+          </div>
+        ))}
+      </div>
+    );
+  }
+
   return (
-    <div className={`flex items-center ${compact ? "gap-1" : "gap-0"} w-full`}>
+    <div className="flex items-stretch gap-0 w-full">
       {steps.map((step, i) => {
+        const style = STEP_STYLES[step.status];
         const isActive = activeStep === step.key;
         return (
           <div key={step.key} className="flex items-center flex-1 last:flex-none">
             <div
-              className={`flex flex-col items-center gap-1.5 ${isClickable && step.status !== "pending" ? "cursor-pointer" : ""}`}
+              className={`
+                flex items-center gap-2.5 px-4 py-3 rounded-xl border-l-4 border shadow-sm transition-all w-full
+                ${style.border} ${style.bg}
+                ${isActive ? "ring-2 ring-blue-400/50 shadow-md scale-[1.02]" : ""}
+                ${isClickable && step.status !== "pending" ? "cursor-pointer hover:shadow-md hover:scale-[1.02]" : ""}
+              `}
               onClick={() => isClickable && step.status !== "pending" && onStepClick?.(step.key)}
             >
-              {compact ? (
-                <StepStatusIcon status={step.status} />
-              ) : (
-                <div
-                  className={`
-                    flex items-center gap-2 px-3 py-2 rounded-lg border transition-all
-                    ${step.status === "running" ? "border-blue-500/30 bg-blue-500/5" : ""}
-                    ${step.status === "success" ? "border-emerald-500/20 bg-emerald-500/5" : ""}
-                    ${step.status === "failed" ? "border-red-500/30 bg-red-500/5" : ""}
-                    ${step.status === "pending" ? "border-gray-200 dark:border-zinc-800 bg-gray-50 dark:bg-zinc-900/50" : ""}
-                    ${isActive ? "ring-1 ring-blue-400/50 scale-105" : ""}
-                    ${isClickable && step.status !== "pending" ? "hover:scale-105 hover:brightness-110" : ""}
-                  `}
-                >
-                  <StepStatusIcon status={step.status} />
-                  <div className="flex flex-col">
-                    <span className={`text-xs font-medium ${textColor(step.status)}`}>
-                      {step.label}
-                    </span>
-                    {step.duration && (
-                      <span className="text-[10px] text-gray-400 dark:text-zinc-600">{step.duration}</span>
-                    )}
-                  </div>
-                </div>
-              )}
-              {compact && (
-                <span
-                  className={`text-[10px] font-medium ${
-                    step.status === "pending" ? "text-gray-400 dark:text-zinc-700" : textColor(step.status)
-                  }`}
-                >
+              <StepStatusIcon status={step.status} />
+              <div className="flex flex-col min-w-0">
+                <span className={`text-xs font-semibold ${style.text}`}>
                   {step.label}
                 </span>
-              )}
+                {step.duration && (
+                  <span className="text-[10px] text-gray-400 dark:text-zinc-500 font-mono">{step.duration}</span>
+                )}
+              </div>
             </div>
             {i < steps.length - 1 && (
-              <div
-                className={`flex-1 h-px mx-2 ${compact ? "min-w-2" : "min-w-4"} ${connectorColor(step.status)}`}
-              />
+              <div className="flex items-center px-1 shrink-0">
+                <ChevronRight className={`w-4 h-4 ${
+                  step.status === "success" ? "text-emerald-400" :
+                  step.status === "failed" ? "text-red-400" :
+                  "text-gray-300 dark:text-zinc-700"
+                }`} />
+              </div>
             )}
           </div>
         );
@@ -381,14 +394,43 @@ function DeploymentCard({
   );
 }
 
+// Step key → container name mapping for log filtering
+const STEP_TO_CONTAINER: Record<string, string> = {
+  clone: "git-clone",
+  detect: "nixpacks",
+  build: "buildctl",
+};
+
+function parseLogSections(logs: string): Map<string, string> {
+  const sections = new Map<string, string>();
+  const regex = /^--- (git-clone|nixpacks|buildctl) ---$/m;
+  const parts = logs.split(regex);
+
+  // parts: [preamble, "git-clone", logs1, "nixpacks", logs2, "buildctl", logs3]
+  let currentContainer = "__preamble__";
+  for (const part of parts) {
+    if (["git-clone", "nixpacks", "buildctl"].includes(part)) {
+      currentContainer = part;
+    } else {
+      const existing = sections.get(currentContainer) ?? "";
+      sections.set(currentContainer, existing + part);
+    }
+  }
+  return sections;
+}
+
 function BuildLogTerminal({
   logs,
   streaming,
   onStop,
+  activeLogStep,
+  onStepFilter,
 }: {
   logs: string;
   streaming: boolean;
   onStop: () => void;
+  activeLogStep?: string | null;
+  onStepFilter?: (step: string | null) => void;
 }) {
   const endRef = useRef<HTMLDivElement>(null);
 
@@ -397,6 +439,20 @@ function BuildLogTerminal({
   }, [logs]);
 
   if (!logs && !streaming) return null;
+
+  // Parse logs into sections and filter if a step is active
+  const sections = parseLogSections(logs);
+  const containerName = activeLogStep ? STEP_TO_CONTAINER[activeLogStep] : null;
+  const filteredLogs = containerName && sections.has(containerName)
+    ? sections.get(containerName)!.trim()
+    : logs;
+
+  const filterTabs = [
+    { key: null, label: "All" },
+    { key: "clone", label: "Clone" },
+    { key: "detect", label: "Detect" },
+    { key: "build", label: "Build" },
+  ];
 
   return (
     <div className="mt-4">
@@ -411,25 +467,47 @@ function BuildLogTerminal({
             </span>
           )}
         </div>
-        {streaming && (
-          <button
-            onClick={onStop}
-            className="inline-flex items-center gap-1 px-2 py-1 rounded text-xs text-gray-400 dark:text-zinc-600 hover:text-gray-700 dark:hover:text-zinc-300 transition-colors"
-          >
-            <StopCircle className="w-3 h-3" />
-            Stop
-          </button>
-        )}
+        <div className="flex items-center gap-2">
+          {/* Log filter tabs */}
+          {onStepFilter && sections.size > 1 && (
+            <div className="flex items-center gap-0.5 bg-gray-100 dark:bg-zinc-800 rounded-lg p-0.5">
+              {filterTabs.map((tab) => (
+                <button
+                  key={tab.key ?? "all"}
+                  onClick={() => onStepFilter(tab.key)}
+                  className={`px-2 py-1 rounded text-[10px] font-medium transition-colors ${
+                    activeLogStep === tab.key
+                      ? "bg-white dark:bg-zinc-700 text-gray-900 dark:text-zinc-100 shadow-sm"
+                      : "text-gray-500 dark:text-zinc-500 hover:text-gray-700 dark:hover:text-zinc-300"
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+          )}
+          {streaming && (
+            <button
+              onClick={onStop}
+              className="inline-flex items-center gap-1 px-2 py-1 rounded text-xs text-gray-400 dark:text-zinc-600 hover:text-gray-700 dark:hover:text-zinc-300 transition-colors"
+            >
+              <StopCircle className="w-3 h-3" />
+              Stop
+            </button>
+          )}
+        </div>
       </div>
       <div className="bg-zinc-950 border border-gray-200 dark:border-zinc-800 rounded-xl overflow-hidden">
         <div className="flex items-center gap-1.5 px-4 py-2.5 border-b border-gray-200 dark:border-zinc-800">
           <span className="w-2.5 h-2.5 rounded-full bg-red-500/40" />
           <span className="w-2.5 h-2.5 rounded-full bg-amber-500/40" />
           <span className="w-2.5 h-2.5 rounded-full bg-emerald-500/40" />
-          <span className="text-xs text-zinc-700 ml-2 font-mono">build.log</span>
+          <span className="text-xs text-zinc-700 ml-2 font-mono">
+            {containerName ? `build.log — ${containerName}` : "build.log"}
+          </span>
         </div>
         <AnsiTerminal
-          content={logs}
+          content={filteredLogs}
           className="p-4 max-h-[400px]"
           endRef={endRef}
         />
@@ -930,7 +1008,13 @@ export default function AppDetailPage() {
                 ))}
               </div>
             )}
-            <BuildLogTerminal logs={logs} streaming={streaming} onStop={stopLogs} />
+            <BuildLogTerminal
+              logs={logs}
+              streaming={streaming}
+              onStop={stopLogs}
+              activeLogStep={activeLogStep}
+              onStepFilter={(step) => setActiveLogStep(step)}
+            />
           </div>
         )}
 

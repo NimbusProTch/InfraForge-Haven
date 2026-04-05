@@ -80,6 +80,6 @@ export function ServiceIcon({ type, className = "", size = 20 }: { type: string 
     case "rabbitmq":
       return <RabbitMQIcon className={className} size={size} />;
     default:
-      return <span className={`inline-block w-5 h-5 rounded bg-zinc-700 ${className}`} />;
+      return <span className={`inline-block w-5 h-5 rounded bg-gray-300 dark:bg-zinc-700 ${className}`} />;
   }
 }
