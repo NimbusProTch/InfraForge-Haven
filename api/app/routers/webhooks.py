@@ -140,6 +140,8 @@ async def _handle_push(
             github_token=tenant.github_token,
             gitops=gitops,
             argocd=argocd,
+            dockerfile_path=app.dockerfile_path,
+            build_context=app.build_context,
             custom_domain=app.custom_domain or "",
             health_check_path=app.health_check_path or "",
             resource_cpu_request=app.resource_cpu_request,

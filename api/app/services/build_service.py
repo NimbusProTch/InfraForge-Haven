@@ -29,16 +29,20 @@ class BuildService:
         commit_sha: str,
         image_name: str,
         github_token: str | None = None,
+        dockerfile_path: str | None = None,
+        build_context: str | None = None,
     ) -> str:
         """Submit a BuildKit build Job and return the K8s job name."""
         job_name = f"build-{app_slug}-{commit_sha[:8]}-{uuid.uuid4().hex[:6]}"
         logger.info(
-            "Submitting build job: job=%s repo=%s branch=%s commit=%s image=%s",
+            "Submitting build job: job=%s repo=%s branch=%s commit=%s image=%s dockerfile=%s context=%s",
             job_name,
             repo_url,
             branch,
             commit_sha,
             image_name,
+            dockerfile_path,
+            build_context,
         )
 
         job_body = self._build_job_manifest(
@@ -50,6 +54,8 @@ class BuildService:
             commit_sha=commit_sha,
             image_name=image_name,
             github_token=github_token,
+            dockerfile_path=dockerfile_path,
+            build_context=build_context,
         )
 
         await asyncio.to_thread(
@@ -151,6 +157,8 @@ class BuildService:
         commit_sha: str,
         image_name: str,
         github_token: str | None = None,
+        dockerfile_path: str | None = None,
+        build_context: str | None = None,
     ) -> k8s_client_lib.V1Job:
         """Construct the K8s Job manifest for the build pipeline.
 
@@ -176,8 +184,15 @@ class BuildService:
         # If nixpacks fails (e.g. "No start command found"), auto-detect the start
         # command for common languages (Python, Node.js, Go) and retry.  When even
         # the retry fails, fall back to a simple generated Dockerfile.
+        # If custom dockerfile_path is set, copy it to the expected location
+        df_check_path = f"/workspace/{dockerfile_path}" if dockerfile_path else "/workspace/Dockerfile"
+        nixpacks_target = f"/workspace/{build_context}" if build_context else "/workspace"
+
         nixpacks_cmd = (
-            "if [ ! -f /workspace/Dockerfile ]; then "
+            f"if [ -f '{df_check_path}' ]; then "
+            f"  echo 'Using Dockerfile: {df_check_path}' && "
+            f"  cp '{df_check_path}' '{nixpacks_target}/Dockerfile' 2>/dev/null || true; "
+            "elif [ ! -f /workspace/Dockerfile ]; then "
             "  apk add --no-cache curl tar grep && "
             "  NIXPACKS_VERSION=1.41.0 && "
             "  ARCH=$(uname -m) && "
@@ -294,6 +309,7 @@ class BuildService:
             "      fi; "
             "    fi; "
             "  fi; "
+            "fi; "
             "fi"
         )
 
@@ -319,6 +335,15 @@ class BuildService:
             ),
         ]
 
+        # Resolve build context and Dockerfile paths for monorepo support
+        ctx_path = f"/workspace/{build_context}" if build_context else "/workspace"
+        if dockerfile_path:
+            import posixpath
+
+            df_dir = posixpath.dirname(f"/workspace/{dockerfile_path}") or "/workspace"
+        else:
+            df_dir = ctx_path
+
         buildctl_container = k8s_client_lib.V1Container(
             name="buildctl",
             image="moby/buildkit:latest",
@@ -330,9 +355,9 @@ class BuildService:
                 "--frontend",
                 "dockerfile.v0",
                 "--local",
-                "context=/workspace",
+                f"context={ctx_path}",
                 "--local",
-                "dockerfile=/workspace",
+                f"dockerfile={df_dir}",
                 "--output",
                 f"type=image,name={image_name},push=true,registry.insecure=true",
             ],
