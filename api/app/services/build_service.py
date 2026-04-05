@@ -336,6 +336,11 @@ class BuildService:
         ]
 
         # Resolve build context and Dockerfile paths for monorepo support
+        # Security: reject path traversal attempts
+        for path_val in (dockerfile_path, build_context):
+            if path_val and (".." in path_val or path_val.startswith("/")):
+                raise ValueError(f"Invalid path (no traversal or absolute paths): {path_val}")
+
         ctx_path = f"/workspace/{build_context}" if build_context else "/workspace"
         if dockerfile_path:
             import posixpath

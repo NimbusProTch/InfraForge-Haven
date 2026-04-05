@@ -224,6 +224,56 @@ def test_build_job_manifest_dockerfile_in_subdirectory():
     assert "dockerfile=/workspace/docker" in args_str
 
 
+def test_build_job_rejects_path_traversal():
+    """Dockerfile path with .. should be rejected."""
+    k8s = MagicMock()
+    svc = BuildService(k8s)
+    with pytest.raises(ValueError, match="Invalid path"):
+        svc._build_job_manifest(
+            job_name="build-test-abc123-def456",
+            namespace="haven-builds",
+            app_slug="test-app",
+            repo_url="https://github.com/org/repo",
+            branch="main",
+            commit_sha="abc12345",
+            image_name="harbor.example.com/test/app:abc12345",
+            dockerfile_path="../../etc/passwd",
+        )
+
+
+def test_build_job_rejects_absolute_path():
+    """Absolute paths should be rejected."""
+    k8s = MagicMock()
+    svc = BuildService(k8s)
+    with pytest.raises(ValueError, match="Invalid path"):
+        svc._build_job_manifest(
+            job_name="build-test-abc123-def456",
+            namespace="haven-builds",
+            app_slug="test-app",
+            repo_url="https://github.com/org/repo",
+            branch="main",
+            commit_sha="abc12345",
+            image_name="harbor.example.com/test/app:abc12345",
+            build_context="/etc",
+        )
+
+
+@pytest.mark.asyncio
+async def test_app_create_rejects_traversal_path(async_client, db_session):
+    """App create with path traversal in dockerfile_path should be rejected."""
+    tenant = await _make_tenant(db_session, slug="mono-trav")
+    response = await async_client.post(
+        f"/api/v1/tenants/{tenant.slug}/apps",
+        json={
+            "name": "Evil App",
+            "slug": "evil-app",
+            "repo_url": "https://github.com/org/repo",
+            "dockerfile_path": "../../etc/passwd",
+        },
+    )
+    assert response.status_code == 422  # Pydantic validation error
+
+
 # ---------------------------------------------------------------------------
 # Detection service
 # ---------------------------------------------------------------------------
