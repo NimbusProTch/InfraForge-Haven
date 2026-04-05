@@ -109,6 +109,33 @@ class DeployService:
                                 f"Pod {pod.metadata.name}: {cs.state.waiting.reason}"
                                 f" - {cs.state.waiting.message or ''}",
                             )
+                        if cs.state.terminated and cs.state.terminated.exit_code != 0:
+                            reason = cs.state.terminated.reason or "Unknown"
+                            msg = cs.state.terminated.message or ""
+                            return (
+                                False,
+                                f"Pod {pod.metadata.name}: container {cs.name} terminated with exit code"
+                                f" {cs.state.terminated.exit_code} ({reason}) - {msg}",
+                            )
+                    for cs in pod.status.init_container_statuses or []:
+                        if cs.state.waiting and cs.state.waiting.reason in (
+                            "CrashLoopBackOff",
+                            "ErrImagePull",
+                            "ImagePullBackOff",
+                        ):
+                            return (
+                                False,
+                                f"Pod {pod.metadata.name}: init container {cs.name}:"
+                                f" {cs.state.waiting.reason}"
+                                f" - {cs.state.waiting.message or ''}",
+                            )
+                        if cs.state.terminated and cs.state.terminated.exit_code != 0:
+                            reason = cs.state.terminated.reason or "Unknown"
+                            return (
+                                False,
+                                f"Pod {pod.metadata.name}: init container {cs.name} failed with exit code"
+                                f" {cs.state.terminated.exit_code} ({reason})",
+                            )
             except ApiException as e:
                 if e.status != 404:
                     logger.debug("Deploy wait K8s error: %s", e.reason)

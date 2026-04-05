@@ -23,8 +23,25 @@ curl -sf -X POST "$KC_URL/admin/realms" \
     "enabled": true,
     "registrationAllowed": false,
     "loginWithEmailAllowed": true,
-    "bruteForceProtected": false
+    "bruteForceProtected": false,
+    "accessTokenLifespan": 3600,
+    "ssoSessionIdleTimeout": 28800,
+    "ssoSessionMaxLifespan": 28800,
+    "offlineSessionMaxLifespan": 604800,
+    "offlineSessionIdleTimeout": 172800
   }' && echo "  realm created" || echo "  realm may already exist, continuing..."
+
+echo "→ Updating realm token lifetimes..."
+curl -sf -X PUT "$KC_URL/admin/realms/haven" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "accessTokenLifespan": 3600,
+    "ssoSessionIdleTimeout": 28800,
+    "ssoSessionMaxLifespan": 28800,
+    "offlineSessionMaxLifespan": 604800,
+    "offlineSessionIdleTimeout": 172800
+  }' && echo "  token lifetimes updated" || echo "  failed to update token lifetimes"
 
 echo "→ Creating haven-ui client..."
 curl -sf -X POST "$KC_URL/admin/realms/haven/clients" \

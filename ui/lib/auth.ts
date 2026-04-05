@@ -88,9 +88,9 @@ export const authOptions: NextAuthOptions = {
         };
       }
 
-      // Token still valid (with 60s safety margin)
+      // Token still valid (with 5 min safety margin — refresh well before expiry)
       const expiresAt = (token.expiresAt as number) ?? 0;
-      if (Date.now() < expiresAt * 1000 - 60_000) {
+      if (Date.now() < expiresAt * 1000 - 300_000) {
         return token;
       }
 

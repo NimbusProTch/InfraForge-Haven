@@ -7,7 +7,13 @@
   "duplicateEmailsAllowed": false,
   "resetPasswordAllowed": true,
   "editUsernameAllowed": false,
-  "bruteForceProtected": false,
+  "bruteForceProtected": true,
+  "accessTokenLifespan": 3600,
+  "ssoSessionIdleTimeout": 28800,
+  "ssoSessionMaxLifespan": 28800,
+  "offlineSessionMaxLifespan": 604800,
+  "offlineSessionIdleTimeout": 172800,
+  "accessTokenLifespanForImplicitFlow": 3600,
   "clients": [
     {
       "clientId": "haven-ui",

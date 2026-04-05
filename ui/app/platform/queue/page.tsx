@@ -21,6 +21,7 @@ export default function QueueDashboardPage() {
   const router = useRouter();
   const [queueStatus, setQueueStatus] = useState<QueueStatus | null>(null);
   const [loading, setLoading] = useState(true);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [lastRefreshed, setLastRefreshed] = useState<Date>(new Date());
   const [autoRefresh, setAutoRefresh] = useState(true);
 
@@ -35,9 +36,16 @@ export default function QueueDashboardPage() {
     try {
       const s = await api.platform.queueStatus(accessToken);
       setQueueStatus(s);
+      // Check if API returned an error_message (Redis down)
+      if (s.error_message) {
+        setErrorMsg(s.error_message);
+      } else {
+        setErrorMsg(null);
+      }
       setLastRefreshed(new Date());
-    } catch {
-      /* API may not be available */
+    } catch (err) {
+      setErrorMsg(err instanceof Error ? err.message : "Failed to connect to platform API");
+      setQueueStatus(null);
     } finally {
       setLoading(false);
     }
@@ -100,10 +108,17 @@ export default function QueueDashboardPage() {
         {queueStatus === null ? (
           <div className="bg-white dark:bg-zinc-900/50 border border-gray-200 dark:border-zinc-800 rounded-xl p-8 text-center shadow-sm">
             <AlertTriangle className="w-8 h-8 text-amber-500 mx-auto mb-2" />
-            <p className="text-sm text-gray-500 dark:text-zinc-400">Queue service unavailable</p>
-            <p className="text-xs text-gray-400 dark:text-zinc-600 mt-1">
-              Ensure the Redis queue worker is running and the platform API is accessible.
+            <p className="text-sm font-medium text-gray-700 dark:text-zinc-300">Queue service unavailable</p>
+            <p className="text-xs text-gray-400 dark:text-zinc-500 mt-1 max-w-md mx-auto">
+              {errorMsg || "Ensure the Redis queue worker is running and the platform API is accessible."}
             </p>
+            <button
+              onClick={() => void loadStatus()}
+              className="mt-4 inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium transition-colors"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+              Retry
+            </button>
           </div>
         ) : (
           <>
