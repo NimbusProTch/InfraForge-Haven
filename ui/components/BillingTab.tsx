@@ -60,7 +60,7 @@ function UsageBar({ label, icon: Icon, used, limit, unit, color }: {
         <span className="text-xs font-medium text-zinc-400">{label}</span>
       </div>
       <div className="flex items-baseline gap-1.5 mb-2">
-        <span className="text-xl font-bold text-zinc-100">{used.toFixed(1)}</span>
+        <span className="text-xl font-bold text-zinc-100">{(used ?? 0).toFixed(1)}</span>
         {limit && (
           <span className="text-xs text-zinc-600">/ {limit} {unit}</span>
         )}
@@ -121,17 +121,18 @@ export default function BillingTab({ tenantSlug, accessToken }: BillingTabProps)
     );
   }
 
-  if (!usage) {
+  if (!usage || !usage.current_period) {
     return (
       <div className="text-center py-16 border border-dashed border-zinc-800 rounded-xl">
         <TrendingUp className="w-8 h-8 mx-auto mb-2 text-zinc-700" />
-        <p className="text-sm text-zinc-500">Usage data not available.</p>
+        <p className="text-sm text-zinc-500">No usage data for this billing period yet.</p>
+        <p className="text-xs text-zinc-600 mt-1">Usage tracking begins when apps are deployed.</p>
       </div>
     );
   }
 
   const cp = usage.current_period;
-  const lm = usage.limits;
+  const lm = usage.limits ?? { cpu_hours: null, memory_gb_hours: null, storage_gb_months: null, build_minutes: null };
 
   return (
     <div>
@@ -171,10 +172,10 @@ export default function BillingTab({ tenantSlug, accessToken }: BillingTabProps)
                 {usage.history.map((row) => (
                   <tr key={row.period} className="border-b border-zinc-800/50 last:border-0 hover:bg-zinc-800/30">
                     <td className="text-sm text-zinc-300 px-4 py-2.5 font-mono">{row.period}</td>
-                    <td className="text-sm text-zinc-400 px-4 py-2.5 text-right">{row.cpu_hours.toFixed(1)}</td>
-                    <td className="text-sm text-zinc-400 px-4 py-2.5 text-right">{row.memory_gb_hours.toFixed(1)}</td>
-                    <td className="text-sm text-zinc-400 px-4 py-2.5 text-right">{row.storage_gb_months.toFixed(1)}</td>
-                    <td className="text-sm text-zinc-400 px-4 py-2.5 text-right">{row.build_minutes.toFixed(0)}</td>
+                    <td className="text-sm text-zinc-400 px-4 py-2.5 text-right">{(row.cpu_hours ?? 0).toFixed(1)}</td>
+                    <td className="text-sm text-zinc-400 px-4 py-2.5 text-right">{(row.memory_gb_hours ?? 0).toFixed(1)}</td>
+                    <td className="text-sm text-zinc-400 px-4 py-2.5 text-right">{(row.storage_gb_months ?? 0).toFixed(1)}</td>
+                    <td className="text-sm text-zinc-400 px-4 py-2.5 text-right">{(row.build_minutes ?? 0).toFixed(0)}</td>
                   </tr>
                 ))}
               </tbody>

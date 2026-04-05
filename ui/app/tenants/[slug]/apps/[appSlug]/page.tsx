@@ -17,6 +17,7 @@ import CronJobsTab from "@/components/CronJobsTab";
 import VolumesTab from "@/components/VolumesTab";
 import CanaryTab from "@/components/CanaryTab";
 import { AnsiTerminal } from "@/components/ui/ansi-terminal";
+import { BuildModal, DeployModal } from "@/components/BuildDeployModal";
 import {
   Activity,
   GitBranch,
@@ -467,6 +468,8 @@ export default function AppDetailPage() {
 
   const [buildStatus, setBuildStatus] = useState<BuildStatus | null>(null);
   const [activeLogStep, setActiveLogStep] = useState<string | null>(null);
+  const [showBuildModal, setShowBuildModal] = useState(false);
+  const [showDeployModal, setShowDeployModal] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
   const deployPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const prevActiveRef = useRef(false);
@@ -657,7 +660,8 @@ export default function AppDetailPage() {
     };
   }, []);
 
-  async function handleBuild() {
+  async function handleBuildConfirm(_opts: { branch?: string }) {
+    setShowBuildModal(false);
     setActionLoading("build");
     try {
       await api.deployments.build(tenantSlug, appSlug, accessToken);
@@ -670,9 +674,8 @@ export default function AppDetailPage() {
     }
   }
 
-  async function handleDeploy() {
-    const imageShort = app?.image_tag?.split(":").pop() ?? "current";
-    if (!confirm(`Deploy image "${imageShort}" to production?`)) return;
+  async function handleDeployConfirm() {
+    setShowDeployModal(false);
     setActionLoading("deploy");
     try {
       await api.deployments.deploy(tenantSlug, appSlug, accessToken);
@@ -784,7 +787,7 @@ export default function AppDetailPage() {
           {/* Action buttons */}
           <div className="flex items-center gap-2 shrink-0">
             <button
-              onClick={handleBuild}
+              onClick={() => setShowBuildModal(true)}
               disabled={!!actionLoading}
               className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-zinc-800 hover:border-zinc-700 bg-zinc-900/50 hover:bg-zinc-800/50 text-zinc-400 hover:text-zinc-200 text-xs font-medium transition-colors disabled:opacity-50"
             >
@@ -796,7 +799,7 @@ export default function AppDetailPage() {
               Build
             </button>
             <button
-              onClick={handleDeploy}
+              onClick={() => setShowDeployModal(true)}
               disabled={!!actionLoading || !app.image_tag}
               title={!app.image_tag ? "No image built yet" : "Deploy current image"}
               className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-medium transition-colors"
@@ -1142,6 +1145,27 @@ export default function AppDetailPage() {
           </TabsContent>
         </Tabs>
       </div>
+
+      {/* Build Modal */}
+      <BuildModal
+        open={showBuildModal}
+        onClose={() => setShowBuildModal(false)}
+        onConfirm={handleBuildConfirm}
+        loading={actionLoading === "build"}
+        appName={app.name}
+        currentBranch={app.branch}
+        repoUrl={app.repo_url}
+      />
+
+      {/* Deploy Modal */}
+      <DeployModal
+        open={showDeployModal}
+        onClose={() => setShowDeployModal(false)}
+        onConfirm={handleDeployConfirm}
+        loading={actionLoading === "deploy"}
+        appName={app.name}
+        imageTag={app.image_tag}
+      />
     </AppShell>
   );
 }
