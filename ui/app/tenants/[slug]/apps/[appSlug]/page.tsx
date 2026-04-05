@@ -393,7 +393,7 @@ function DeploymentCard({
 
           <div className="min-w-0 shrink-0">
             <div className="flex items-center gap-2">
-              <span className="text-sm font-mono font-medium text-gray-800 dark:text-zinc-200">
+              <span className="text-sm font-mono font-bold text-gray-900 dark:text-white">
                 {deployment.commit_sha ? deployment.commit_sha.slice(0, 7) : "manual"}
               </span>
               <Badge variant={DEPLOY_STATUS_VARIANT[deployment.status] ?? "secondary"}>
@@ -913,28 +913,28 @@ export default function AppDetailPage() {
         {/* Header */}
         <div className="flex items-start justify-between mb-6">
           <div>
-            <div className="flex items-center gap-2.5 mb-1">
-              <div className="w-8 h-8 rounded-lg bg-blue-500/10 border border-blue-500/20 flex items-center justify-center shrink-0">
-                <span className="text-sm">⚡</span>
+            <div className="flex items-center gap-3 mb-1">
+              <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 shadow-md flex items-center justify-center shrink-0">
+                <Rocket className="w-4.5 h-4.5 text-white" />
               </div>
-              <h1 className="text-2xl font-bold text-gray-900 dark:text-zinc-100">{app.name}</h1>
+              <h1 className="text-2xl font-extrabold text-gray-900 dark:text-white tracking-tight">{app.name}</h1>
               {currentStatus && (
                 <Badge variant={DEPLOY_STATUS_VARIANT[currentStatus] ?? "secondary"}>
                   {currentStatus}
                 </Badge>
               )}
             </div>
-            <div className="flex items-center gap-3 mt-1 pl-10">
-              <p className="text-xs text-gray-400 dark:text-zinc-600 font-mono">
+            <div className="flex items-center gap-3 mt-1.5 pl-12">
+              <p className="text-sm text-gray-600 dark:text-zinc-400 font-mono font-medium">
                 <span
-                  className="hover:text-blue-400 cursor-pointer transition-colors"
+                  className="hover:text-blue-500 cursor-pointer transition-colors underline-offset-2 hover:underline"
                   onClick={() => window.open(app.repo_url, "_blank")}
                 >
                   {app.repo_url.replace("https://github.com/", "")}
                 </span>
-                <ChevronRight className="inline w-3 h-3 mx-0.5 text-gray-400 dark:text-zinc-700" />
-                <span className="inline-flex items-center gap-0.5">
-                  <GitBranch className="w-3 h-3" />
+                <ChevronRight className="inline w-3.5 h-3.5 mx-1 text-gray-400 dark:text-zinc-600" />
+                <span className="inline-flex items-center gap-1 text-gray-700 dark:text-zinc-300">
+                  <GitBranch className="w-3.5 h-3.5" />
                   {app.branch}
                 </span>
               </p>
@@ -957,12 +957,12 @@ export default function AppDetailPage() {
             <button
               onClick={() => setShowBuildModal(true)}
               disabled={!!actionLoading}
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-gray-200 dark:border-zinc-800 hover:border-gray-300 dark:hover:border-zinc-700 bg-white dark:bg-zinc-900/50 hover:bg-gray-50 dark:hover:bg-zinc-800/50 text-gray-500 dark:text-zinc-400 hover:text-gray-900 dark:hover:text-zinc-200 text-xs font-medium transition-colors disabled:opacity-50"
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 hover:bg-gray-50 dark:hover:bg-zinc-700 text-gray-700 dark:text-zinc-200 text-sm font-semibold transition-all shadow-sm hover:shadow disabled:opacity-50"
             >
               {actionLoading === "build" ? (
-                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                <Loader2 className="w-4 h-4 animate-spin" />
               ) : (
-                <Hammer className="w-3.5 h-3.5" />
+                <Hammer className="w-4 h-4" />
               )}
               Build
             </button>
@@ -970,7 +970,7 @@ export default function AppDetailPage() {
               onClick={() => setShowDeployModal(true)}
               disabled={!!actionLoading || !app.image_tag}
               title={!app.image_tag ? "No image built yet" : "Deploy current image"}
-              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-medium transition-all shadow-md shadow-emerald-500/20"
+              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-bold transition-all shadow-lg shadow-emerald-500/25"
             >
               {actionLoading === "deploy" ? (
                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -982,11 +982,11 @@ export default function AppDetailPage() {
             {/* Scale dropdown */}
             <div className="relative group">
               <button
-                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-gray-200 dark:border-zinc-800 hover:border-gray-300 dark:hover:border-zinc-700 bg-white dark:bg-zinc-900/50 hover:bg-gray-50 dark:hover:bg-zinc-800/50 text-gray-500 dark:text-zinc-400 hover:text-gray-900 dark:hover:text-zinc-200 text-xs font-medium transition-colors"
+                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 hover:bg-gray-50 dark:hover:bg-zinc-700 text-gray-700 dark:text-zinc-200 text-sm font-semibold transition-all shadow-sm hover:shadow"
               >
-                <Layers className="w-3.5 h-3.5" />
+                <Layers className="w-4 h-4" />
                 Scale
-                <ChevronDown className="w-3 h-3" />
+                <ChevronDown className="w-3.5 h-3.5" />
               </button>
               <div className="absolute right-0 mt-1 w-36 bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-lg shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-10">
                 {[1, 2, 3, 5].map((n) => (
@@ -1023,22 +1023,22 @@ export default function AppDetailPage() {
                   toastError(err instanceof Error ? err.message : "Restart failed");
                 }
               }}
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-gray-200 dark:border-zinc-800 hover:border-gray-300 dark:hover:border-zinc-700 bg-white dark:bg-zinc-900/50 hover:bg-gray-50 dark:hover:bg-zinc-800/50 text-gray-500 dark:text-zinc-400 hover:text-gray-900 dark:hover:text-zinc-200 text-xs font-medium transition-colors"
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 hover:bg-gray-50 dark:hover:bg-zinc-700 text-gray-700 dark:text-zinc-200 text-sm font-semibold transition-all shadow-sm hover:shadow"
               title="Restart all pods"
             >
-              <RotateCcw className="w-3.5 h-3.5" />
+              <RotateCcw className="w-4 h-4" />
               Restart
             </button>
             <button
               onClick={handleSync}
               disabled={syncing}
               title="Force ArgoCD to re-sync this application with the GitOps repository"
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-gray-200 dark:border-zinc-800 hover:border-gray-300 dark:hover:border-zinc-700 bg-white dark:bg-zinc-900/50 hover:bg-gray-50 dark:hover:bg-zinc-800/50 text-gray-500 dark:text-zinc-400 hover:text-gray-900 dark:hover:text-zinc-200 text-xs font-medium transition-colors disabled:opacity-50"
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 hover:bg-gray-50 dark:hover:bg-zinc-700 text-gray-700 dark:text-zinc-200 text-sm font-semibold transition-all shadow-sm hover:shadow disabled:opacity-50"
             >
               {syncing ? (
-                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                <Loader2 className="w-4 h-4 animate-spin" />
               ) : (
-                <RefreshCw className="w-3.5 h-3.5" />
+                <RefreshCw className="w-4 h-4" />
               )}
               ArgoCD Sync
             </button>
@@ -1107,8 +1107,8 @@ export default function AppDetailPage() {
                   <InfoIcon className="w-5 h-5 text-white" />
                 </div>
                 <div className="min-w-0">
-                  <p className="text-xs text-gray-400 dark:text-zinc-500 uppercase tracking-wider">{label}</p>
-                  <p className="text-sm font-semibold text-gray-800 dark:text-zinc-200 font-mono truncate">{value}</p>
+                  <p className="text-xs font-bold text-gray-500 dark:text-zinc-400 uppercase tracking-wider">{label}</p>
+                  <p className="text-base font-bold text-gray-900 dark:text-white font-mono truncate">{value}</p>
                 </div>
               </div>
             </div>
