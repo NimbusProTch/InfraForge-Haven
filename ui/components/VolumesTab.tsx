@@ -149,7 +149,7 @@ export default function VolumesTab({ tenantSlug, appSlug, accessToken }: Volumes
                   max={100}
                   value={newSize}
                   onChange={(e) => setNewSize(Number(e.target.value))}
-                  className="w-full h-1.5 bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-cyan-500"
+                  className="w-full h-1.5 bg-gray-300 dark:bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-cyan-500"
                 />
                 <div className="flex justify-between text-xs text-gray-400 dark:text-zinc-600 mt-1">
                   <span>1 GiB</span>
