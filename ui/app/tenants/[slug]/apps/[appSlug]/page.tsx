@@ -1155,6 +1155,8 @@ export default function AppDetailPage() {
         appName={app.name}
         currentBranch={app.branch}
         repoUrl={app.repo_url}
+        useDockerfile={app.use_dockerfile}
+        dockerfilePath={app.dockerfile_path}
       />
 
       {/* Deploy Modal */}
@@ -1165,6 +1167,7 @@ export default function AppDetailPage() {
         loading={actionLoading === "deploy"}
         appName={app.name}
         imageTag={app.image_tag}
+        replicas={app.replicas}
       />
     </AppShell>
   );
