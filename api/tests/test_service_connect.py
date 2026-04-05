@@ -417,7 +417,9 @@ async def test_retry_failed_service(async_client: AsyncClient, db_session: Async
     )
     db_session.add(tenant)
     db_session.add(
-        TenantMember(id=uuid.uuid4(), tenant_id=tenant.id, user_id="test-user", email="test@t.nl", role=MemberRole("owner"))
+        TenantMember(
+            id=uuid.uuid4(), tenant_id=tenant.id, user_id="test-user", email="test@t.nl", role=MemberRole("owner")
+        )
     )
     svc = ManagedService(
         id=uuid.uuid4(),
@@ -476,7 +478,9 @@ async def test_delete_service_cleans_app_env_from_secrets(async_client: AsyncCli
     )
     db_session.add(tenant)
     db_session.add(
-        TenantMember(id=uuid.uuid4(), tenant_id=tenant.id, user_id="test-user", email="test@t.nl", role=MemberRole("owner"))
+        TenantMember(
+            id=uuid.uuid4(), tenant_id=tenant.id, user_id="test-user", email="test@t.nl", role=MemberRole("owner")
+        )
     )
 
     app_obj = Application(

@@ -208,7 +208,9 @@ class DeployRequest(BaseModel):
 
     replicas: int | None = Field(None, ge=1, le=10, description="Override replica count")
     resource_cpu_limit: str | None = Field(None, pattern=r"^\d+m?$", description="CPU limit (e.g. 500m, 1)")
-    resource_memory_limit: str | None = Field(None, pattern=r"^\d+(Mi|Gi)$", description="Memory limit (e.g. 512Mi, 1Gi)")
+    resource_memory_limit: str | None = Field(
+        None, pattern=r"^\d+(Mi|Gi)$", description="Memory limit (e.g. 512Mi, 1Gi)"
+    )
 
 
 @router.post("/build", response_model=DeploymentResponse, status_code=status.HTTP_202_ACCEPTED)
