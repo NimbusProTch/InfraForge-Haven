@@ -217,6 +217,13 @@ export default function AppSettings({ tenantSlug, app, accessToken, onSaved }: A
   }
 
   async function disconnectGitHub() {
+    // Clear server-side token first — only clear local state on success
+    try {
+      await api.github.disconnect(tenantSlug, accessToken);
+    } catch (err) {
+      setReposError(err instanceof Error ? err.message : "Failed to disconnect. Please try again.");
+      return;
+    }
     localStorage.removeItem(GITHUB_TOKEN_KEY);
     setGithubToken(null);
     setRepos([]);
@@ -224,20 +231,21 @@ export default function AppSettings({ tenantSlug, app, accessToken, onSaved }: A
     setBranches([]);
     setReposError("");
     setManualMode(true);
-    // Also clear server-side token
-    try {
-      await api.github.disconnect(tenantSlug, accessToken);
-    } catch {
-      // ignore — localStorage already cleared
-    }
   }
 
+  const branchAbortRef = useRef<AbortController | null>(null);
+
   async function loadBranches(repo: GitHubRepo, token: string) {
+    branchAbortRef.current?.abort();
+    const controller = new AbortController();
+    branchAbortRef.current = controller;
+
     setBranchesLoading(true);
     setBranches([]);
     try {
       const [owner, repoName] = repo.full_name.split("/");
       const data = await api.github.branches(owner, repoName, token);
+      if (controller.signal.aborted) return;
       setBranches(data);
       const current = data.find((b) => b.name === editBranch);
       if (!current) {
@@ -245,9 +253,9 @@ export default function AppSettings({ tenantSlug, app, accessToken, onSaved }: A
         if (defaultBranch) setEditBranch(defaultBranch.name);
       }
     } catch {
-      // fall through
+      if (controller.signal.aborted) return;
     } finally {
-      setBranchesLoading(false);
+      if (!controller.signal.aborted) setBranchesLoading(false);
     }
   }
 
