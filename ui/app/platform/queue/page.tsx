@@ -57,7 +57,7 @@ export default function QueueDashboardPage() {
     return (
       <AppShell userEmail={session?.user?.email}>
         <div className="flex items-center justify-center h-full min-h-[400px]">
-          <Loader2 className="w-5 h-5 animate-spin text-zinc-600" />
+          <Loader2 className="w-5 h-5 animate-spin text-gray-400 dark:text-zinc-600" />
         </div>
       </AppShell>
     );
@@ -68,8 +68,8 @@ export default function QueueDashboardPage() {
       <div className="p-6 max-w-4xl">
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h1 className="text-xl font-bold text-zinc-100">Build Queue</h1>
-            <p className="text-xs text-zinc-500 mt-0.5">
+            <h1 className="text-xl font-bold text-gray-900 dark:text-zinc-100">Build Queue</h1>
+            <p className="text-xs text-gray-500 dark:text-zinc-500 mt-0.5">
               Redis-backed FIFO queue for GitOps writes
             </p>
           </div>
@@ -82,14 +82,14 @@ export default function QueueDashboardPage() {
                   onChange={(e) => setAutoRefresh(e.target.checked)}
                   className="sr-only peer"
                 />
-                <div className="w-8 h-4 rounded-full bg-zinc-800 peer-checked:bg-emerald-600 transition-colors" />
+                <div className="w-8 h-4 rounded-full bg-gray-100 dark:bg-zinc-800 peer-checked:bg-emerald-600 transition-colors" />
                 <div className="absolute top-0.5 left-0.5 w-3 h-3 rounded-full bg-white shadow transition-transform peer-checked:translate-x-4" />
               </div>
-              <span className="text-xs text-zinc-500">Auto (5s)</span>
+              <span className="text-xs text-gray-500 dark:text-zinc-500">Auto (5s)</span>
             </label>
             <button
               onClick={() => void loadStatus()}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-zinc-800 hover:border-zinc-700 text-zinc-400 hover:text-zinc-200 text-xs font-medium transition-colors"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-200 dark:border-zinc-800 hover:border-gray-400 dark:hover:border-zinc-700 text-gray-500 dark:text-zinc-400 hover:text-gray-900 dark:hover:text-zinc-200 text-xs font-medium transition-colors"
             >
               <RefreshCw className="w-3.5 h-3.5" />
               Refresh
@@ -98,19 +98,19 @@ export default function QueueDashboardPage() {
         </div>
 
         {queueStatus === null ? (
-          <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-8 text-center">
+          <div className="bg-white dark:bg-zinc-900/50 border border-gray-200 dark:border-zinc-800 rounded-xl p-8 text-center shadow-sm">
             <AlertTriangle className="w-8 h-8 text-amber-500 mx-auto mb-2" />
-            <p className="text-sm text-zinc-400">Queue service unavailable</p>
-            <p className="text-xs text-zinc-600 mt-1">
+            <p className="text-sm text-gray-500 dark:text-zinc-400">Queue service unavailable</p>
+            <p className="text-xs text-gray-400 dark:text-zinc-600 mt-1">
               Ensure the Redis queue worker is running and the platform API is accessible.
             </p>
           </div>
         ) : (
           <>
             {/* Worker health */}
-            <div className="mb-6 flex items-center gap-3 px-4 py-3 rounded-xl border border-zinc-800 bg-zinc-900/50">
-              <Server className="w-4 h-4 text-zinc-500" />
-              <span className="text-sm text-zinc-400">Worker</span>
+            <div className="mb-6 flex items-center gap-3 px-4 py-3 rounded-xl border border-gray-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/50 shadow-sm">
+              <Server className="w-4 h-4 text-gray-500 dark:text-zinc-500" />
+              <span className="text-sm text-gray-500 dark:text-zinc-400">Worker</span>
               <div className="flex items-center gap-2">
                 {queueStatus.worker_alive ? (
                   <>
@@ -121,33 +121,33 @@ export default function QueueDashboardPage() {
                   <>
                     <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
                     <span className="text-sm font-medium text-red-400">Dead</span>
-                    <span className="text-xs text-zinc-600">— git writes will not be processed</span>
+                    <span className="text-xs text-gray-400 dark:text-zinc-600">— git writes will not be processed</span>
                   </>
                 )}
               </div>
-              <div className="ml-auto text-xs text-zinc-600">
+              <div className="ml-auto text-xs text-gray-400 dark:text-zinc-600">
                 Last refreshed: {lastRefreshed.toLocaleTimeString()}
               </div>
             </div>
 
             {/* Queue metrics */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
-              <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl px-4 py-4">
+              <div className="bg-white dark:bg-zinc-900/50 border border-gray-200 dark:border-zinc-800 rounded-xl px-4 py-4 shadow-sm">
                 <div className="flex items-center gap-2 mb-3">
                   <Clock className="w-3.5 h-3.5 text-amber-500" />
-                  <span className="text-xs font-medium text-zinc-500">Pending</span>
+                  <span className="text-xs font-medium text-gray-500 dark:text-zinc-500">Pending</span>
                 </div>
-                <p className="text-3xl font-bold text-zinc-100 font-mono">{queueStatus.pending}</p>
+                <p className="text-3xl font-bold text-gray-900 dark:text-zinc-100 font-mono">{queueStatus.pending}</p>
                 {queueStatus.oldest_pending_age_seconds !== null && queueStatus.pending > 0 && (
-                  <p className="text-xs text-zinc-600 mt-1">
+                  <p className="text-xs text-gray-400 dark:text-zinc-600 mt-1">
                     Oldest: {Math.round(queueStatus.oldest_pending_age_seconds)}s ago
                   </p>
                 )}
               </div>
-              <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl px-4 py-4">
+              <div className="bg-white dark:bg-zinc-900/50 border border-gray-200 dark:border-zinc-800 rounded-xl px-4 py-4 shadow-sm">
                 <div className="flex items-center gap-2 mb-3">
                   <Zap className={`w-3.5 h-3.5 ${queueStatus.processing > 0 ? "text-blue-500" : "text-zinc-600"}`} />
-                  <span className="text-xs font-medium text-zinc-500">Processing</span>
+                  <span className="text-xs font-medium text-gray-500 dark:text-zinc-500">Processing</span>
                 </div>
                 <p className={`text-3xl font-bold font-mono ${queueStatus.processing > 0 ? "text-blue-400" : "text-zinc-100"}`}>
                   {queueStatus.processing}
@@ -159,10 +159,10 @@ export default function QueueDashboardPage() {
                   </div>
                 )}
               </div>
-              <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl px-4 py-4">
+              <div className="bg-white dark:bg-zinc-900/50 border border-gray-200 dark:border-zinc-800 rounded-xl px-4 py-4 shadow-sm">
                 <div className="flex items-center gap-2 mb-3">
                   <AlertTriangle className={`w-3.5 h-3.5 ${queueStatus.dead_letter > 0 ? "text-red-500" : "text-zinc-600"}`} />
-                  <span className="text-xs font-medium text-zinc-500">Dead Letter</span>
+                  <span className="text-xs font-medium text-gray-500 dark:text-zinc-500">Dead Letter</span>
                 </div>
                 <p className={`text-3xl font-bold font-mono ${queueStatus.dead_letter > 0 ? "text-red-400" : "text-zinc-100"}`}>
                   {queueStatus.dead_letter}

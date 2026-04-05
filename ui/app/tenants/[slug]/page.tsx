@@ -84,7 +84,7 @@ function CopyButton({ text }: { text: string }) {
         setCopied(true);
         setTimeout(() => setCopied(false), 1500);
       }}
-      className="text-zinc-600 hover:text-zinc-300 transition-colors"
+      className="text-gray-400 dark:text-zinc-600 hover:text-gray-700 dark:hover:text-zinc-300 transition-colors"
     >
       {copied ? <Check className="w-3 h-3 text-emerald-500" /> : <Copy className="w-3 h-3" />}
     </button>
@@ -104,24 +104,24 @@ function AppCard({
   const deployStatus = latestDeployment?.status;
 
   return (
-    <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-4 hover:border-zinc-700 transition-colors group">
+    <div className="bg-white dark:bg-zinc-900/50 border border-gray-200 dark:border-zinc-800 rounded-xl p-4 hover:border-gray-300 dark:hover:border-zinc-700 transition-colors group shadow-sm">
       <div className="flex items-start justify-between mb-3">
         <Link href={`/tenants/${tenantSlug}/apps/${app.slug}`} className="flex items-center gap-2.5 flex-1 min-w-0">
           <div className="relative shrink-0">
-            <div className="w-8 h-8 rounded-lg bg-zinc-800 flex items-center justify-center">
-              <Server className="w-4 h-4 text-zinc-500" />
+            <div className="w-8 h-8 rounded-lg bg-gray-100 dark:bg-zinc-800 flex items-center justify-center">
+              <Server className="w-4 h-4 text-gray-500 dark:text-zinc-500" />
             </div>
             {deployStatus && (
               <span
-                className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-zinc-900 ${STATUS_DOT[deployStatus] ?? "bg-zinc-500"}`}
+                className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-white dark:border-zinc-900 ${STATUS_DOT[deployStatus] ?? "bg-zinc-500"}`}
               />
             )}
           </div>
           <div className="min-w-0">
-            <p className="text-sm font-medium text-zinc-200 group-hover:text-zinc-100 transition-colors truncate">
+            <p className="text-sm font-medium text-gray-800 dark:text-zinc-200 group-hover:text-gray-900 dark:group-hover:text-zinc-100 transition-colors truncate">
               {app.name}
             </p>
-            <p className="text-xs text-zinc-600 font-mono mt-0.5 truncate">
+            <p className="text-xs text-gray-400 dark:text-zinc-600 font-mono mt-0.5 truncate">
               {app.slug}
             </p>
           </div>
@@ -133,7 +133,7 @@ function AppCard({
         )}
       </div>
 
-      <div className="flex items-center gap-3 text-xs text-zinc-600">
+      <div className="flex items-center gap-3 text-xs text-gray-400 dark:text-zinc-600">
         <span className="flex items-center gap-1">
           <GitBranch className="w-3 h-3" />
           {app.branch}
@@ -300,7 +300,7 @@ export default function TenantDetailPage() {
     return (
       <AppShell userEmail={session?.user?.email}>
         <div className="flex items-center justify-center h-full min-h-[400px]">
-          <Loader2 className="w-5 h-5 animate-spin text-zinc-600" />
+          <Loader2 className="w-5 h-5 animate-spin text-gray-400 dark:text-zinc-600" />
         </div>
       </AppShell>
     );
@@ -328,12 +328,12 @@ export default function TenantDetailPage() {
               <div className="w-8 h-8 rounded-lg bg-violet-500/10 border border-violet-500/20 flex items-center justify-center">
                 <FolderKanban className="w-4 h-4 text-violet-400" />
               </div>
-              <h1 className="text-2xl font-bold text-zinc-100">{tenant.name}</h1>
+              <h1 className="text-2xl font-bold text-gray-900 dark:text-zinc-100">{tenant.name}</h1>
               <Badge variant={tenant.active ? "success" : "secondary"}>
                 {tenant.active ? "active" : "inactive"}
               </Badge>
             </div>
-            <p className="text-sm text-zinc-600 font-mono pl-10">{tenant.namespace}</p>
+            <p className="text-sm text-gray-400 dark:text-zinc-600 font-mono pl-10">{tenant.namespace}</p>
           </div>
           <button
             onClick={() => setShowDeleteDialog(true)}
@@ -347,16 +347,16 @@ export default function TenantDetailPage() {
         {/* Delete dialog */}
         {showDeleteDialog && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
-            <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6 w-full max-w-md mx-4 shadow-2xl">
-              <h2 className="text-base font-semibold text-zinc-100 mb-2">Delete Project</h2>
-              <p className="text-sm text-zinc-500 mb-1">
+            <div className="bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-xl p-6 w-full max-w-md mx-4 shadow-2xl">
+              <h2 className="text-base font-semibold text-gray-900 dark:text-zinc-100 mb-2">Delete Project</h2>
+              <p className="text-sm text-gray-500 dark:text-zinc-500 mb-1">
                 This will permanently delete{" "}
-                <strong className="text-zinc-200">{tenant.name}</strong> and all its
+                <strong className="text-gray-800 dark:text-zinc-200">{tenant.name}</strong> and all its
                 applications and services. This action cannot be undone.
               </p>
-              <p className="text-sm text-zinc-500 mb-4">
+              <p className="text-sm text-gray-500 dark:text-zinc-500 mb-4">
                 Type{" "}
-                <span className="font-mono font-medium text-zinc-200">{tenant.slug}</span>{" "}
+                <span className="font-mono font-medium text-gray-800 dark:text-zinc-200">{tenant.slug}</span>{" "}
                 to confirm.
               </p>
               <input
@@ -364,7 +364,7 @@ export default function TenantDetailPage() {
                 value={deleteConfirmText}
                 onChange={(e) => setDeleteConfirmText(e.target.value)}
                 placeholder={tenant.slug}
-                className="w-full px-3 py-2 rounded-lg border border-zinc-700 bg-zinc-800 text-sm text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-red-700 focus:ring-1 focus:ring-red-700/30 font-mono mb-4"
+                className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-zinc-700 bg-gray-100 dark:bg-zinc-800 text-sm text-gray-900 dark:text-zinc-100 placeholder:text-gray-400 dark:placeholder:text-zinc-600 focus:outline-none focus:border-red-700 focus:ring-1 focus:ring-red-700/30 font-mono mb-4"
                 autoFocus
               />
               <div className="flex justify-end gap-2">
@@ -373,7 +373,7 @@ export default function TenantDetailPage() {
                     setShowDeleteDialog(false);
                     setDeleteConfirmText("");
                   }}
-                  className="px-3 py-1.5 rounded-lg text-xs font-medium text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800 transition-colors"
+                  className="px-3 py-1.5 rounded-lg text-xs font-medium text-gray-500 dark:text-zinc-500 hover:text-gray-900 dark:hover:text-zinc-200 hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors"
                 >
                   Cancel
                 </button>
@@ -404,16 +404,16 @@ export default function TenantDetailPage() {
           ].map(({ label, value, mono }) => (
             <div
               key={label}
-              className="bg-zinc-900/50 border border-zinc-800 rounded-xl px-3 py-3"
+              className="bg-white dark:bg-zinc-900/50 border border-gray-200 dark:border-zinc-800 rounded-xl px-3 py-3 shadow-sm"
             >
-              <p className="text-xs text-zinc-600 mb-1">{label}</p>
-              <p className={`text-sm font-medium text-zinc-200 ${mono ? "font-mono" : ""}`}>
+              <p className="text-xs text-gray-400 dark:text-zinc-600 mb-1">{label}</p>
+              <p className={`text-sm font-medium text-gray-800 dark:text-zinc-200 ${mono ? "font-mono" : ""}`}>
                 {value}
               </p>
             </div>
           ))}
-          <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl px-3 py-3">
-            <p className="text-xs text-zinc-600 mb-1">App Health</p>
+          <div className="bg-white dark:bg-zinc-900/50 border border-gray-200 dark:border-zinc-800 rounded-xl px-3 py-3 shadow-sm">
+            <p className="text-xs text-gray-400 dark:text-zinc-600 mb-1">App Health</p>
             <div className="flex items-center gap-2">
               {runningApps > 0 && (
                 <span className="flex items-center gap-1 text-xs text-emerald-500 font-medium">
@@ -428,7 +428,7 @@ export default function TenantDetailPage() {
                 </span>
               )}
               {apps.length === 0 && (
-                <span className="text-xs text-zinc-600">—</span>
+                <span className="text-xs text-gray-400 dark:text-zinc-600">—</span>
               )}
             </div>
           </div>
@@ -439,11 +439,11 @@ export default function TenantDetailPage() {
           <TabsList>
             <TabsTrigger value="apps">
               Applications
-              <span className="ml-1.5 text-xs text-zinc-600">{apps.length}</span>
+              <span className="ml-1.5 text-xs text-gray-400 dark:text-zinc-600">{apps.length}</span>
             </TabsTrigger>
             <TabsTrigger value="services">
               Services
-              <span className="ml-1.5 text-xs text-zinc-600">{services.length}</span>
+              <span className="ml-1.5 text-xs text-gray-400 dark:text-zinc-600">{services.length}</span>
             </TabsTrigger>
             <TabsTrigger value="members">
               <Users className="w-3.5 h-3.5 mr-1" />
@@ -466,7 +466,7 @@ export default function TenantDetailPage() {
           {/* Applications tab */}
           <TabsContent value="apps" className="pt-5">
             <div className="flex items-center justify-between mb-4">
-              <p className="text-sm text-zinc-500">Deployed applications</p>
+              <p className="text-sm text-gray-500 dark:text-zinc-500">Deployed applications</p>
               <Link
                 href={`/tenants/${slug}/apps/new`}
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-medium transition-colors"
@@ -477,9 +477,9 @@ export default function TenantDetailPage() {
             </div>
 
             {apps.length === 0 ? (
-              <div className="text-center py-16 border border-dashed border-zinc-800 rounded-xl">
-                <Box className="w-8 h-8 mx-auto mb-2 text-zinc-700" />
-                <p className="text-sm text-zinc-500">No applications yet.</p>
+              <div className="text-center py-16 border border-dashed border-gray-200 dark:border-zinc-800 rounded-xl">
+                <Box className="w-8 h-8 mx-auto mb-2 text-gray-400 dark:text-zinc-700" />
+                <p className="text-sm text-gray-500 dark:text-zinc-500">No applications yet.</p>
                 <Link
                   href={`/tenants/${slug}/apps/new`}
                   className="inline-block mt-2 text-xs text-emerald-500 hover:text-emerald-400 transition-colors"
@@ -504,7 +504,7 @@ export default function TenantDetailPage() {
           {/* Services tab */}
           <TabsContent value="services" className="pt-5">
             <div className="flex items-center justify-between mb-4">
-              <p className="text-sm text-zinc-500">
+              <p className="text-sm text-gray-500 dark:text-zinc-500">
                 Managed services (PostgreSQL, Redis, RabbitMQ)
               </p>
               <AddServiceModal
@@ -515,24 +515,24 @@ export default function TenantDetailPage() {
             </div>
 
             {services.length === 0 ? (
-              <div className="text-center py-16 border border-dashed border-zinc-800 rounded-xl">
-                <Database className="w-8 h-8 mx-auto mb-2 text-zinc-700" />
-                <p className="text-sm text-zinc-500">No managed services yet.</p>
-                <p className="text-xs text-zinc-600 mt-1">Add a PostgreSQL, Redis, or RabbitMQ instance to get started.</p>
+              <div className="text-center py-16 border border-dashed border-gray-200 dark:border-zinc-800 rounded-xl">
+                <Database className="w-8 h-8 mx-auto mb-2 text-gray-400 dark:text-zinc-700" />
+                <p className="text-sm text-gray-500 dark:text-zinc-500">No managed services yet.</p>
+                <p className="text-xs text-gray-400 dark:text-zinc-600 mt-1">Add a PostgreSQL, Redis, or RabbitMQ instance to get started.</p>
               </div>
             ) : (
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 {services.map((svc) => (
                   <div
                     key={svc.id}
-                    className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-4 hover:border-zinc-700 transition-colors"
+                    className="bg-white dark:bg-zinc-900/50 border border-gray-200 dark:border-zinc-800 rounded-xl p-4 hover:border-gray-300 dark:hover:border-zinc-700 transition-colors shadow-sm"
                   >
                     <div className="flex items-start justify-between">
                       <div className="flex items-center gap-2">
                         <ServiceIcon type={svc.service_type} size={24} />
                         <div>
-                          <p className="text-sm font-medium text-zinc-200">{svc.name}</p>
-                          <p className="text-xs text-zinc-600">
+                          <p className="text-sm font-medium text-gray-800 dark:text-zinc-200">{svc.name}</p>
+                          <p className="text-xs text-gray-400 dark:text-zinc-600">
                             {svc.service_type} · {svc.tier}
                           </p>
                         </div>
@@ -543,8 +543,8 @@ export default function TenantDetailPage() {
                     </div>
 
                     {svc.connection_hint && (
-                      <div className="mt-3 flex items-center gap-1 bg-zinc-800 rounded-lg px-2 py-1.5">
-                        <p className="text-xs font-mono text-zinc-500 truncate flex-1">
+                      <div className="mt-3 flex items-center gap-1 bg-gray-100 dark:bg-zinc-800 rounded-lg px-2 py-1.5">
+                        <p className="text-xs font-mono text-gray-500 dark:text-zinc-500 truncate flex-1">
                           {svc.connection_hint}
                         </p>
                         <CopyButton text={svc.connection_hint} />
@@ -552,26 +552,26 @@ export default function TenantDetailPage() {
                     )}
 
                     {/* Action buttons */}
-                    <div className="mt-3 flex items-center gap-2 border-t border-zinc-800/50 pt-3">
+                    <div className="mt-3 flex items-center gap-2 border-t border-gray-200 dark:border-zinc-800/50 pt-3">
                       {svc.status === "ready" && (
                         <>
                           <button
                             onClick={() => openCredentials(svc)}
-                            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-xs font-medium text-zinc-300 hover:text-zinc-100 transition-colors"
+                            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-gray-100 dark:bg-zinc-800 hover:bg-gray-200 dark:hover:bg-zinc-700 text-xs font-medium text-gray-700 dark:text-zinc-300 hover:text-gray-900 dark:hover:text-zinc-100 transition-colors"
                           >
                             <Key className="w-3 h-3" />
                             Credentials
                           </button>
                           <button
                             onClick={() => setConnectModal(svc)}
-                            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-xs font-medium text-zinc-300 hover:text-zinc-100 transition-colors"
+                            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-gray-100 dark:bg-zinc-800 hover:bg-gray-200 dark:hover:bg-zinc-700 text-xs font-medium text-gray-700 dark:text-zinc-300 hover:text-gray-900 dark:hover:text-zinc-100 transition-colors"
                           >
                             <Link2 className="w-3 h-3" />
                             Connect
                           </button>
                           <button
                             onClick={() => setModifyModal(svc)}
-                            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-xs font-medium text-zinc-300 hover:text-zinc-100 transition-colors"
+                            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-gray-100 dark:bg-zinc-800 hover:bg-gray-200 dark:hover:bg-zinc-700 text-xs font-medium text-gray-700 dark:text-zinc-300 hover:text-gray-900 dark:hover:text-zinc-100 transition-colors"
                           >
                             <Settings className="w-3 h-3" />
                             Modify
@@ -581,7 +581,7 @@ export default function TenantDetailPage() {
                       <button
                         onClick={() => deleteService(svc.name)}
                         disabled={deletingService === svc.name}
-                        className="ml-auto flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-zinc-600 hover:text-red-400 hover:bg-red-950/30 transition-colors disabled:opacity-50"
+                        className="ml-auto flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-gray-400 dark:text-zinc-600 hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors disabled:opacity-50"
                       >
                         {deletingService === svc.name ? (
                           <Loader2 className="w-3 h-3 animate-spin" />
@@ -599,17 +599,17 @@ export default function TenantDetailPage() {
             {/* Credentials Modal */}
             {credentialsModal && (
               <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
-                <div className="bg-zinc-900 border border-zinc-800 rounded-xl w-full max-w-lg mx-4 shadow-2xl overflow-hidden">
-                  <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800">
+                <div className="bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-xl w-full max-w-lg mx-4 shadow-2xl overflow-hidden">
+                  <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-zinc-800">
                     <div className="flex items-center gap-2">
                       <Key className="w-4 h-4 text-amber-500" />
-                      <h2 className="text-sm font-semibold text-zinc-100">
+                      <h2 className="text-sm font-semibold text-gray-900 dark:text-zinc-100">
                         {credentialsModal.service.name} Credentials
                       </h2>
                     </div>
                     <button
                       onClick={() => setCredentialsModal(null)}
-                      className="text-zinc-600 hover:text-zinc-300 transition-colors"
+                      className="text-gray-400 dark:text-zinc-600 hover:text-gray-700 dark:hover:text-zinc-300 transition-colors"
                     >
                       <X className="w-4 h-4" />
                     </button>
@@ -618,16 +618,16 @@ export default function TenantDetailPage() {
                   <div className="p-5">
                     {credentialsModal.loading ? (
                       <div className="flex items-center justify-center py-8">
-                        <Loader2 className="w-5 h-5 animate-spin text-zinc-600" />
-                        <span className="ml-2 text-sm text-zinc-500">Reading K8s secret...</span>
+                        <Loader2 className="w-5 h-5 animate-spin text-gray-400 dark:text-zinc-600" />
+                        <span className="ml-2 text-sm text-gray-500 dark:text-zinc-500">Reading K8s secret...</span>
                       </div>
                     ) : credentialsModal.creds ? (
                       <div className="space-y-3">
                         {/* Connection string */}
                         {credentialsModal.creds.connection_hint && (
                           <div className="mb-4">
-                            <p className="text-xs font-medium text-zinc-500 mb-1.5 uppercase tracking-wider">Connection String</p>
-                            <div className="flex items-center gap-2 bg-zinc-800 rounded-lg px-3 py-2.5">
+                            <p className="text-xs font-medium text-gray-500 dark:text-zinc-500 mb-1.5 uppercase tracking-wider">Connection String</p>
+                            <div className="flex items-center gap-2 bg-gray-100 dark:bg-zinc-800 rounded-lg px-3 py-2.5">
                               <p className="text-xs font-mono text-emerald-400 truncate flex-1">
                                 {credentialsModal.creds.connection_hint}
                               </p>
@@ -637,7 +637,7 @@ export default function TenantDetailPage() {
                         )}
 
                         {/* Individual credentials */}
-                        <p className="text-xs font-medium text-zinc-500 uppercase tracking-wider">Secret Values</p>
+                        <p className="text-xs font-medium text-gray-500 dark:text-zinc-500 uppercase tracking-wider">Secret Values</p>
                         <div className="space-y-2">
                           {Object.entries(credentialsModal.creds.credentials).map(([key, value]) => {
                             const isSensitive = /pass|secret|token|key/i.test(key);
@@ -645,19 +645,19 @@ export default function TenantDetailPage() {
                             return (
                               <div
                                 key={key}
-                                className="flex items-center gap-3 bg-zinc-800/70 rounded-lg px-3 py-2.5 group"
+                                className="flex items-center gap-3 bg-gray-50 dark:bg-zinc-800/70 rounded-lg px-3 py-2.5 group"
                               >
-                                <span className="text-xs text-zinc-500 font-mono w-24 shrink-0 truncate">
+                                <span className="text-xs text-gray-500 dark:text-zinc-500 font-mono w-24 shrink-0 truncate">
                                   {key}
                                 </span>
-                                <span className="text-xs font-mono text-zinc-200 flex-1 truncate">
+                                <span className="text-xs font-mono text-gray-800 dark:text-zinc-200 flex-1 truncate">
                                   {isVisible ? value : "••••••••••••"}
                                 </span>
                                 <div className="flex items-center gap-1 shrink-0">
                                   {isSensitive && (
                                     <button
                                       onClick={() => setShowPassword((p) => ({ ...p, [key]: !p[key] }))}
-                                      className="text-zinc-600 hover:text-zinc-300 transition-colors"
+                                      className="text-gray-400 dark:text-zinc-600 hover:text-gray-700 dark:hover:text-zinc-300 transition-colors"
                                     >
                                       {isVisible ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
                                     </button>
@@ -669,7 +669,7 @@ export default function TenantDetailPage() {
                           })}
                         </div>
 
-                        <p className="text-xs text-zinc-600 mt-4 flex items-center gap-1">
+                        <p className="text-xs text-gray-400 dark:text-zinc-600 mt-4 flex items-center gap-1">
                           <Key className="w-3 h-3" />
                           K8s Secret: <span className="font-mono">{credentialsModal.creds.secret_name}</span>
                         </p>
@@ -683,29 +683,29 @@ export default function TenantDetailPage() {
             {/* Connect to App Modal */}
             {connectModal && (
               <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
-                <div className="bg-zinc-900 border border-zinc-800 rounded-xl w-full max-w-md mx-4 shadow-2xl overflow-hidden">
-                  <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800">
+                <div className="bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-xl w-full max-w-md mx-4 shadow-2xl overflow-hidden">
+                  <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-zinc-800">
                     <div className="flex items-center gap-2">
                       <Link2 className="w-4 h-4 text-blue-500" />
-                      <h2 className="text-sm font-semibold text-zinc-100">
+                      <h2 className="text-sm font-semibold text-gray-900 dark:text-zinc-100">
                         Connect {connectModal.name} to App
                       </h2>
                     </div>
                     <button
                       onClick={() => setConnectModal(null)}
-                      className="text-zinc-600 hover:text-zinc-300 transition-colors"
+                      className="text-gray-400 dark:text-zinc-600 hover:text-gray-700 dark:hover:text-zinc-300 transition-colors"
                     >
                       <X className="w-4 h-4" />
                     </button>
                   </div>
 
                   <div className="p-5">
-                    <p className="text-xs text-zinc-500 mb-4">
-                      Select an app to inject <span className="font-mono text-zinc-300">{connectModal.name}</span> credentials as environment variables.
+                    <p className="text-xs text-gray-500 dark:text-zinc-500 mb-4">
+                      Select an app to inject <span className="font-mono text-gray-700 dark:text-zinc-300">{connectModal.name}</span> credentials as environment variables.
                     </p>
 
                     {apps.length === 0 ? (
-                      <p className="text-sm text-zinc-600 text-center py-6">No applications to connect.</p>
+                      <p className="text-sm text-gray-400 dark:text-zinc-600 text-center py-6">No applications to connect.</p>
                     ) : (
                       <div className="space-y-2 max-h-64 overflow-y-auto">
                         {apps.map((app) => (
@@ -713,19 +713,19 @@ export default function TenantDetailPage() {
                             key={app.id}
                             onClick={() => connectServiceToApp(app.slug)}
                             disabled={connectingApp}
-                            className="w-full flex items-center justify-between px-3 py-2.5 rounded-lg bg-zinc-800/50 hover:bg-zinc-800 border border-zinc-800 hover:border-zinc-700 transition-colors disabled:opacity-50 group"
+                            className="w-full flex items-center justify-between px-3 py-2.5 rounded-lg bg-gray-50 dark:bg-zinc-800/50 hover:bg-gray-100 dark:hover:bg-zinc-800 border border-gray-200 dark:border-zinc-800 hover:border-gray-300 dark:hover:border-zinc-700 transition-colors disabled:opacity-50 group"
                           >
                             <div className="flex items-center gap-2">
-                              <Server className="w-4 h-4 text-zinc-600 group-hover:text-zinc-400" />
+                              <Server className="w-4 h-4 text-gray-400 dark:text-zinc-600 group-hover:text-gray-500 dark:group-hover:text-zinc-400" />
                               <div className="text-left">
-                                <p className="text-sm font-medium text-zinc-200">{app.name}</p>
-                                <p className="text-xs text-zinc-600 font-mono">{app.slug}</p>
+                                <p className="text-sm font-medium text-gray-800 dark:text-zinc-200">{app.name}</p>
+                                <p className="text-xs text-gray-400 dark:text-zinc-600 font-mono">{app.slug}</p>
                               </div>
                             </div>
                             {connectingApp ? (
-                              <Loader2 className="w-3.5 h-3.5 animate-spin text-zinc-600" />
+                              <Loader2 className="w-3.5 h-3.5 animate-spin text-gray-400 dark:text-zinc-600" />
                             ) : (
-                              <Link2 className="w-3.5 h-3.5 text-zinc-700 group-hover:text-blue-500 transition-colors" />
+                              <Link2 className="w-3.5 h-3.5 text-gray-400 dark:text-zinc-700 group-hover:text-blue-500 transition-colors" />
                             )}
                           </button>
                         ))}

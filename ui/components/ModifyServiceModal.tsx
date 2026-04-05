@@ -57,19 +57,19 @@ export function ModifyServiceModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={onClose}>
-      <div className="bg-zinc-900 border border-zinc-800 rounded-2xl shadow-2xl w-full max-w-md mx-4" onClick={(e) => e.stopPropagation()}>
+      <div className="bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-2xl shadow-2xl w-full max-w-md mx-4" onClick={(e) => e.stopPropagation()}>
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-zinc-800">
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-lg bg-blue-500/10 border border-blue-500/20 flex items-center justify-center">
               <Settings className="w-4 h-4 text-blue-400" />
             </div>
             <div>
-              <h3 className="text-sm font-semibold text-zinc-100">Modify Service</h3>
-              <p className="text-xs text-zinc-500">{service.name} ({service.service_type})</p>
+              <h3 className="text-sm font-semibold text-gray-900 dark:text-zinc-100">Modify Service</h3>
+              <p className="text-xs text-gray-500 dark:text-zinc-500">{service.name} ({service.service_type})</p>
             </div>
           </div>
-          <button onClick={onClose} className="text-zinc-600 hover:text-zinc-300 transition-colors p-1 rounded-lg hover:bg-zinc-800">
+          <button onClick={onClose} className="text-gray-400 dark:text-zinc-600 hover:text-gray-700 dark:hover:text-zinc-300 transition-colors p-1 rounded-lg hover:bg-gray-100 dark:hover:bg-zinc-800">
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -78,7 +78,7 @@ export function ModifyServiceModal({
         <div className="px-5 py-4 space-y-4">
           {/* Tier selector */}
           <div>
-            <p className="text-[10px] text-zinc-500 uppercase tracking-wider mb-2">Tier</p>
+            <p className="text-[10px] text-gray-500 dark:text-zinc-500 uppercase tracking-wider mb-2">Tier</p>
             <div className="flex items-center gap-2">
               {["dev", "prod"].map((t) => (
                 <button
@@ -91,7 +91,7 @@ export function ModifyServiceModal({
                   className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
                     tier === t
                       ? t === "prod" ? "bg-amber-600 text-white" : "bg-blue-600 text-white"
-                      : "bg-zinc-800 text-zinc-400 hover:bg-zinc-700 border border-zinc-700"
+                      : "bg-gray-100 dark:bg-zinc-800 text-gray-500 dark:text-zinc-400 hover:bg-gray-200 dark:hover:bg-zinc-700 border border-gray-300 dark:border-zinc-700"
                   }`}
                 >
                   {t.toUpperCase()}
@@ -115,7 +115,7 @@ export function ModifyServiceModal({
 
           {/* Replicas */}
           <div>
-            <p className="text-[10px] text-zinc-500 uppercase tracking-wider mb-2">Replicas</p>
+            <p className="text-[10px] text-gray-500 dark:text-zinc-500 uppercase tracking-wider mb-2">Replicas</p>
             <div className="flex items-center gap-2">
               {Array.from({ length: maxReplicas }, (_, i) => i + 1)
                 .filter((n) => [1, 2, 3, 5, 7].includes(n) && n <= maxReplicas)
@@ -126,7 +126,7 @@ export function ModifyServiceModal({
                     className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
                       replicas === n
                         ? "bg-blue-600 text-white"
-                        : "bg-zinc-800 text-zinc-400 hover:bg-zinc-700 border border-zinc-700"
+                        : "bg-gray-100 dark:bg-zinc-800 text-gray-500 dark:text-zinc-400 hover:bg-gray-200 dark:hover:bg-zinc-700 border border-gray-300 dark:border-zinc-700"
                     }`}
                   >
                     {n}
@@ -138,18 +138,18 @@ export function ModifyServiceModal({
           {/* Storage (Everest + RabbitMQ only) */}
           {(isEverest || isRabbitMQ) && (
             <div>
-              <p className="text-[10px] text-zinc-500 uppercase tracking-wider mb-1.5">Storage</p>
+              <p className="text-[10px] text-gray-500 dark:text-zinc-500 uppercase tracking-wider mb-1.5">Storage</p>
               <div className="flex items-center gap-2">
                 <input
                   type="number"
                   min="1"
                   value={storage}
                   onChange={(e) => setStorage(e.target.value)}
-                  className="w-20 px-3 py-2 rounded-lg border border-zinc-700 bg-zinc-800 text-sm text-zinc-200 font-mono focus:outline-none focus:ring-1 focus:ring-blue-500/50"
+                  className="w-20 px-3 py-2 rounded-lg border border-gray-300 dark:border-zinc-700 bg-gray-100 dark:bg-zinc-800 text-sm text-gray-800 dark:text-zinc-200 font-mono focus:outline-none focus:ring-1 focus:ring-blue-500/50"
                 />
-                <span className="text-xs text-zinc-500">Gi</span>
+                <span className="text-xs text-gray-500 dark:text-zinc-500">Gi</span>
               </div>
-              <p className="text-[10px] text-zinc-600 mt-1">Storage can only be increased.</p>
+              <p className="text-[10px] text-gray-400 dark:text-zinc-600 mt-1">Storage can only be increased.</p>
             </div>
           )}
 
@@ -157,21 +157,21 @@ export function ModifyServiceModal({
           {isEverest && (
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <p className="text-[10px] text-zinc-500 uppercase tracking-wider mb-1.5">CPU (cores)</p>
+                <p className="text-[10px] text-gray-500 dark:text-zinc-500 uppercase tracking-wider mb-1.5">CPU (cores)</p>
                 <input
                   type="text"
                   value={cpu}
                   onChange={(e) => setCpu(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg border border-zinc-700 bg-zinc-800 text-sm text-zinc-200 font-mono focus:outline-none focus:ring-1 focus:ring-blue-500/50"
+                  className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-zinc-700 bg-gray-100 dark:bg-zinc-800 text-sm text-gray-800 dark:text-zinc-200 font-mono focus:outline-none focus:ring-1 focus:ring-blue-500/50"
                 />
               </div>
               <div>
-                <p className="text-[10px] text-zinc-500 uppercase tracking-wider mb-1.5">Memory (Gi)</p>
+                <p className="text-[10px] text-gray-500 dark:text-zinc-500 uppercase tracking-wider mb-1.5">Memory (Gi)</p>
                 <input
                   type="text"
                   value={memory}
                   onChange={(e) => setMemory(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg border border-zinc-700 bg-zinc-800 text-sm text-zinc-200 font-mono focus:outline-none focus:ring-1 focus:ring-blue-500/50"
+                  className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-zinc-700 bg-gray-100 dark:bg-zinc-800 text-sm text-gray-800 dark:text-zinc-200 font-mono focus:outline-none focus:ring-1 focus:ring-blue-500/50"
                 />
               </div>
             </div>
@@ -186,10 +186,10 @@ export function ModifyServiceModal({
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-end gap-2 px-5 py-4 border-t border-zinc-800">
+        <div className="flex items-center justify-end gap-2 px-5 py-4 border-t border-gray-200 dark:border-zinc-800">
           <button
             onClick={onClose}
-            className="px-4 py-2 rounded-lg border border-zinc-700 text-zinc-400 hover:text-zinc-200 text-xs font-medium transition-colors"
+            className="px-4 py-2 rounded-lg border border-gray-300 dark:border-zinc-700 text-gray-500 dark:text-zinc-400 hover:text-gray-900 dark:hover:text-zinc-200 text-xs font-medium transition-colors"
           >
             Cancel
           </button>

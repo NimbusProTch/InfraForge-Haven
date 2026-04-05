@@ -111,7 +111,7 @@ export default function CronJobsTab({ tenantSlug, appSlug, accessToken }: CronJo
   if (loading) {
     return (
       <div className="flex items-center justify-center py-16">
-        <Loader2 className="w-5 h-5 animate-spin text-zinc-600" />
+        <Loader2 className="w-5 h-5 animate-spin text-gray-400 dark:text-zinc-600" />
       </div>
     );
   }
@@ -119,7 +119,7 @@ export default function CronJobsTab({ tenantSlug, appSlug, accessToken }: CronJo
   return (
     <div>
       <div className="flex items-center justify-between mb-5">
-        <p className="text-sm text-zinc-500">Scheduled tasks running on a cron schedule</p>
+        <p className="text-sm text-gray-500 dark:text-zinc-500">Scheduled tasks running on a cron schedule</p>
         <button
           onClick={() => setShowCreate(true)}
           className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-medium transition-colors"
@@ -132,32 +132,32 @@ export default function CronJobsTab({ tenantSlug, appSlug, accessToken }: CronJo
       {/* Create modal */}
       {showCreate && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
-          <div className="bg-zinc-900 border border-zinc-800 rounded-xl w-full max-w-md mx-4 shadow-2xl overflow-hidden">
-            <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800">
+          <div className="bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-xl w-full max-w-md mx-4 shadow-2xl overflow-hidden">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-zinc-800">
               <div className="flex items-center gap-2">
                 <Timer className="w-4 h-4 text-violet-500" />
-                <h2 className="text-sm font-semibold text-zinc-100">Create CronJob</h2>
+                <h2 className="text-sm font-semibold text-gray-900 dark:text-zinc-100">Create CronJob</h2>
               </div>
-              <button onClick={() => setShowCreate(false)} className="text-zinc-600 hover:text-zinc-300 transition-colors">
+              <button onClick={() => setShowCreate(false)} className="text-gray-400 dark:text-zinc-600 hover:text-gray-700 dark:hover:text-gray-700 dark:text-zinc-300 transition-colors">
                 <X className="w-4 h-4" />
               </button>
             </div>
 
             <div className="p-5 space-y-4">
               <div>
-                <label className="block text-xs font-medium text-zinc-400 mb-1.5">Name</label>
+                <label className="block text-xs font-medium text-gray-500 dark:text-zinc-400 mb-1.5">Name</label>
                 <input
                   type="text"
                   value={newName}
                   onChange={(e) => setNewName(e.target.value)}
                   placeholder="db-cleanup"
-                  className="w-full px-3 py-2 rounded-lg border border-zinc-700 bg-zinc-800 text-sm text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-violet-600 focus:ring-1 focus:ring-violet-600/30 font-mono"
+                  className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-zinc-700 bg-gray-100 dark:bg-zinc-800 text-sm text-gray-900 dark:text-zinc-100 placeholder:text-gray-400 dark:placeholder:text-zinc-600 focus:outline-none focus:border-violet-600 focus:ring-1 focus:ring-violet-600/30 font-mono"
                   autoFocus
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-zinc-400 mb-1.5">Schedule</label>
+                <label className="block text-xs font-medium text-gray-500 dark:text-zinc-400 mb-1.5">Schedule</label>
                 <div className="flex flex-wrap gap-1.5 mb-2">
                   {CRON_PRESETS.map((preset) => (
                     <button
@@ -169,7 +169,7 @@ export default function CronJobsTab({ tenantSlug, appSlug, accessToken }: CronJo
                       className={`px-2 py-1 rounded text-xs transition-colors ${
                         selectedPreset === preset.value
                           ? "bg-violet-600/20 text-violet-400 border border-violet-600/40"
-                          : "bg-zinc-800 text-zinc-500 border border-zinc-700 hover:border-zinc-600"
+                          : "bg-gray-100 dark:bg-zinc-800 text-gray-500 dark:text-zinc-500 border border-gray-300 dark:border-zinc-700 hover:border-zinc-600"
                       }`}
                     >
                       {preset.label}
@@ -184,26 +184,26 @@ export default function CronJobsTab({ tenantSlug, appSlug, accessToken }: CronJo
                     setSelectedPreset("");
                   }}
                   placeholder="*/5 * * * *"
-                  className="w-full px-3 py-2 rounded-lg border border-zinc-700 bg-zinc-800 text-sm text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-violet-600 focus:ring-1 focus:ring-violet-600/30 font-mono"
+                  className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-zinc-700 bg-gray-100 dark:bg-zinc-800 text-sm text-gray-900 dark:text-zinc-100 placeholder:text-gray-400 dark:placeholder:text-zinc-600 focus:outline-none focus:border-violet-600 focus:ring-1 focus:ring-violet-600/30 font-mono"
                 />
-                <p className="text-xs text-zinc-600 mt-1">Standard cron syntax: minute hour day month weekday</p>
+                <p className="text-xs text-gray-400 dark:text-zinc-600 mt-1">Standard cron syntax: minute hour day month weekday</p>
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-zinc-400 mb-1.5">Command (optional)</label>
+                <label className="block text-xs font-medium text-gray-500 dark:text-zinc-400 mb-1.5">Command (optional)</label>
                 <input
                   type="text"
                   value={newCommand}
                   onChange={(e) => setNewCommand(e.target.value)}
                   placeholder="python manage.py cleanup"
-                  className="w-full px-3 py-2 rounded-lg border border-zinc-700 bg-zinc-800 text-sm text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-violet-600 focus:ring-1 focus:ring-violet-600/30 font-mono"
+                  className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-zinc-700 bg-gray-100 dark:bg-zinc-800 text-sm text-gray-900 dark:text-zinc-100 placeholder:text-gray-400 dark:placeholder:text-zinc-600 focus:outline-none focus:border-violet-600 focus:ring-1 focus:ring-violet-600/30 font-mono"
                 />
               </div>
 
               <div className="flex justify-end gap-2 pt-2">
                 <button
                   onClick={() => setShowCreate(false)}
-                  className="px-3 py-1.5 rounded-lg text-xs font-medium text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800 transition-colors"
+                  className="px-3 py-1.5 rounded-lg text-xs font-medium text-gray-500 dark:text-zinc-500 hover:text-gray-900 dark:hover:text-gray-800 dark:text-zinc-200 hover:bg-gray-100 dark:hover:bg-gray-100 dark:bg-zinc-800 transition-colors"
                 >
                   Cancel
                 </button>
@@ -223,27 +223,27 @@ export default function CronJobsTab({ tenantSlug, appSlug, accessToken }: CronJo
 
       {/* Job list */}
       {jobs.length === 0 ? (
-        <div className="text-center py-16 border border-dashed border-zinc-800 rounded-xl">
-          <Timer className="w-8 h-8 mx-auto mb-2 text-zinc-700" />
-          <p className="text-sm text-zinc-500">No scheduled jobs.</p>
-          <p className="text-xs text-zinc-600 mt-1">Create a cron job to run tasks on a schedule.</p>
+        <div className="text-center py-16 border border-dashed border-gray-200 dark:border-zinc-800 rounded-xl">
+          <Timer className="w-8 h-8 mx-auto mb-2 text-gray-400 dark:text-zinc-700" />
+          <p className="text-sm text-gray-500 dark:text-zinc-500">No scheduled jobs.</p>
+          <p className="text-xs text-gray-400 dark:text-zinc-600 mt-1">Create a cron job to run tasks on a schedule.</p>
         </div>
       ) : (
         <div className="space-y-3">
           {jobs.map((job) => (
             <div
               key={job.id}
-              className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-4 hover:border-zinc-700 transition-colors"
+              className="bg-white dark:bg-zinc-900/50 border border-gray-200 dark:border-zinc-800 rounded-xl shadow-sm p-4 hover:border-gray-400 dark:hover:border-gray-300 dark:border-zinc-700 transition-colors"
             >
               <div className="flex items-start justify-between">
                 <div>
                   <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium text-zinc-200">{job.name}</span>
+                    <span className="text-sm font-medium text-gray-800 dark:text-zinc-200">{job.name}</span>
                     <Badge variant={!job.suspended ? "success" : "secondary"}>
                       {!job.suspended ? "active" : "suspended"}
                     </Badge>
                   </div>
-                  <div className="flex items-center gap-3 mt-1.5 text-xs text-zinc-600">
+                  <div className="flex items-center gap-3 mt-1.5 text-xs text-gray-400 dark:text-zinc-600">
                     <span className="flex items-center gap-1 font-mono">
                       <Clock className="w-3 h-3" />
                       {job.schedule}
@@ -255,7 +255,7 @@ export default function CronJobsTab({ tenantSlug, appSlug, accessToken }: CronJo
                   {(job.last_schedule || job.last_status) && (
                     <div className="flex items-center gap-3 mt-1 text-xs">
                       {job.last_schedule && (
-                        <span className="flex items-center gap-1 text-zinc-500">
+                        <span className="flex items-center gap-1 text-gray-500 dark:text-zinc-500">
                           <CheckCircle2 className="w-3 h-3" />
                           Last: {new Date(job.last_schedule).toLocaleString()}
                         </span>
@@ -273,7 +273,7 @@ export default function CronJobsTab({ tenantSlug, appSlug, accessToken }: CronJo
                   <button
                     onClick={() => runNow(job.id, job.name)}
                     disabled={running === job.id}
-                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-xs font-medium text-zinc-300 hover:text-zinc-100 transition-colors disabled:opacity-50"
+                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-gray-100 dark:bg-zinc-800 hover:bg-gray-200 dark:hover:bg-zinc-700 text-xs font-medium text-gray-700 dark:text-zinc-300 hover:text-gray-900 dark:text-zinc-100 transition-colors disabled:opacity-50"
                   >
                     {running === job.id ? (
                       <Loader2 className="w-3 h-3 animate-spin" />
@@ -285,7 +285,7 @@ export default function CronJobsTab({ tenantSlug, appSlug, accessToken }: CronJo
                   <button
                     onClick={() => deleteJob(job.id, job.name)}
                     disabled={deleting === job.id}
-                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium text-zinc-600 hover:text-red-400 hover:bg-red-950/30 transition-colors disabled:opacity-50"
+                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium text-gray-400 dark:text-zinc-600 hover:text-red-400 hover:bg-red-950/30 transition-colors disabled:opacity-50"
                   >
                     {deleting === job.id ? (
                       <Loader2 className="w-3 h-3 animate-spin" />

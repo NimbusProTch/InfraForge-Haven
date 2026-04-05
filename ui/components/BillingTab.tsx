@@ -54,35 +54,35 @@ function UsageBar({ label, icon: Icon, used, limit, unit, color }: {
   const barColor = pct && pct > 80 ? "bg-red-500" : pct && pct > 60 ? "bg-amber-500" : color;
 
   return (
-    <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-4">
+    <div className="bg-white dark:bg-zinc-900/50 border border-gray-200 dark:border-zinc-800 rounded-xl shadow-sm p-4">
       <div className="flex items-center gap-2 mb-3">
         <Icon className={`w-4 h-4 ${color.replace("bg-", "text-")}`} />
-        <span className="text-xs font-medium text-zinc-400">{label}</span>
+        <span className="text-xs font-medium text-gray-500 dark:text-zinc-400">{label}</span>
       </div>
       <div className="flex items-baseline gap-1.5 mb-2">
-        <span className="text-xl font-bold text-zinc-100">{(used ?? 0).toFixed(1)}</span>
+        <span className="text-xl font-bold text-gray-900 dark:text-zinc-100">{(used ?? 0).toFixed(1)}</span>
         {limit && (
-          <span className="text-xs text-zinc-600">/ {limit} {unit}</span>
+          <span className="text-xs text-gray-400 dark:text-zinc-600">/ {limit} {unit}</span>
         )}
         {!limit && (
-          <span className="text-xs text-zinc-600">{unit}</span>
+          <span className="text-xs text-gray-400 dark:text-zinc-600">{unit}</span>
         )}
       </div>
       {pct !== null ? (
-        <div className="w-full h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+        <div className="w-full h-1.5 bg-gray-100 dark:bg-zinc-800 rounded-full overflow-hidden">
           <div
             className={`h-full rounded-full transition-all ${barColor}`}
             style={{ width: `${pct}%` }}
           />
         </div>
       ) : (
-        <div className="flex items-center gap-1 text-xs text-zinc-600">
+        <div className="flex items-center gap-1 text-xs text-gray-400 dark:text-zinc-600">
           <Zap className="w-3 h-3" />
           Unlimited
         </div>
       )}
       {pct !== null && (
-        <p className="text-xs text-zinc-600 mt-1">{pct.toFixed(0)}% used</p>
+        <p className="text-xs text-gray-400 dark:text-zinc-600 mt-1">{pct.toFixed(0)}% used</p>
       )}
     </div>
   );
@@ -116,17 +116,17 @@ export default function BillingTab({ tenantSlug, accessToken }: BillingTabProps)
   if (loading) {
     return (
       <div className="flex items-center justify-center py-16">
-        <Loader2 className="w-5 h-5 animate-spin text-zinc-600" />
+        <Loader2 className="w-5 h-5 animate-spin text-gray-400 dark:text-zinc-600" />
       </div>
     );
   }
 
   if (!usage || !usage.current_period) {
     return (
-      <div className="text-center py-16 border border-dashed border-zinc-800 rounded-xl">
-        <TrendingUp className="w-8 h-8 mx-auto mb-2 text-zinc-700" />
-        <p className="text-sm text-zinc-500">No usage data for this billing period yet.</p>
-        <p className="text-xs text-zinc-600 mt-1">Usage tracking begins when apps are deployed.</p>
+      <div className="text-center py-16 border border-dashed border-gray-200 dark:border-zinc-800 rounded-xl">
+        <TrendingUp className="w-8 h-8 mx-auto mb-2 text-gray-400 dark:text-zinc-700" />
+        <p className="text-sm text-gray-500 dark:text-zinc-500">No usage data for this billing period yet.</p>
+        <p className="text-xs text-gray-400 dark:text-zinc-600 mt-1">Usage tracking begins when apps are deployed.</p>
       </div>
     );
   }
@@ -138,7 +138,7 @@ export default function BillingTab({ tenantSlug, accessToken }: BillingTabProps)
     <div>
       {/* Tier badge */}
       <div className="flex items-center justify-between mb-5">
-        <p className="text-sm text-zinc-500">Resource usage for the current billing period</p>
+        <p className="text-sm text-gray-500 dark:text-zinc-500">Resource usage for the current billing period</p>
         <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-violet-600/10 border border-violet-600/20 text-violet-400 text-xs font-medium">
           <Zap className="w-3 h-3" />
           {usage.tier.charAt(0).toUpperCase() + usage.tier.slice(1)} Plan
@@ -156,26 +156,26 @@ export default function BillingTab({ tenantSlug, accessToken }: BillingTabProps)
       {/* History */}
       {usage.history && usage.history.length > 0 && (
         <div>
-          <h3 className="text-sm font-medium text-zinc-300 mb-3">Usage History</h3>
-          <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl overflow-hidden">
+          <h3 className="text-sm font-medium text-gray-700 dark:text-zinc-300 mb-3">Usage History</h3>
+          <div className="bg-white dark:bg-zinc-900/50 border border-gray-200 dark:border-zinc-800 rounded-xl shadow-sm overflow-hidden">
             <table className="w-full">
               <thead>
-                <tr className="border-b border-zinc-800">
-                  <th className="text-left text-xs font-medium text-zinc-600 px-4 py-2.5">Period</th>
-                  <th className="text-right text-xs font-medium text-zinc-600 px-4 py-2.5">CPU (h)</th>
-                  <th className="text-right text-xs font-medium text-zinc-600 px-4 py-2.5">Memory (GB·h)</th>
-                  <th className="text-right text-xs font-medium text-zinc-600 px-4 py-2.5">Storage (GB·mo)</th>
-                  <th className="text-right text-xs font-medium text-zinc-600 px-4 py-2.5">Builds (min)</th>
+                <tr className="border-b border-gray-200 dark:border-zinc-800">
+                  <th className="text-left text-xs font-medium text-gray-400 dark:text-zinc-600 px-4 py-2.5">Period</th>
+                  <th className="text-right text-xs font-medium text-gray-400 dark:text-zinc-600 px-4 py-2.5">CPU (h)</th>
+                  <th className="text-right text-xs font-medium text-gray-400 dark:text-zinc-600 px-4 py-2.5">Memory (GB·h)</th>
+                  <th className="text-right text-xs font-medium text-gray-400 dark:text-zinc-600 px-4 py-2.5">Storage (GB·mo)</th>
+                  <th className="text-right text-xs font-medium text-gray-400 dark:text-zinc-600 px-4 py-2.5">Builds (min)</th>
                 </tr>
               </thead>
               <tbody>
                 {usage.history.map((row) => (
-                  <tr key={row.period} className="border-b border-zinc-800/50 last:border-0 hover:bg-zinc-800/30">
-                    <td className="text-sm text-zinc-300 px-4 py-2.5 font-mono">{row.period}</td>
-                    <td className="text-sm text-zinc-400 px-4 py-2.5 text-right">{(row.cpu_hours ?? 0).toFixed(1)}</td>
-                    <td className="text-sm text-zinc-400 px-4 py-2.5 text-right">{(row.memory_gb_hours ?? 0).toFixed(1)}</td>
-                    <td className="text-sm text-zinc-400 px-4 py-2.5 text-right">{(row.storage_gb_months ?? 0).toFixed(1)}</td>
-                    <td className="text-sm text-zinc-400 px-4 py-2.5 text-right">{(row.build_minutes ?? 0).toFixed(0)}</td>
+                  <tr key={row.period} className="border-b border-gray-200 dark:border-zinc-800/50 last:border-0 hover:bg-gray-100 dark:hover:bg-zinc-800/30">
+                    <td className="text-sm text-gray-700 dark:text-zinc-300 px-4 py-2.5 font-mono">{row.period}</td>
+                    <td className="text-sm text-gray-500 dark:text-zinc-400 px-4 py-2.5 text-right">{(row.cpu_hours ?? 0).toFixed(1)}</td>
+                    <td className="text-sm text-gray-500 dark:text-zinc-400 px-4 py-2.5 text-right">{(row.memory_gb_hours ?? 0).toFixed(1)}</td>
+                    <td className="text-sm text-gray-500 dark:text-zinc-400 px-4 py-2.5 text-right">{(row.storage_gb_months ?? 0).toFixed(1)}</td>
+                    <td className="text-sm text-gray-500 dark:text-zinc-400 px-4 py-2.5 text-right">{(row.build_minutes ?? 0).toFixed(0)}</td>
                   </tr>
                 ))}
               </tbody>
