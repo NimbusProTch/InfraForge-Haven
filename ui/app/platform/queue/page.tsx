@@ -146,10 +146,10 @@ export default function QueueDashboardPage() {
               </div>
               <div className="bg-white dark:bg-zinc-900/50 border border-gray-200 dark:border-zinc-800 rounded-xl px-4 py-4 shadow-sm">
                 <div className="flex items-center gap-2 mb-3">
-                  <Zap className={`w-3.5 h-3.5 ${queueStatus.processing > 0 ? "text-blue-500" : "text-zinc-600"}`} />
+                  <Zap className={`w-3.5 h-3.5 ${queueStatus.processing > 0 ? "text-blue-500" : "text-gray-400 dark:text-zinc-600"}`} />
                   <span className="text-xs font-medium text-gray-500 dark:text-zinc-500">Processing</span>
                 </div>
-                <p className={`text-3xl font-bold font-mono ${queueStatus.processing > 0 ? "text-blue-400" : "text-zinc-100"}`}>
+                <p className={`text-3xl font-bold font-mono ${queueStatus.processing > 0 ? "text-blue-400" : "text-gray-900 dark:text-zinc-100"}`}>
                   {queueStatus.processing}
                 </p>
                 {queueStatus.processing > 0 && (
@@ -161,10 +161,10 @@ export default function QueueDashboardPage() {
               </div>
               <div className="bg-white dark:bg-zinc-900/50 border border-gray-200 dark:border-zinc-800 rounded-xl px-4 py-4 shadow-sm">
                 <div className="flex items-center gap-2 mb-3">
-                  <AlertTriangle className={`w-3.5 h-3.5 ${queueStatus.dead_letter > 0 ? "text-red-500" : "text-zinc-600"}`} />
+                  <AlertTriangle className={`w-3.5 h-3.5 ${queueStatus.dead_letter > 0 ? "text-red-500" : "text-gray-400 dark:text-zinc-600"}`} />
                   <span className="text-xs font-medium text-gray-500 dark:text-zinc-500">Dead Letter</span>
                 </div>
-                <p className={`text-3xl font-bold font-mono ${queueStatus.dead_letter > 0 ? "text-red-400" : "text-zinc-100"}`}>
+                <p className={`text-3xl font-bold font-mono ${queueStatus.dead_letter > 0 ? "text-red-400" : "text-gray-900 dark:text-zinc-100"}`}>
                   {queueStatus.dead_letter}
                 </p>
                 {queueStatus.dead_letter > 0 && (
@@ -174,10 +174,10 @@ export default function QueueDashboardPage() {
             </div>
 
             {/* Status summary */}
-            <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-5">
+            <div className="bg-white dark:bg-zinc-900/50 border border-gray-200 dark:border-zinc-800 rounded-xl p-5 shadow-sm">
               <div className="flex items-center gap-2 mb-4">
-                <Activity className="w-4 h-4 text-zinc-500" />
-                <h3 className="text-sm font-semibold text-zinc-300">Queue Health Summary</h3>
+                <Activity className="w-4 h-4 text-gray-500 dark:text-zinc-500" />
+                <h3 className="text-sm font-semibold text-gray-700 dark:text-zinc-300">Queue Health Summary</h3>
               </div>
               <div className="space-y-3">
                 <div className="flex items-start gap-3">
@@ -187,8 +187,8 @@ export default function QueueDashboardPage() {
                     <AlertTriangle className="w-4 h-4 text-red-500 mt-0.5 shrink-0" />
                   )}
                   <div>
-                    <p className="text-xs font-medium text-zinc-300">Git Writer Worker</p>
-                    <p className="text-xs text-zinc-600">
+                    <p className="text-xs font-medium text-gray-700 dark:text-zinc-300">Git Writer Worker</p>
+                    <p className="text-xs text-gray-400 dark:text-zinc-600">
                       {queueStatus.worker_alive
                         ? "Single-worker FIFO queue is operational. Concurrent git conflicts prevented."
                         : "Worker is not running. Start it with: python -m app.workers.git_writer"}
@@ -199,8 +199,8 @@ export default function QueueDashboardPage() {
                   <div className="flex items-start gap-3">
                     <AlertTriangle className="w-4 h-4 text-amber-500 mt-0.5 shrink-0" />
                     <div>
-                      <p className="text-xs font-medium text-zinc-300">High Queue Depth</p>
-                      <p className="text-xs text-zinc-600">
+                      <p className="text-xs font-medium text-gray-700 dark:text-zinc-300">High Queue Depth</p>
+                      <p className="text-xs text-gray-400 dark:text-zinc-600">
                         {queueStatus.pending} jobs pending. Consider checking worker performance or scaling.
                       </p>
                     </div>
@@ -210,8 +210,8 @@ export default function QueueDashboardPage() {
                   <div className="flex items-start gap-3">
                     <AlertTriangle className="w-4 h-4 text-red-500 mt-0.5 shrink-0" />
                     <div>
-                      <p className="text-xs font-medium text-zinc-300">Dead Letter Queue Has Items</p>
-                      <p className="text-xs text-zinc-600">
+                      <p className="text-xs font-medium text-gray-700 dark:text-zinc-300">Dead Letter Queue Has Items</p>
+                      <p className="text-xs text-gray-400 dark:text-zinc-600">
                         {queueStatus.dead_letter} job(s) failed after 3 retries. Check API logs for details.
                         Jobs in DLQ: <span className="font-mono">haven:git:dlq</span>
                       </p>
@@ -222,8 +222,8 @@ export default function QueueDashboardPage() {
                   <div className="flex items-start gap-3">
                     <CheckCircle2 className="w-4 h-4 text-emerald-500 mt-0.5 shrink-0" />
                     <div>
-                      <p className="text-xs font-medium text-zinc-300">All Clear</p>
-                      <p className="text-xs text-zinc-600">Queue is empty and worker is healthy.</p>
+                      <p className="text-xs font-medium text-gray-700 dark:text-zinc-300">All Clear</p>
+                      <p className="text-xs text-gray-400 dark:text-zinc-600">Queue is empty and worker is healthy.</p>
                     </div>
                   </div>
                 )}

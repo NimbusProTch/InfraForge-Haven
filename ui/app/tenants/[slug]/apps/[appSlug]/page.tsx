@@ -164,8 +164,8 @@ function StepStatusIcon({ status }: { status: PipelineStepStatus }) {
       );
     default:
       return (
-        <div className="w-6 h-6 rounded-full bg-zinc-800 border border-zinc-700 flex items-center justify-center">
-          <Circle className="w-2.5 h-2.5 text-zinc-600" />
+        <div className="w-6 h-6 rounded-full bg-gray-100 dark:bg-zinc-800 border border-gray-300 dark:border-zinc-700 flex items-center justify-center">
+          <Circle className="w-2.5 h-2.5 text-gray-400 dark:text-zinc-600" />
         </div>
       );
   }
@@ -185,14 +185,14 @@ function PipelineVisualization({
   const connectorColor = (prev: PipelineStepStatus) => {
     if (prev === "success") return "bg-emerald-500/30";
     if (prev === "failed") return "bg-red-500/20";
-    return "bg-zinc-800";
+    return "bg-gray-200 dark:bg-zinc-800";
   };
 
   const textColor = (s: PipelineStepStatus) => {
     if (s === "running") return "text-blue-400";
     if (s === "success") return "text-emerald-400";
     if (s === "failed") return "text-red-400";
-    return "text-zinc-600";
+    return "text-gray-400 dark:text-zinc-600";
   };
 
   const isClickable = !!onStepClick;
@@ -216,7 +216,7 @@ function PipelineVisualization({
                     ${step.status === "running" ? "border-blue-500/30 bg-blue-500/5" : ""}
                     ${step.status === "success" ? "border-emerald-500/20 bg-emerald-500/5" : ""}
                     ${step.status === "failed" ? "border-red-500/30 bg-red-500/5" : ""}
-                    ${step.status === "pending" ? "border-zinc-800 bg-zinc-900/50" : ""}
+                    ${step.status === "pending" ? "border-gray-200 dark:border-zinc-800 bg-gray-50 dark:bg-zinc-900/50" : ""}
                     ${isActive ? "ring-1 ring-blue-400/50 scale-105" : ""}
                     ${isClickable && step.status !== "pending" ? "hover:scale-105 hover:brightness-110" : ""}
                   `}
@@ -227,7 +227,7 @@ function PipelineVisualization({
                       {step.label}
                     </span>
                     {step.duration && (
-                      <span className="text-[10px] text-zinc-600">{step.duration}</span>
+                      <span className="text-[10px] text-gray-400 dark:text-zinc-600">{step.duration}</span>
                     )}
                   </div>
                 </div>
@@ -235,7 +235,7 @@ function PipelineVisualization({
               {compact && (
                 <span
                   className={`text-[10px] font-medium ${
-                    step.status === "pending" ? "text-zinc-700" : textColor(step.status)
+                    step.status === "pending" ? "text-gray-400 dark:text-zinc-700" : textColor(step.status)
                   }`}
                 >
                   {step.label}
@@ -289,7 +289,7 @@ function DeploymentCard({
 
   return (
     <div
-      className={`border-b border-zinc-800/60 last:border-0 transition-colors ${
+      className={`border-b border-gray-100 dark:border-zinc-800/60 last:border-0 transition-colors ${
         isActive ? "bg-blue-500/3" : ""
       }`}
     >
@@ -305,7 +305,7 @@ function DeploymentCard({
 
           <div className="min-w-0 shrink-0">
             <div className="flex items-center gap-2">
-              <span className="text-xs font-mono text-zinc-300">
+              <span className="text-xs font-mono text-gray-700 dark:text-zinc-300">
                 {deployment.commit_sha ? deployment.commit_sha.slice(0, 7) : "manual"}
               </span>
               <Badge variant={DEPLOY_STATUS_VARIANT[deployment.status] ?? "secondary"}>
@@ -313,11 +313,11 @@ function DeploymentCard({
               </Badge>
             </div>
             <div className="flex items-center gap-2 mt-0.5">
-              <span className="text-xs text-zinc-600">
+              <span className="text-xs text-gray-400 dark:text-zinc-600">
                 {new Date(deployment.created_at).toLocaleString()}
               </span>
               {deployment.image_tag && deployment.status === "running" && (
-                <span className="text-xs font-mono text-zinc-700">
+                <span className="text-xs font-mono text-gray-400 dark:text-zinc-700">
                   {deployment.image_tag.split(":").pop()}
                 </span>
               )}
@@ -335,7 +335,7 @@ function DeploymentCard({
           {isFailed && deployment.error_message && (
             <button
               onClick={() => setExpanded(!expanded)}
-              className="text-zinc-600 hover:text-zinc-300 transition-colors"
+              className="text-gray-400 dark:text-zinc-600 hover:text-gray-700 dark:hover:text-zinc-300 transition-colors"
               title="Show error details"
             >
               {expanded ? (
@@ -350,7 +350,7 @@ function DeploymentCard({
               onClick={() => onRollback(deployment.id)}
               disabled={rolling === deployment.id}
               title="Rollback to this deployment"
-              className="text-zinc-600 hover:text-zinc-300 transition-colors disabled:opacity-50"
+              className="text-gray-400 dark:text-zinc-600 hover:text-gray-700 dark:hover:text-zinc-300 transition-colors disabled:opacity-50"
             >
               {rolling === deployment.id ? (
                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -402,8 +402,8 @@ function BuildLogTerminal({
     <div className="mt-4">
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-2">
-          <Terminal className="w-3.5 h-3.5 text-zinc-600" />
-          <span className="text-xs font-medium text-zinc-500">Build Output</span>
+          <Terminal className="w-3.5 h-3.5 text-gray-400 dark:text-zinc-600" />
+          <span className="text-xs font-medium text-gray-500 dark:text-zinc-500">Build Output</span>
           {streaming && (
             <span className="flex items-center gap-1.5 text-xs text-emerald-500">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
@@ -414,15 +414,15 @@ function BuildLogTerminal({
         {streaming && (
           <button
             onClick={onStop}
-            className="inline-flex items-center gap-1 px-2 py-1 rounded text-xs text-zinc-600 hover:text-zinc-300 transition-colors"
+            className="inline-flex items-center gap-1 px-2 py-1 rounded text-xs text-gray-400 dark:text-zinc-600 hover:text-gray-700 dark:hover:text-zinc-300 transition-colors"
           >
             <StopCircle className="w-3 h-3" />
             Stop
           </button>
         )}
       </div>
-      <div className="bg-zinc-950 border border-zinc-800 rounded-xl overflow-hidden">
-        <div className="flex items-center gap-1.5 px-4 py-2.5 border-b border-zinc-800">
+      <div className="bg-zinc-950 border border-gray-200 dark:border-zinc-800 rounded-xl overflow-hidden">
+        <div className="flex items-center gap-1.5 px-4 py-2.5 border-b border-gray-200 dark:border-zinc-800">
           <span className="w-2.5 h-2.5 rounded-full bg-red-500/40" />
           <span className="w-2.5 h-2.5 rounded-full bg-amber-500/40" />
           <span className="w-2.5 h-2.5 rounded-full bg-emerald-500/40" />
@@ -733,7 +733,7 @@ export default function AppDetailPage() {
     return (
       <AppShell userEmail={session?.user?.email}>
         <div className="flex items-center justify-center h-full min-h-[400px]">
-          <Loader2 className="w-5 h-5 animate-spin text-zinc-600" />
+          <Loader2 className="w-5 h-5 animate-spin text-gray-400 dark:text-zinc-600" />
         </div>
       </AppShell>
     );
@@ -764,7 +764,7 @@ export default function AppDetailPage() {
               <div className="w-8 h-8 rounded-lg bg-blue-500/10 border border-blue-500/20 flex items-center justify-center shrink-0">
                 <span className="text-sm">⚡</span>
               </div>
-              <h1 className="text-2xl font-bold text-zinc-100">{app.name}</h1>
+              <h1 className="text-2xl font-bold text-gray-900 dark:text-zinc-100">{app.name}</h1>
               {currentStatus && (
                 <Badge variant={DEPLOY_STATUS_VARIANT[currentStatus] ?? "secondary"}>
                   {currentStatus}
@@ -772,14 +772,14 @@ export default function AppDetailPage() {
               )}
             </div>
             <div className="flex items-center gap-3 mt-1 pl-10">
-              <p className="text-xs text-zinc-600 font-mono">
+              <p className="text-xs text-gray-400 dark:text-zinc-600 font-mono">
                 <span
                   className="hover:text-blue-400 cursor-pointer transition-colors"
                   onClick={() => window.open(app.repo_url, "_blank")}
                 >
                   {app.repo_url.replace("https://github.com/", "")}
                 </span>
-                <ChevronRight className="inline w-3 h-3 mx-0.5 text-zinc-700" />
+                <ChevronRight className="inline w-3 h-3 mx-0.5 text-gray-400 dark:text-zinc-700" />
                 <span className="inline-flex items-center gap-0.5">
                   <GitBranch className="w-3 h-3" />
                   {app.branch}
@@ -804,7 +804,7 @@ export default function AppDetailPage() {
             <button
               onClick={() => setShowBuildModal(true)}
               disabled={!!actionLoading}
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-zinc-800 hover:border-zinc-700 bg-zinc-900/50 hover:bg-zinc-800/50 text-zinc-400 hover:text-zinc-200 text-xs font-medium transition-colors disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-gray-200 dark:border-zinc-800 hover:border-gray-300 dark:hover:border-zinc-700 bg-white dark:bg-zinc-900/50 hover:bg-gray-50 dark:hover:bg-zinc-800/50 text-gray-500 dark:text-zinc-400 hover:text-gray-900 dark:hover:text-zinc-200 text-xs font-medium transition-colors disabled:opacity-50"
             >
               {actionLoading === "build" ? (
                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -829,13 +829,13 @@ export default function AppDetailPage() {
             {/* Scale dropdown */}
             <div className="relative group">
               <button
-                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-zinc-800 hover:border-zinc-700 bg-zinc-900/50 hover:bg-zinc-800/50 text-zinc-400 hover:text-zinc-200 text-xs font-medium transition-colors"
+                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-gray-200 dark:border-zinc-800 hover:border-gray-300 dark:hover:border-zinc-700 bg-white dark:bg-zinc-900/50 hover:bg-gray-50 dark:hover:bg-zinc-800/50 text-gray-500 dark:text-zinc-400 hover:text-gray-900 dark:hover:text-zinc-200 text-xs font-medium transition-colors"
               >
                 <Layers className="w-3.5 h-3.5" />
                 Scale
                 <ChevronDown className="w-3 h-3" />
               </button>
-              <div className="absolute right-0 mt-1 w-36 bg-zinc-900 border border-zinc-800 rounded-lg shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-10">
+              <div className="absolute right-0 mt-1 w-36 bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-lg shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-10">
                 {[1, 2, 3, 5].map((n) => (
                   <button
                     key={n}
@@ -851,7 +851,7 @@ export default function AppDetailPage() {
                     className={`w-full text-left px-3 py-2 text-xs transition-colors ${
                       app.replicas === n
                         ? "text-emerald-400 bg-emerald-500/10"
-                        : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800"
+                        : "text-gray-500 dark:text-zinc-400 hover:text-gray-900 dark:hover:text-zinc-200 hover:bg-gray-100 dark:hover:bg-zinc-800"
                     }`}
                   >
                     {n} replica{n > 1 ? "s" : ""} {app.replicas === n ? "✓" : ""}
@@ -870,7 +870,7 @@ export default function AppDetailPage() {
                   toastError(err instanceof Error ? err.message : "Restart failed");
                 }
               }}
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-zinc-800 hover:border-zinc-700 bg-zinc-900/50 hover:bg-zinc-800/50 text-zinc-400 hover:text-zinc-200 text-xs font-medium transition-colors"
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-gray-200 dark:border-zinc-800 hover:border-gray-300 dark:hover:border-zinc-700 bg-white dark:bg-zinc-900/50 hover:bg-gray-50 dark:hover:bg-zinc-800/50 text-gray-500 dark:text-zinc-400 hover:text-gray-900 dark:hover:text-zinc-200 text-xs font-medium transition-colors"
               title="Restart all pods"
             >
               <RotateCcw className="w-3.5 h-3.5" />
@@ -880,7 +880,7 @@ export default function AppDetailPage() {
               onClick={handleSync}
               disabled={syncing}
               title="Force ArgoCD to re-sync this application with the GitOps repository"
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-zinc-800 hover:border-zinc-700 bg-zinc-900/50 hover:bg-zinc-800/50 text-zinc-400 hover:text-zinc-200 text-xs font-medium transition-colors disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-gray-200 dark:border-zinc-800 hover:border-gray-300 dark:hover:border-zinc-700 bg-white dark:bg-zinc-900/50 hover:bg-gray-50 dark:hover:bg-zinc-800/50 text-gray-500 dark:text-zinc-400 hover:text-gray-900 dark:hover:text-zinc-200 text-xs font-medium transition-colors disabled:opacity-50"
             >
               {syncing ? (
                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -894,14 +894,14 @@ export default function AppDetailPage() {
 
         {/* Active build: pipeline + logs */}
         {isActiveBuild && latestDeployment && (
-          <div className="mb-6 bg-zinc-900/80 border border-zinc-800 rounded-xl p-4">
+          <div className="mb-6 bg-white dark:bg-zinc-900/80 border border-gray-200 dark:border-zinc-800 rounded-xl p-4 shadow-sm">
             <div className="flex items-center gap-2 mb-4">
               <div className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
-              <span className="text-xs font-medium text-zinc-400">
+              <span className="text-xs font-medium text-gray-500 dark:text-zinc-400">
                 Deployment in progress
               </span>
               {latestDeployment.commit_sha && (
-                <span className="text-xs font-mono text-zinc-600">
+                <span className="text-xs font-mono text-gray-400 dark:text-zinc-600">
                   {latestDeployment.commit_sha.slice(0, 7)}
                 </span>
               )}
@@ -921,8 +921,8 @@ export default function AppDetailPage() {
                       c.status === "running" ? "bg-blue-500 animate-pulse" :
                       c.status === "failed" ? "bg-red-500" : "bg-zinc-600"
                     }`} />
-                    <span className="text-[10px] text-zinc-500 font-mono">{c.name}</span>
-                    {c.duration && <span className="text-[10px] text-zinc-600">{c.duration}</span>}
+                    <span className="text-[10px] text-gray-500 dark:text-zinc-500 font-mono">{c.name}</span>
+                    {c.duration && <span className="text-[10px] text-gray-400 dark:text-zinc-600">{c.duration}</span>}
                     {c.exit_code !== null && c.exit_code !== 0 && (
                       <span className="text-[10px] text-red-400">exit {c.exit_code}</span>
                     )}
@@ -947,24 +947,24 @@ export default function AppDetailPage() {
           ].map(({ label, value }) => (
             <div
               key={label}
-              className="bg-zinc-900/50 border border-zinc-800 rounded-xl px-3 py-3"
+              className="bg-white dark:bg-zinc-900/50 border border-gray-200 dark:border-zinc-800 rounded-xl px-3 py-3 shadow-sm"
             >
-              <p className="text-xs text-zinc-600 mb-1">{label}</p>
-              <p className="text-sm font-medium text-zinc-200 font-mono truncate">{value}</p>
+              <p className="text-xs text-gray-400 dark:text-zinc-600 mb-1">{label}</p>
+              <p className="text-sm font-medium text-gray-800 dark:text-zinc-200 font-mono truncate">{value}</p>
             </div>
           ))}
         </div>
 
         {/* ArgoCD status bar */}
         {syncStatus && (
-          <div className="mb-4 flex items-center gap-3 px-3 py-2 rounded-lg border border-zinc-800 bg-zinc-900/30">
-            <span className="text-xs text-zinc-600">ArgoCD</span>
+          <div className="mb-4 flex items-center gap-3 px-3 py-2 rounded-lg border border-gray-200 dark:border-zinc-800 bg-gray-50 dark:bg-zinc-900/30">
+            <span className="text-xs text-gray-400 dark:text-zinc-600">ArgoCD</span>
             <div className="flex items-center gap-2">
               <span className={`text-xs font-medium ${syncStatus.health === "Healthy" ? "text-emerald-400" : syncStatus.health === "Degraded" ? "text-red-400" : "text-amber-400"}`}>
                 {syncStatus.health}
               </span>
-              <span className="text-zinc-700">·</span>
-              <span className={`text-xs font-medium ${syncStatus.sync === "Synced" ? "text-emerald-400" : syncStatus.sync === "OutOfSync" ? "text-amber-400" : "text-zinc-400"}`}>
+              <span className="text-gray-300 dark:text-zinc-700">·</span>
+              <span className={`text-xs font-medium ${syncStatus.sync === "Synced" ? "text-emerald-400" : syncStatus.sync === "OutOfSync" ? "text-amber-400" : "text-gray-500 dark:text-zinc-400"}`}>
                 {syncStatus.sync}
               </span>
             </div>
@@ -976,7 +976,7 @@ export default function AppDetailPage() {
           <TabsList>
             <TabsTrigger value="deployments">
               Deployments
-              <span className="ml-1.5 text-xs text-zinc-600">{deployments.length}</span>
+              <span className="ml-1.5 text-xs text-gray-400 dark:text-zinc-600">{deployments.length}</span>
             </TabsTrigger>
             <TabsTrigger value="observability">
               <Activity className="w-3.5 h-3.5 mr-1" />
@@ -1015,13 +1015,13 @@ export default function AppDetailPage() {
           {/* Deployments tab */}
           <TabsContent value="deployments" className="pt-5">
             {deployments.length === 0 ? (
-              <div className="text-center py-16 border border-dashed border-zinc-800 rounded-xl">
-                <Package className="w-8 h-8 mx-auto mb-2 text-zinc-700" />
-                <p className="text-sm text-zinc-500">No deployments yet.</p>
-                <p className="text-xs mt-1 text-zinc-600">Click &quot;Build&quot; to trigger the first build.</p>
+              <div className="text-center py-16 border border-dashed border-gray-200 dark:border-zinc-800 rounded-xl">
+                <Package className="w-8 h-8 mx-auto mb-2 text-gray-400 dark:text-zinc-700" />
+                <p className="text-sm text-gray-500 dark:text-zinc-500">No deployments yet.</p>
+                <p className="text-xs mt-1 text-gray-400 dark:text-zinc-600">Click &quot;Build&quot; to trigger the first build.</p>
               </div>
             ) : (
-              <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl overflow-hidden">
+              <div className="bg-white dark:bg-zinc-900/50 border border-gray-200 dark:border-zinc-800 rounded-xl overflow-hidden shadow-sm">
                 {deployments.map((d) => (
                   <DeploymentCard
                     key={d.id}
@@ -1034,21 +1034,21 @@ export default function AppDetailPage() {
             )}
             {argoHistory.length > 0 && (
               <div className="mt-6">
-                <h4 className="text-xs font-medium text-zinc-500 uppercase tracking-wider mb-3">ArgoCD Revisions</h4>
-                <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl overflow-hidden">
+                <h4 className="text-xs font-medium text-gray-500 dark:text-zinc-500 uppercase tracking-wider mb-3">ArgoCD Revisions</h4>
+                <div className="bg-white dark:bg-zinc-900/50 border border-gray-200 dark:border-zinc-800 rounded-xl overflow-hidden shadow-sm">
                   {argoHistory.slice(0, 10).map((h, i) => {
                     const revision = h.revision as number | undefined;
                     const deployedAt = h.deployedAt as string | undefined;
                     const message = (h.source as Record<string, unknown> | undefined)?.repoURL as string ?? "";
                     return (
-                      <div key={i} className="flex items-center justify-between px-4 py-2.5 border-b border-zinc-800/60 last:border-0">
+                      <div key={i} className="flex items-center justify-between px-4 py-2.5 border-b border-gray-100 dark:border-zinc-800/60 last:border-0">
                         <div className="flex items-center gap-3">
-                          <span className="text-xs font-mono text-zinc-500">r{revision}</span>
-                          <span className="text-xs text-zinc-600 truncate max-w-xs">{message}</span>
+                          <span className="text-xs font-mono text-gray-500 dark:text-zinc-500">r{revision}</span>
+                          <span className="text-xs text-gray-400 dark:text-zinc-600 truncate max-w-xs">{message}</span>
                         </div>
                         <div className="flex items-center gap-3 shrink-0">
                           {deployedAt && (
-                            <span className="text-xs text-zinc-700">{new Date(deployedAt).toLocaleString()}</span>
+                            <span className="text-xs text-gray-400 dark:text-zinc-700">{new Date(deployedAt).toLocaleString()}</span>
                           )}
                           {typeof revision === "number" && (
                             <button
@@ -1060,7 +1060,7 @@ export default function AppDetailPage() {
                                   toastError(err instanceof Error ? err.message : "Rollback failed");
                                 }
                               }}
-                              className="text-zinc-600 hover:text-zinc-300 transition-colors"
+                              className="text-gray-400 dark:text-zinc-600 hover:text-gray-700 dark:hover:text-zinc-300 transition-colors"
                               title={`Rollback to revision ${revision}`}
                             >
                               <RotateCcw className="w-3.5 h-3.5" />
@@ -1118,15 +1118,15 @@ export default function AppDetailPage() {
               {logs && !streaming && (
                 <button
                   onClick={() => setLogs("")}
-                  className="text-xs text-zinc-600 hover:text-zinc-400 transition-colors"
+                  className="text-xs text-gray-400 dark:text-zinc-600 hover:text-gray-500 dark:hover:text-zinc-400 transition-colors"
                 >
                   Clear
                 </button>
               )}
             </div>
 
-            <div className="bg-zinc-950 border border-zinc-800 rounded-xl overflow-hidden">
-              <div className="flex items-center gap-1.5 px-4 py-2.5 border-b border-zinc-800">
+            <div className="bg-zinc-950 border border-gray-200 dark:border-zinc-800 rounded-xl overflow-hidden">
+              <div className="flex items-center gap-1.5 px-4 py-2.5 border-b border-gray-200 dark:border-zinc-800">
                 <span className="w-2.5 h-2.5 rounded-full bg-red-500/40" />
                 <span className="w-2.5 h-2.5 rounded-full bg-amber-500/40" />
                 <span className="w-2.5 h-2.5 rounded-full bg-emerald-500/40" />
