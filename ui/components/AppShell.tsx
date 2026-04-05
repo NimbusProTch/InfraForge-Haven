@@ -58,26 +58,28 @@ export function AppShell({ children, userEmail }: AppShellProps) {
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">
-      {/* Sidebar */}
-      <aside className="w-56 flex flex-col shrink-0 bg-white dark:bg-[#111] border-r border-gray-200 dark:border-[#222]">
+      {/* Sidebar — Creative Tim Material Dashboard style */}
+      <aside className="w-64 flex flex-col shrink-0 bg-gradient-to-b from-gray-900 via-gray-800 to-gray-900 shadow-xl"
+        style={{ backgroundImage: "linear-gradient(180deg, rgba(0,0,0,0.8) 0%, rgba(0,0,0,0.9) 100%), url('/sidebar-bg.jpg')", backgroundSize: "cover" }}
+      >
         {/* Logo */}
-        <div className="flex items-center gap-2.5 px-4 h-14 border-b border-gray-200 dark:border-[#222]">
-          <div className="w-7 h-7 rounded-md bg-blue-600 flex items-center justify-center shrink-0">
-            <Anchor className="w-3.5 h-3.5 text-white" />
+        <div className="flex items-center gap-2.5 px-5 h-16 border-b border-white/10">
+          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-emerald-400 to-emerald-600 shadow-md flex items-center justify-center shrink-0">
+            <Anchor className="w-4 h-4 text-white" />
           </div>
-          <span className="font-semibold text-sm text-gray-900 dark:text-white tracking-tight">
-            Haven
+          <span className="font-bold text-sm text-white tracking-tight">
+            Haven Platform
           </span>
         </div>
 
         {/* Nav */}
-        <nav className="flex-1 p-2 overflow-y-auto">
+        <nav className="flex-1 px-3 py-4 overflow-y-auto">
           {NAV_SECTIONS.map((section) => (
-            <div key={section.label} className="mb-4">
-              <p className="px-3 mb-1 text-[10px] font-semibold uppercase tracking-widest text-gray-400 dark:text-[#555]">
+            <div key={section.label} className="mb-5">
+              <p className="px-3 mb-2 text-[10px] font-bold uppercase tracking-widest text-white/40">
                 {section.label}
               </p>
-              <div className="space-y-0.5">
+              <div className="space-y-1">
                 {section.items.map(({ href, label, icon: Icon }) => {
                   const isActive =
                     pathname === href ||
@@ -88,10 +90,10 @@ export function AppShell({ children, userEmail }: AppShellProps) {
                       key={href}
                       href={href}
                       className={cn(
-                        "flex items-center gap-2.5 px-3 py-2 rounded-md text-sm transition-colors",
+                        "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all",
                         isActive
-                          ? "bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 font-medium border-l-2 border-emerald-500"
-                          : "text-gray-500 dark:text-[#888] hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-[#1a1a1a]"
+                          ? "bg-white/15 text-white font-semibold shadow-sm"
+                          : "text-white/60 hover:text-white hover:bg-white/10"
                       )}
                     >
                       <Icon className="w-4 h-4 shrink-0" />
@@ -105,18 +107,14 @@ export function AppShell({ children, userEmail }: AppShellProps) {
         </nav>
 
         {/* Bottom: theme toggle + user */}
-        <div className="p-2 border-t border-gray-200 dark:border-[#222] space-y-1">
+        <div className="px-3 py-3 border-t border-white/10 space-y-1">
           {/* Theme toggle */}
           <button
             onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-            className="flex items-center gap-2.5 w-full px-3 py-2 rounded-md text-sm text-gray-500 dark:text-[#888] hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-[#1a1a1a] transition-colors"
+            className="flex items-center gap-3 w-full px-3 py-2.5 rounded-lg text-sm text-white/60 hover:text-white hover:bg-white/10 transition-all"
           >
             {mounted ? (
-              theme === "dark" ? (
-                <Sun className="w-4 h-4 shrink-0" />
-              ) : (
-                <Moon className="w-4 h-4 shrink-0" />
-              )
+              theme === "dark" ? <Sun className="w-4 h-4 shrink-0" /> : <Moon className="w-4 h-4 shrink-0" />
             ) : (
               <div className="w-4 h-4 shrink-0" />
             )}
@@ -124,17 +122,15 @@ export function AppShell({ children, userEmail }: AppShellProps) {
           </button>
 
           {/* User */}
-          <div className="flex items-center gap-2 px-3 py-2">
-            <div className="w-6 h-6 rounded-full bg-blue-600 flex items-center justify-center shrink-0 text-xs text-white font-medium">
+          <div className="flex items-center gap-2.5 px-3 py-2.5">
+            <div className="w-7 h-7 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center shrink-0 text-xs text-white font-bold shadow-sm">
               {userEmail?.[0]?.toUpperCase() ?? "?"}
             </div>
-            <span className="text-xs text-gray-500 dark:text-[#888] flex-1 truncate">
-              {userEmail ?? "—"}
-            </span>
+            <span className="text-xs text-white/50 flex-1 truncate">{userEmail ?? "—"}</span>
             <button
               onClick={() => signOut({ callbackUrl: "/auth/signin" })}
               title="Sign out"
-              className="text-gray-400 dark:text-[#555] hover:text-gray-900 dark:hover:text-white transition-colors shrink-0"
+              className="text-white/30 hover:text-white transition-colors shrink-0"
             >
               <LogOut className="w-3.5 h-3.5" />
             </button>
@@ -143,7 +139,7 @@ export function AppShell({ children, userEmail }: AppShellProps) {
       </aside>
 
       {/* Main content */}
-      <main className="flex-1 overflow-auto bg-gray-50 dark:bg-[#0a0a0a]">
+      <main className="flex-1 overflow-auto bg-[#f4f6f8] dark:bg-[#0a0a0a]">
         {children}
       </main>
     </div>

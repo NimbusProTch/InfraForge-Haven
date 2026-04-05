@@ -826,7 +826,7 @@ export default function AppDetailPage() {
 
   return (
     <AppShell userEmail={session?.user?.email}>
-      <div className="p-6 max-w-5xl">
+      <div className="p-6 lg:p-8">
         <Breadcrumb
           items={[
             { label: "Projects", href: "/tenants" },
@@ -895,7 +895,7 @@ export default function AppDetailPage() {
               onClick={() => setShowDeployModal(true)}
               disabled={!!actionLoading || !app.image_tag}
               title={!app.image_tag ? "No image built yet" : "Deploy current image"}
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-medium transition-colors"
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-medium transition-all shadow-md shadow-emerald-500/20"
             >
               {actionLoading === "deploy" ? (
                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -1018,23 +1018,24 @@ export default function AppDetailPage() {
           </div>
         )}
 
-        {/* App info bar */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+        {/* App info bar — Material style */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
           {[
-            { label: "Replicas", value: String(app.replicas) },
-            { label: "Branch", value: app.branch },
-            { label: "Image", value: app.image_tag ? app.image_tag.split(":").pop() ?? "--" : "--" },
-            {
-              label: "Webhook",
-              value: app.webhook_token ? `...${app.webhook_token.slice(-8)}` : "--",
-            },
-          ].map(({ label, value }) => (
-            <div
-              key={label}
-              className="bg-white dark:bg-zinc-900/50 border border-gray-200 dark:border-zinc-800 rounded-xl px-3 py-3 shadow-sm"
-            >
-              <p className="text-xs text-gray-400 dark:text-zinc-600 mb-1">{label}</p>
-              <p className="text-sm font-medium text-gray-800 dark:text-zinc-200 font-mono truncate">{value}</p>
+            { label: "Replicas", value: String(app.replicas), color: "from-blue-400 to-blue-600", icon: Layers },
+            { label: "Branch", value: app.branch, color: "from-violet-400 to-violet-600", icon: GitBranch },
+            { label: "Image", value: app.image_tag ? app.image_tag.split(":").pop() ?? "--" : "--", color: "from-emerald-400 to-emerald-600", icon: Package },
+            { label: "Webhook", value: app.webhook_token ? `...${app.webhook_token.slice(-8)}` : "--", color: "from-amber-400 to-amber-600", icon: Globe },
+          ].map(({ label, value, color, icon: InfoIcon }) => (
+            <div key={label} className="bg-white dark:bg-zinc-900 rounded-xl shadow-md border border-gray-100 dark:border-zinc-800 p-4">
+              <div className="flex items-center gap-3">
+                <div className={`w-10 h-10 rounded-lg bg-gradient-to-br ${color} shadow-sm flex items-center justify-center shrink-0`}>
+                  <InfoIcon className="w-5 h-5 text-white" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-[10px] text-gray-400 dark:text-zinc-500 uppercase tracking-wider">{label}</p>
+                  <p className="text-sm font-semibold text-gray-800 dark:text-zinc-200 font-mono truncate">{value}</p>
+                </div>
+              </div>
             </div>
           ))}
         </div>
