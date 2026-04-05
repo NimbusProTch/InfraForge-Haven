@@ -65,7 +65,7 @@ async def create_service(
     k8s: K8sDep,
     current_user: CurrentUser,
 ) -> ManagedService:
-    tenant = await _get_tenant_or_404(tenant_slug, db)
+    tenant = await _get_tenant_or_404(tenant_slug, db, current_user)
 
     # Check name uniqueness within tenant
     existing = await db.execute(
@@ -123,7 +123,7 @@ async def create_service(
 async def get_service(
     tenant_slug: str, service_name: str, db: DBSession, k8s: K8sDep, current_user: CurrentUser
 ) -> ManagedServiceDetailResponse:
-    tenant = await _get_tenant_or_404(tenant_slug, db)
+    tenant = await _get_tenant_or_404(tenant_slug, db, current_user)
     result = await db.execute(
         select(ManagedService).where(
             ManagedService.tenant_id == tenant.id,
@@ -195,7 +195,7 @@ async def update_service(
     current_user: CurrentUser,
 ) -> ManagedService:
     """Update a managed service (replicas, storage, cpu, memory, tier)."""
-    tenant = await _get_tenant_or_404(tenant_slug, db)
+    tenant = await _get_tenant_or_404(tenant_slug, db, current_user)
     result = await db.execute(
         select(ManagedService).where(
             ManagedService.tenant_id == tenant.id,
@@ -251,7 +251,7 @@ async def update_service(
 async def delete_service(
     tenant_slug: str, service_name: str, db: DBSession, k8s: K8sDep, current_user: CurrentUser
 ) -> None:
-    tenant = await _get_tenant_or_404(tenant_slug, db)
+    tenant = await _get_tenant_or_404(tenant_slug, db, current_user)
     result = await db.execute(
         select(ManagedService).where(
             ManagedService.tenant_id == tenant.id,
@@ -302,7 +302,7 @@ async def retry_service(
     tenant_slug: str, service_name: str, db: DBSession, k8s: K8sDep, current_user: CurrentUser
 ) -> ManagedService:
     """Retry provisioning a failed service."""
-    tenant = await _get_tenant_or_404(tenant_slug, db)
+    tenant = await _get_tenant_or_404(tenant_slug, db, current_user)
     result = await db.execute(
         select(ManagedService).where(
             ManagedService.tenant_id == tenant.id,
@@ -334,7 +334,7 @@ async def get_service_credentials(
     tenant_slug: str, service_name: str, db: DBSession, k8s: K8sDep, current_user: CurrentUser
 ) -> ServiceCredentials:
     """Return decoded K8s secret credentials for a managed service."""
-    tenant = await _get_tenant_or_404(tenant_slug, db)
+    tenant = await _get_tenant_or_404(tenant_slug, db, current_user)
     result = await db.execute(
         select(ManagedService).where(
             ManagedService.tenant_id == tenant.id,

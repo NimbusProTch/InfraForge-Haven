@@ -4,7 +4,7 @@ import uuid
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, status
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select
 
 from app.config import settings
@@ -188,13 +188,27 @@ class BuildRequest(BaseModel):
     branch: str | None = Field(None, max_length=255, description="Branch override (uses app default if omitted)")
     build_env_vars: dict[str, str] | None = Field(None, description="Build-time environment variables")
 
+    @field_validator("build_env_vars")
+    @classmethod
+    def validate_env_vars(cls, v: dict[str, str] | None) -> dict[str, str] | None:
+        if v is None:
+            return v
+        if len(v) > 50:
+            raise ValueError("Maximum 50 build environment variables allowed")
+        for key, val in v.items():
+            if len(key) > 256:
+                raise ValueError(f"Env var key too long (max 256): {key[:20]}...")
+            if len(val) > 32768:
+                raise ValueError(f"Env var value too long (max 32KB): {key}")
+        return v
+
 
 class DeployRequest(BaseModel):
     """Optional request body for deploy trigger."""
 
     replicas: int | None = Field(None, ge=1, le=10, description="Override replica count")
-    resource_cpu_limit: str | None = Field(None, description="CPU limit (e.g. 500m, 1)")
-    resource_memory_limit: str | None = Field(None, description="Memory limit (e.g. 512Mi, 1Gi)")
+    resource_cpu_limit: str | None = Field(None, pattern=r"^\d+m?$", description="CPU limit (e.g. 500m, 1)")
+    resource_memory_limit: str | None = Field(None, pattern=r"^\d+(Mi|Gi)$", description="Memory limit (e.g. 512Mi, 1Gi)")
 
 
 @router.post("/build", response_model=DeploymentResponse, status_code=status.HTTP_202_ACCEPTED)
