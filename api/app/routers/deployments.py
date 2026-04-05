@@ -2,7 +2,7 @@ import asyncio
 import logging
 import uuid
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select
@@ -224,11 +224,12 @@ async def trigger_build(
     background_tasks: BackgroundTasks,
     current_user: CurrentUser,
     body: BuildRequest | None = None,
+    deploy: bool = Query(True, description="If false, build only without deploying (status=BUILT)"),
 ) -> Deployment:
-    """Manually trigger a full build + deploy pipeline.
+    """Trigger a build pipeline.
 
-    Accepts optional branch override and build-time environment variables.
-    The GitHub token is retrieved from the tenant's stored token in the database.
+    - deploy=true (default): Full build + deploy pipeline.
+    - deploy=false: Build only — image pushed to Harbor, status set to BUILT. Use POST /deploy-image to deploy later.
     """
     tenant = await _get_tenant_or_404(tenant_slug, db, current_user)
     app = await _get_app_or_404(tenant.id, app_slug, db)
@@ -279,12 +280,13 @@ async def trigger_build(
         min_replicas=app.min_replicas,
         max_replicas=app.max_replicas,
         cpu_threshold=app.cpu_threshold,
+        deploy=deploy,
     )
 
     await audit(
         db,
         tenant_id=tenant.id,
-        action="deployment.build",
+        action="deployment.build" if deploy else "deployment.build_only",
         user_id=current_user.get("sub", ""),
         resource_type="deployment",
         resource_id=str(deployment.id),
@@ -364,6 +366,86 @@ async def trigger_deploy(
         resource_type="deployment",
         resource_id=str(deployment.id),
         extra={"app_slug": app.slug, "image_tag": app.image_tag, "replicas": app.replicas},
+    )
+
+    return deployment
+
+
+@router.post("/deploy-image", response_model=DeploymentResponse, status_code=status.HTTP_202_ACCEPTED)
+async def deploy_built_image(
+    tenant_slug: str,
+    app_slug: str,
+    db: DBSession,
+    k8s: K8sDep,
+    gitops: GitOpsDep,
+    argocd: ArgoCDDep,
+    background_tasks: BackgroundTasks,
+    current_user: CurrentUser,
+    deployment_id: uuid.UUID | None = Query(None, description="Specific BUILT deployment ID. Uses latest if omitted."),
+) -> Deployment:
+    """Deploy a previously built image (status=BUILT) without rebuilding.
+
+    If deployment_id is omitted, uses the latest BUILT deployment for this app.
+    """
+    from sqlalchemy import select
+
+    tenant = await _get_tenant_or_404(tenant_slug, db, current_user)
+    app = await _get_app_or_404(tenant.id, app_slug, db)
+
+    if deployment_id:
+        deployment = await db.get(Deployment, deployment_id)
+        if not deployment or deployment.application_id != app.id:
+            raise HTTPException(status_code=404, detail="Deployment not found")
+        if deployment.status != DeploymentStatus.BUILT:
+            raise HTTPException(status_code=409, detail=f"Deployment status is '{deployment.status.value}', expected 'built'")
+    else:
+        # Find the latest BUILT deployment
+        result = await db.execute(
+            select(Deployment)
+            .where(Deployment.application_id == app.id, Deployment.status == DeploymentStatus.BUILT)
+            .order_by(Deployment.created_at.desc())
+            .limit(1)
+        )
+        deployment = result.scalar_one_or_none()
+        if not deployment:
+            raise HTTPException(status_code=404, detail="No BUILT deployment found. Run a build first with deploy=false.")
+
+    image_name = deployment.image_tag
+    if not image_name:
+        raise HTTPException(status_code=409, detail="BUILT deployment has no image_tag")
+
+    # Transition to DEPLOYING and run deploy phase only (reuse redeploy logic)
+    deployment.status = DeploymentStatus.DEPLOYING
+    await db.commit()
+    await db.refresh(deployment)
+
+    secret_names = await get_service_secret_names(db, tenant.id)
+
+    asyncio.create_task(
+        _run_redeploy(
+            deployment_id=deployment.id,
+            app_id=app.id,
+            app_slug=app.slug,
+            tenant_slug=tenant.slug,
+            namespace=tenant.namespace,
+            image=image_name,
+            replicas=app.replicas,
+            env_vars=dict(app.env_vars),
+            service_secret_names=secret_names,
+            port=app.port,
+            k8s=k8s,
+        ),
+        name=f"deploy-image-{deployment.id}",
+    )
+
+    await audit(
+        db,
+        tenant_id=tenant.id,
+        action="deployment.deploy_image",
+        user_id=current_user.get("sub", ""),
+        resource_type="deployment",
+        resource_id=str(deployment.id),
+        extra={"app_slug": app.slug, "image_tag": image_name},
     )
 
     return deployment
@@ -567,7 +649,7 @@ async def stream_logs(
                                 build_pod = build_pods.items[0].metadata.name
                                 phase = build_pods.items[0].status.phase
                                 break
-                            yield ": heartbeat\n\n"
+                            yield "data: [heartbeat]\n\n"
                             yield "data: [waiting for build pod to start...]\n\n"
                             await asyncio.sleep(3)
 
