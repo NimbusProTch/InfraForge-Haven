@@ -309,7 +309,6 @@ class BuildService:
             "      fi; "
             "    fi; "
             "  fi; "
-            "fi; "
             "fi"
         )
 
