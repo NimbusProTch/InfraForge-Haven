@@ -216,7 +216,9 @@ async def update_service(
     tier_change = update_fields.pop("tier", None)
     if tier_change is not None and tier_change != svc.tier:
         svc_type = svc.service_type.value
-        defaults = _PROD_DEFAULTS.get(svc_type, {}) if tier_change == ServiceTier.PROD else _DEV_DEFAULTS.get(svc_type, {})
+        defaults = (
+            _PROD_DEFAULTS.get(svc_type, {}) if tier_change == ServiceTier.PROD else _DEV_DEFAULTS.get(svc_type, {})
+        )
         # Apply defaults only for fields not explicitly provided
         for key, val in defaults.items():
             if key not in update_fields:
