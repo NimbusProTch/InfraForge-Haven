@@ -124,6 +124,9 @@ function derivePipelineSteps(deployment: Deployment, buildStatus?: BuildStatus |
     case "building":
       statuses = ["success", "success", "running", "pending", "pending"];
       break;
+    case "built":
+      statuses = ["success", "success", "success", "success", "pending"];
+      break;
     case "deploying":
       statuses = ["success", "success", "success", "success", "running"];
       break;
@@ -335,6 +338,7 @@ const DEPLOY_STATUS_VARIANT: Record<
 > = {
   running: "success",
   building: "warning",
+  built: "default",
   deploying: "warning",
   pending: "secondary",
   failed: "destructive",
@@ -343,6 +347,7 @@ const DEPLOY_STATUS_VARIANT: Record<
 const STATUS_DOT_COLORS: Record<string, string> = {
   running: "bg-emerald-500",
   building: "bg-amber-500 animate-pulse",
+  built: "bg-purple-500",
   deploying: "bg-blue-500 animate-pulse",
   pending: "bg-gray-400",
   failed: "bg-red-500",
@@ -412,7 +417,7 @@ function DeploymentCard({
             </div>
           </div>
 
-          {(isActive || isFailed || deployment.status === "running") && (
+          {(isActive || isFailed || deployment.status === "running" || deployment.status === "built") && (
             <div className="hidden md:flex flex-1 mx-4">
               <PipelineVisualization steps={pipelineSteps} compact />
             </div>
@@ -433,15 +438,17 @@ function DeploymentCard({
               )}
             </button>
           )}
-          {["running", "failed"].includes(deployment.status) && deployment.image_tag && (
+          {["running", "failed", "built"].includes(deployment.status) && deployment.image_tag && (
             <button
               onClick={() => onRollback(deployment.id)}
               disabled={rolling === deployment.id}
-              title="Rollback to this deployment"
+              title={deployment.status === "built" ? "Deploy this image" : "Rollback to this deployment"}
               className="text-gray-400 dark:text-zinc-600 hover:text-gray-700 dark:hover:text-zinc-300 transition-colors disabled:opacity-50"
             >
               {rolling === deployment.id ? (
                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : deployment.status === "built" ? (
+                <Rocket className="w-3.5 h-3.5 text-purple-500" />
               ) : (
                 <RotateCcw className="w-3.5 h-3.5" />
               )}
@@ -460,7 +467,7 @@ function DeploymentCard({
         </div>
       )}
 
-      {(isActive || isFailed) && (
+      {(isActive || isFailed || deployment.status === "built") && (
         <div className="md:hidden px-4 pb-3">
           <PipelineVisualization steps={pipelineSteps} compact />
         </div>
@@ -623,6 +630,8 @@ export default function AppDetailPage() {
   const [activeLogStep, setActiveLogStep] = useState<string | null>(null);
   const [showBuildModal, setShowBuildModal] = useState(false);
   const [showDeployModal, setShowDeployModal] = useState(false);
+  const [lastStatusRefresh, setLastStatusRefresh] = useState<Date>(new Date());
+  const [refreshingStatus, setRefreshingStatus] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
   const deployPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const prevActiveRef = useRef(false);
@@ -699,6 +708,16 @@ export default function AppDetailPage() {
       setEditReplicas(a.replicas);
     } catch { /* ignore */ }
   }, [tenantSlug, appSlug, status, accessToken]);
+
+  const refreshStatus = useCallback(async () => {
+    setRefreshingStatus(true);
+    try {
+      await Promise.all([loadApp(), loadDeployments(), loadSyncStatus()]);
+      setLastStatusRefresh(new Date());
+    } finally {
+      setRefreshingStatus(false);
+    }
+  }, [loadApp, loadDeployments, loadSyncStatus]);
 
   const latestDeployment = deployments[0];
   const isActiveBuild =
@@ -923,6 +942,17 @@ export default function AppDetailPage() {
                   {currentStatus}
                 </Badge>
               )}
+              <button
+                onClick={() => void refreshStatus()}
+                disabled={refreshingStatus}
+                title="Refresh deployment status"
+                className="p-1 rounded-md text-gray-400 dark:text-zinc-600 hover:text-gray-600 dark:hover:text-zinc-400 hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors disabled:opacity-50"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${refreshingStatus ? "animate-spin" : ""}`} />
+              </button>
+              <span className="text-xs text-gray-400 dark:text-zinc-600">
+                Updated {relativeTime(lastStatusRefresh.toISOString())}
+              </span>
             </div>
             <div className="flex items-center gap-3 mt-1.5 pl-12">
               <p className="text-sm text-gray-600 dark:text-zinc-400 font-mono font-medium">
@@ -1093,6 +1123,37 @@ export default function AppDetailPage() {
           </div>
         )}
 
+        {/* Built status banner — image ready, not yet deployed */}
+        {currentStatus === "built" && latestDeployment && (
+          <div className="mb-6 bg-purple-50 dark:bg-purple-500/5 border border-purple-200 dark:border-purple-500/20 rounded-xl p-4 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-lg bg-purple-500/15 flex items-center justify-center">
+                <Package className="w-4 h-4 text-purple-500" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-purple-700 dark:text-purple-400">
+                  Image built successfully
+                </p>
+                <p className="text-xs text-purple-500 dark:text-purple-500/70">
+                  {latestDeployment.image_tag ? `Tag: ${latestDeployment.image_tag.split(":").pop()}` : "Ready to deploy"}
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => setShowDeployModal(true)}
+              disabled={!!actionLoading}
+              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 disabled:opacity-50 text-white text-sm font-bold transition-all shadow-lg shadow-purple-500/25"
+            >
+              {actionLoading === "deploy" ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <Rocket className="w-3.5 h-3.5" />
+              )}
+              Deploy Now
+            </button>
+          </div>
+        )}
+
         {/* App info bar — Material style */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
           {[
@@ -1242,6 +1303,7 @@ export default function AppDetailPage() {
               tenantSlug={tenantSlug}
               appSlug={appSlug}
               appName={app.name}
+              appImageTag={app.image_tag}
               deployments={deployments}
               logs={logs}
               streaming={streaming}
@@ -1259,7 +1321,7 @@ export default function AppDetailPage() {
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-medium transition-colors"
                 >
                   <Terminal className="w-3.5 h-3.5" />
-                  Stream logs
+                  {logs ? "Restart Streaming" : "Stream Logs"}
                 </button>
               ) : (
                 <button

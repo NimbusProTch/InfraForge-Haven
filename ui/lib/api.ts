@@ -429,7 +429,7 @@ export interface Deployment {
   id: string;
   application_id: string;
   commit_sha: string;
-  status: "pending" | "building" | "deploying" | "running" | "failed";
+  status: "pending" | "building" | "built" | "deploying" | "running" | "failed";
   build_job_name: string | null;
   image_tag: string | null;
   error_message: string | null;
@@ -617,6 +617,28 @@ export const api = {
       apiFetch<Deployment>(
         `/tenants/${tenantSlug}/apps/${appSlug}/build`,
         { method: "POST", ...(body ? { body: JSON.stringify(body) } : {}) },
+        token
+      ),
+    buildOnly: (
+      tenantSlug: string,
+      appSlug: string,
+      token?: string,
+      body?: { branch?: string; build_env_vars?: Record<string, string> }
+    ) =>
+      apiFetch<Deployment>(
+        `/tenants/${tenantSlug}/apps/${appSlug}/build?deploy=false`,
+        { method: "POST", ...(body ? { body: JSON.stringify(body) } : {}) },
+        token
+      ),
+    deployImage: (
+      tenantSlug: string,
+      appSlug: string,
+      token?: string,
+      deploymentId?: string,
+    ) =>
+      apiFetch<Deployment>(
+        `/tenants/${tenantSlug}/apps/${appSlug}/deploy-image${deploymentId ? `?deployment_id=${deploymentId}` : ""}`,
+        { method: "POST" },
         token
       ),
     deploy: (

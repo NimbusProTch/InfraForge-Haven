@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import {
@@ -21,7 +21,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { api, type ManagedService } from "@/lib/api";
-import { Plus } from "lucide-react";
+import { Plus, Server, Zap, Shield, Clock, ChevronLeft, HardDrive, RotateCcw } from "lucide-react";
 import { ServiceIcon } from "@/components/icons/ServiceIcons";
 
 interface AddServiceModalProps {
@@ -30,14 +30,107 @@ interface AddServiceModalProps {
   onCreated?: (service: ManagedService) => void;
 }
 
+const SERVICE_TYPES = [
+  {
+    value: "postgres",
+    label: "PostgreSQL",
+    description: "Reliable relational database with PITR backup",
+    supportsBackup: true,
+    supportsPitr: true,
+  },
+  {
+    value: "mysql",
+    label: "MySQL",
+    description: "Popular relational database with XtraDB Cluster",
+    supportsBackup: true,
+    supportsPitr: false,
+  },
+  {
+    value: "mongodb",
+    label: "MongoDB",
+    description: "Flexible document database for modern apps",
+    supportsBackup: true,
+    supportsPitr: false,
+  },
+  {
+    value: "redis",
+    label: "Redis",
+    description: "In-memory data store for caching and sessions",
+    supportsBackup: false,
+    supportsPitr: false,
+  },
+  {
+    value: "rabbitmq",
+    label: "RabbitMQ",
+    description: "Distributed message broker for async workflows",
+    supportsBackup: false,
+    supportsPitr: false,
+  },
+] as const;
+
+const SCHEDULE_PRESETS = [
+  { value: "0 2 * * *", label: "Daily at 2am" },
+  { value: "0 */12 * * *", label: "Every 12 hours" },
+  { value: "0 */6 * * *", label: "Every 6 hours" },
+] as const;
+
+const RETENTION_OPTIONS = [
+  { value: "7", label: "7 days" },
+  { value: "14", label: "14 days" },
+  { value: "30", label: "30 days" },
+  { value: "90", label: "90 days" },
+] as const;
+
 export function AddServiceModal({ tenantSlug, accessToken, onCreated }: AddServiceModalProps) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
+  const [step, setStep] = useState<"type" | "config">("type");
   const [name, setName] = useState("");
-  const [serviceType, setServiceType] = useState<string>("postgres");
+  const [serviceType, setServiceType] = useState<string>("");
   const [tier, setTier] = useState<string>("dev");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Backup config state
+  const [backupEnabled, setBackupEnabled] = useState(false);
+  const [backupSchedule, setBackupSchedule] = useState("0 2 * * *");
+  const [backupRetention, setBackupRetention] = useState("7");
+  const [pitrEnabled, setPitrEnabled] = useState(false);
+
+  const selectedType = SERVICE_TYPES.find((t) => t.value === serviceType);
+
+  // Auto-generate name when type is selected
+  useEffect(() => {
+    if (serviceType && step === "config") {
+      setName(`app-${serviceType.replace("postgres", "pg")}`);
+    }
+  }, [serviceType, step]);
+
+  // Auto-enable backup for prod tier on backup-supported types
+  useEffect(() => {
+    if (selectedType?.supportsBackup) {
+      setBackupEnabled(tier === "prod");
+    } else {
+      setBackupEnabled(false);
+    }
+  }, [tier, selectedType]);
+
+  function resetForm() {
+    setStep("type");
+    setName("");
+    setServiceType("");
+    setTier("dev");
+    setBackupEnabled(false);
+    setBackupSchedule("0 2 * * *");
+    setBackupRetention("7");
+    setPitrEnabled(false);
+    setError(null);
+  }
+
+  function handleSelectType(type: string) {
+    setServiceType(type);
+    setStep("config");
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -51,9 +144,7 @@ export function AddServiceModal({ tenantSlug, accessToken, onCreated }: AddServi
       );
       onCreated?.(svc);
       setOpen(false);
-      setName("");
-      setServiceType("postgres");
-      setTier("dev");
+      resetForm();
       router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create service");
@@ -63,85 +154,269 @@ export function AddServiceModal({ tenantSlug, accessToken, onCreated }: AddServi
   }
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog
+      open={open}
+      onOpenChange={(v) => {
+        setOpen(v);
+        if (!v) resetForm();
+      }}
+    >
       <DialogTrigger asChild>
         <Button size="sm">
           <Plus className="h-4 w-4 mr-1" />
           Add Service
         </Button>
       </DialogTrigger>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>Add Managed Service</DialogTitle>
+          <DialogTitle>
+            {step === "type" ? "Choose Service Type" : "Configure Service"}
+          </DialogTitle>
           <DialogDescription>
-            Provision a managed database, cache, or message queue for this tenant.
+            {step === "type"
+              ? "Select the type of managed service to provision."
+              : `Set up your ${selectedType?.label ?? ""} instance.`}
           </DialogDescription>
         </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4 mt-2">
-          <div className="space-y-1">
-            <Label htmlFor="svc-name">Service name</Label>
-            <Input
-              id="svc-name"
-              placeholder="my-database"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              pattern="^[a-z0-9][a-z0-9-]*[a-z0-9]$"
-              minLength={2}
-              required
-            />
-            <p className="text-xs text-muted-foreground">Lowercase letters, numbers, hyphens only.</p>
-          </div>
 
-          <div className="space-y-1">
-            <Label htmlFor="svc-type">Type</Label>
-            <Select value={serviceType} onValueChange={setServiceType}>
-              <SelectTrigger id="svc-type">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="postgres">
-                  <span className="flex items-center gap-2"><ServiceIcon type="postgres" size={16} /> PostgreSQL</span>
-                </SelectItem>
-                <SelectItem value="mysql">
-                  <span className="flex items-center gap-2"><ServiceIcon type="mysql" size={16} /> MySQL</span>
-                </SelectItem>
-                <SelectItem value="mongodb">
-                  <span className="flex items-center gap-2"><ServiceIcon type="mongodb" size={16} /> MongoDB</span>
-                </SelectItem>
-                <SelectItem value="redis">
-                  <span className="flex items-center gap-2"><ServiceIcon type="redis" size={16} /> Redis</span>
-                </SelectItem>
-                <SelectItem value="rabbitmq">
-                  <span className="flex items-center gap-2"><ServiceIcon type="rabbitmq" size={16} /> RabbitMQ</span>
-                </SelectItem>
-              </SelectContent>
-            </Select>
+        {step === "type" ? (
+          /* ─── Step 1: Service Type Selection (Card Grid) ─── */
+          <div className="grid grid-cols-2 gap-3 mt-2">
+            {SERVICE_TYPES.map((svc) => (
+              <button
+                key={svc.value}
+                type="button"
+                onClick={() => handleSelectType(svc.value)}
+                className="flex flex-col items-center gap-2 p-4 rounded-xl border border-gray-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/50 hover:border-blue-400 dark:hover:border-blue-500 hover:bg-blue-50/50 dark:hover:bg-blue-950/20 transition-all text-center group"
+              >
+                <ServiceIcon type={svc.value} size={40} />
+                <div>
+                  <p className="text-sm font-semibold text-gray-800 dark:text-zinc-200 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
+                    {svc.label}
+                  </p>
+                  <p className="text-xs text-gray-400 dark:text-zinc-500 mt-0.5 leading-relaxed">
+                    {svc.description}
+                  </p>
+                </div>
+              </button>
+            ))}
           </div>
+        ) : (
+          /* ─── Step 2: Configuration ─── */
+          <form onSubmit={handleSubmit} className="space-y-5 mt-2">
+            {/* Back button */}
+            <button
+              type="button"
+              onClick={() => setStep("type")}
+              className="flex items-center gap-1 text-xs text-gray-400 dark:text-zinc-500 hover:text-gray-700 dark:hover:text-zinc-300 transition-colors -mt-1"
+            >
+              <ChevronLeft className="w-3 h-3" />
+              Change type
+            </button>
 
-          <div className="space-y-1">
-            <Label htmlFor="svc-tier">Tier</Label>
-            <Select value={tier} onValueChange={setTier}>
-              <SelectTrigger id="svc-tier">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="dev">Dev (single replica, small storage)</SelectItem>
-                <SelectItem value="prod">Prod (HA, larger storage)</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
+            {/* Selected type indicator */}
+            <div className="flex items-center gap-3 p-3 rounded-lg bg-gray-50 dark:bg-zinc-800/50 border border-gray-200 dark:border-zinc-700">
+              <ServiceIcon type={serviceType} size={28} />
+              <div>
+                <p className="text-sm font-medium text-gray-800 dark:text-zinc-200">
+                  {selectedType?.label}
+                </p>
+                <p className="text-xs text-gray-400 dark:text-zinc-500">
+                  {selectedType?.description}
+                </p>
+              </div>
+            </div>
 
-          {error && <p className="text-sm text-destructive">{error}</p>}
+            {/* Name */}
+            <div className="space-y-1.5">
+              <Label htmlFor="svc-name">Service name</Label>
+              <Input
+                id="svc-name"
+                placeholder="my-database"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                pattern="^[a-z0-9][a-z0-9-]*[a-z0-9]$"
+                minLength={2}
+                required
+              />
+              <p className="text-xs text-muted-foreground">
+                Lowercase letters, numbers, hyphens only.
+              </p>
+            </div>
 
-          <div className="flex justify-end gap-2 pt-2">
-            <Button type="button" variant="outline" onClick={() => setOpen(false)}>
-              Cancel
-            </Button>
-            <Button type="submit" disabled={loading}>
-              {loading ? "Provisioning..." : "Create"}
-            </Button>
-          </div>
-        </form>
+            {/* Tier selection (visual cards) */}
+            <div className="space-y-1.5">
+              <Label>Environment tier</Label>
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => setTier("dev")}
+                  className={`flex flex-col items-start p-3 rounded-xl border-2 transition-all text-left ${
+                    tier === "dev"
+                      ? "border-blue-500 bg-blue-50/50 dark:bg-blue-950/20"
+                      : "border-gray-200 dark:border-zinc-800 hover:border-gray-300 dark:hover:border-zinc-700"
+                  }`}
+                >
+                  <div className="flex items-center gap-2 mb-2">
+                    <Zap className="w-4 h-4 text-amber-500" />
+                    <span className="text-sm font-semibold text-gray-800 dark:text-zinc-200">
+                      Dev
+                    </span>
+                  </div>
+                  <ul className="space-y-1 text-xs text-gray-500 dark:text-zinc-400">
+                    <li className="flex items-center gap-1.5">
+                      <Server className="w-3 h-3 shrink-0" /> 1 replica
+                    </li>
+                    <li className="flex items-center gap-1.5">
+                      <HardDrive className="w-3 h-3 shrink-0" /> Ephemeral
+                    </li>
+                    <li className="flex items-center gap-1.5">
+                      <Shield className="w-3 h-3 shrink-0 opacity-40" /> No backup
+                    </li>
+                  </ul>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setTier("prod")}
+                  className={`flex flex-col items-start p-3 rounded-xl border-2 transition-all text-left ${
+                    tier === "prod"
+                      ? "border-blue-500 bg-blue-50/50 dark:bg-blue-950/20"
+                      : "border-gray-200 dark:border-zinc-800 hover:border-gray-300 dark:hover:border-zinc-700"
+                  }`}
+                >
+                  <div className="flex items-center gap-2 mb-2">
+                    <Shield className="w-4 h-4 text-emerald-500" />
+                    <span className="text-sm font-semibold text-gray-800 dark:text-zinc-200">
+                      Prod
+                    </span>
+                  </div>
+                  <ul className="space-y-1 text-xs text-gray-500 dark:text-zinc-400">
+                    <li className="flex items-center gap-1.5">
+                      <Server className="w-3 h-3 shrink-0" /> 3 replicas, HA
+                    </li>
+                    <li className="flex items-center gap-1.5">
+                      <HardDrive className="w-3 h-3 shrink-0" /> Persistent
+                    </li>
+                    <li className="flex items-center gap-1.5">
+                      <Shield className="w-3 h-3 shrink-0" /> Daily backup
+                    </li>
+                  </ul>
+                </button>
+              </div>
+            </div>
+
+            {/* Backup configuration (only for DB types) */}
+            {selectedType?.supportsBackup && (
+              <div className="space-y-3 rounded-xl border border-gray-200 dark:border-zinc-800 p-4 bg-gray-50/50 dark:bg-zinc-800/30">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <RotateCcw className="w-4 h-4 text-gray-500 dark:text-zinc-400" />
+                    <Label className="cursor-pointer">Enable automated backups</Label>
+                  </div>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={backupEnabled}
+                    onClick={() => setBackupEnabled(!backupEnabled)}
+                    className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors ${
+                      backupEnabled
+                        ? "bg-blue-500"
+                        : "bg-gray-300 dark:bg-zinc-700"
+                    }`}
+                  >
+                    <span
+                      className={`pointer-events-none block h-3.5 w-3.5 rounded-full bg-white shadow-sm transition-transform ${
+                        backupEnabled ? "translate-x-4" : "translate-x-0.5"
+                      }`}
+                    />
+                  </button>
+                </div>
+
+                {backupEnabled && (
+                  <div className="space-y-3 pt-1">
+                    {/* Schedule */}
+                    <div className="space-y-1">
+                      <Label htmlFor="backup-schedule" className="text-xs">
+                        <Clock className="w-3 h-3 inline mr-1" />
+                        Schedule
+                      </Label>
+                      <Select value={backupSchedule} onValueChange={setBackupSchedule}>
+                        <SelectTrigger id="backup-schedule" className="h-8 text-xs">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {SCHEDULE_PRESETS.map((p) => (
+                            <SelectItem key={p.value} value={p.value}>
+                              {p.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {/* Retention */}
+                    <div className="space-y-1">
+                      <Label htmlFor="backup-retention" className="text-xs">
+                        <HardDrive className="w-3 h-3 inline mr-1" />
+                        Retention
+                      </Label>
+                      <Select value={backupRetention} onValueChange={setBackupRetention}>
+                        <SelectTrigger id="backup-retention" className="h-8 text-xs">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {RETENTION_OPTIONS.map((r) => (
+                            <SelectItem key={r.value} value={r.value}>
+                              {r.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {/* PITR toggle (postgres only) */}
+                    {selectedType?.supportsPitr && (
+                      <div className="flex items-center justify-between pt-1">
+                        <Label className="text-xs cursor-pointer">
+                          Enable point-in-time recovery (PITR)
+                        </Label>
+                        <button
+                          type="button"
+                          role="switch"
+                          aria-checked={pitrEnabled}
+                          onClick={() => setPitrEnabled(!pitrEnabled)}
+                          className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors ${
+                            pitrEnabled
+                              ? "bg-blue-500"
+                              : "bg-gray-300 dark:bg-zinc-700"
+                          }`}
+                        >
+                          <span
+                            className={`pointer-events-none block h-3.5 w-3.5 rounded-full bg-white shadow-sm transition-transform ${
+                              pitrEnabled ? "translate-x-4" : "translate-x-0.5"
+                            }`}
+                          />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {error && <p className="text-sm text-destructive">{error}</p>}
+
+            <div className="flex justify-end gap-2 pt-1">
+              <Button type="button" variant="outline" onClick={() => setOpen(false)}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={loading}>
+                {loading ? "Provisioning..." : "Create"}
+              </Button>
+            </div>
+          </form>
+        )}
       </DialogContent>
     </Dialog>
   );

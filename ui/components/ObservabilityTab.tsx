@@ -11,7 +11,9 @@ import {
   Clock,
   Cpu,
   HardDrive,
+  Loader2,
   MemoryStick,
+  Package,
   Pause,
   Play,
   RefreshCw,
@@ -22,6 +24,7 @@ interface ObservabilityTabProps {
   tenantSlug: string;
   appSlug: string;
   appName: string;
+  appImageTag?: string | null;
   deployments: Deployment[];
   logs: string;
   streaming: boolean;
@@ -65,6 +68,7 @@ export default function ObservabilityTab({
   tenantSlug,
   appSlug,
   appName,
+  appImageTag,
   deployments,
   logs,
   streaming,
@@ -77,10 +81,13 @@ export default function ObservabilityTab({
   const [events, setEvents] = useState<AppEvent[]>([]);
   const [k8sAvailable, setK8sAvailable] = useState<boolean | null>(null);
   const [lastRefreshed, setLastRefreshed] = useState<Date>(new Date());
+  const [initialLoadDone, setInitialLoadDone] = useState(false);
+  const [fetchError, setFetchError] = useState(false);
   const refreshRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const logsEndRef = useRef<HTMLDivElement>(null);
 
   const latestDeployment = deployments[0];
+  const hasNoDeployment = !appImageTag;
 
   const refreshData = useCallback(async () => {
     try {
@@ -92,9 +99,13 @@ export default function ObservabilityTab({
       setEvents(eventsRes.events);
       setK8sAvailable(podsRes.k8s_available);
       setLastRefreshed(new Date());
+      setFetchError(false);
     } catch (err) {
       // API not reachable — don't crash the tab
       console.error("Observability fetch error:", err);
+      setFetchError(true);
+    } finally {
+      setInitialLoadDone(true);
     }
   }, [tenantSlug, appSlug, accessToken]);
 
@@ -218,12 +229,34 @@ export default function ObservabilityTab({
           <h4 className="text-sm font-semibold text-gray-900 dark:text-white">Pod Status</h4>
         </div>
         {pods.length === 0 ? (
-          <div className="px-4 py-8 text-center text-gray-400 dark:text-[#555] text-sm">
-            {k8sAvailable === false
-              ? "Kubernetes cluster unavailable"
-              : latestDeployment?.status === "running"
-              ? "Loading pods..."
-              : "No pods running"}
+          <div className="px-4 py-8 text-center text-sm">
+            {hasNoDeployment ? (
+              <div className="space-y-2">
+                <Package className="w-6 h-6 mx-auto text-gray-300 dark:text-[#444]" />
+                <p className="text-gray-500 dark:text-[#666] font-medium">No deployment yet</p>
+                <p className="text-xs text-gray-400 dark:text-[#555]">Build your app first to see pod metrics.</p>
+              </div>
+            ) : fetchError || k8sAvailable === false ? (
+              <div className="space-y-2">
+                <AlertTriangle className="w-6 h-6 mx-auto text-amber-400" />
+                <p className="text-amber-500 font-medium">Cluster not reachable</p>
+                <button
+                  type="button"
+                  onClick={() => void refreshData()}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium text-gray-600 dark:text-[#999] border border-gray-200 dark:border-[#2e2e2e] hover:border-gray-400 dark:hover:border-[#444] transition-colors mt-1"
+                >
+                  <RefreshCw className="w-3 h-3" />
+                  Retry
+                </button>
+              </div>
+            ) : !initialLoadDone ? (
+              <div className="space-y-2">
+                <Loader2 className="w-5 h-5 mx-auto text-gray-400 dark:text-[#555] animate-spin" />
+                <p className="text-gray-400 dark:text-[#555]">Loading pods...</p>
+              </div>
+            ) : (
+              <p className="text-gray-400 dark:text-[#555]">No pods running</p>
+            )}
           </div>
         ) : (
           <div className="divide-y divide-gray-100 dark:divide-[#1e1e1e]">
@@ -428,6 +461,8 @@ export default function ObservabilityTab({
                       ? "bg-emerald-500"
                       : d.status === "failed"
                       ? "bg-red-500"
+                      : d.status === "built"
+                      ? "bg-purple-500"
                       : d.status === "building" || d.status === "deploying"
                       ? "bg-blue-500 animate-pulse"
                       : "bg-gray-400";
@@ -450,6 +485,8 @@ export default function ObservabilityTab({
                                 ? "destructive"
                                 : d.status === "building" || d.status === "deploying"
                                 ? "warning"
+                                : d.status === "built"
+                                ? "default"
                                 : "secondary"
                             }
                             className="text-xs"
