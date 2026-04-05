@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { signOut } from "next-auth/react";
+import { useSession, signOut } from "next-auth/react";
 import { useTheme } from "next-themes";
 import {
   LayoutDashboard,
@@ -44,8 +44,17 @@ interface AppShellProps {
 export function AppShell({ children, userEmail }: AppShellProps) {
   const pathname = usePathname();
   const { theme, setTheme } = useTheme();
+  const { data: session } = useSession();
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
+
+  // Auto-logout when Keycloak refresh token expires
+  useEffect(() => {
+    const s = session as typeof session & { error?: string };
+    if (s?.error === "RefreshTokenExpired" || s?.error === "RefreshTokenError") {
+      signOut({ callbackUrl: "/auth/signin" });
+    }
+  }, [session]);
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">

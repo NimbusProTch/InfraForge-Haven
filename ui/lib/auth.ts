@@ -117,6 +117,10 @@ export const authOptions: NextAuthOptions = {
       return session;
     },
   },
+  session: {
+    strategy: "jwt",
+    maxAge: 8 * 60 * 60, // 8 hours — Keycloak SSO Session Max must match
+  },
   pages: {
     signIn: "/auth/signin",
   },
