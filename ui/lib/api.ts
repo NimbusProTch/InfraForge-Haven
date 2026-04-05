@@ -546,6 +546,12 @@ export const api = {
       ),
     delete: (tenantSlug: string, appSlug: string, token?: string) =>
       apiFetch<void>(`/tenants/${tenantSlug}/apps/${appSlug}`, { method: "DELETE" }, token),
+    restart: (tenantSlug: string, appSlug: string, token?: string) =>
+      apiFetch<{ status: string; app_slug: string }>(
+        `/tenants/${tenantSlug}/apps/${appSlug}/restart`,
+        { method: "POST" },
+        token
+      ),
   },
   deployments: {
     list: (tenantSlug: string, appSlug: string, token?: string) =>
@@ -556,16 +562,26 @@ export const api = {
         {},
         token
       ),
-    build: (tenantSlug: string, appSlug: string, token?: string) =>
+    build: (
+      tenantSlug: string,
+      appSlug: string,
+      token?: string,
+      body?: { branch?: string; build_env_vars?: Record<string, string> }
+    ) =>
       apiFetch<Deployment>(
         `/tenants/${tenantSlug}/apps/${appSlug}/build`,
-        { method: "POST" },
+        { method: "POST", ...(body ? { body: JSON.stringify(body) } : {}) },
         token
       ),
-    deploy: (tenantSlug: string, appSlug: string, token?: string) =>
+    deploy: (
+      tenantSlug: string,
+      appSlug: string,
+      token?: string,
+      body?: { replicas?: number; resource_cpu_limit?: string; resource_memory_limit?: string }
+    ) =>
       apiFetch<Deployment>(
         `/tenants/${tenantSlug}/apps/${appSlug}/deploy`,
-        { method: "POST" },
+        { method: "POST", ...(body ? { body: JSON.stringify(body) } : {}) },
         token
       ),
     rollback: (tenantSlug: string, appSlug: string, deploymentId: string, token?: string) =>
@@ -618,6 +634,17 @@ export const api = {
       apiFetch<ManagedService>(
         `/tenants/${tenantSlug}/services`,
         { method: "POST", body: JSON.stringify(body) },
+        token
+      ),
+    update: (
+      tenantSlug: string,
+      serviceName: string,
+      body: { replicas?: number; storage?: string; cpu?: string; memory?: string; tier?: string },
+      token?: string
+    ) =>
+      apiFetch<ManagedService>(
+        `/tenants/${tenantSlug}/services/${serviceName}`,
+        { method: "PATCH", body: JSON.stringify(body) },
         token
       ),
     delete: (tenantSlug: string, serviceName: string, token?: string) =>

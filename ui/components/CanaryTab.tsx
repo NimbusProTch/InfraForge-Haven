@@ -108,7 +108,7 @@ export default function CanaryTab({ tenantSlug, appSlug, accessToken }: CanaryTa
   if (loading) {
     return (
       <div className="flex items-center justify-center py-16">
-        <Loader2 className="w-5 h-5 animate-spin text-zinc-600" />
+        <Loader2 className="w-5 h-5 animate-spin text-gray-400 dark:text-zinc-600" />
       </div>
     );
   }
@@ -119,20 +119,20 @@ export default function CanaryTab({ tenantSlug, appSlug, accessToken }: CanaryTa
   return (
     <div>
       <div className="flex items-center justify-between mb-5">
-        <p className="text-sm text-zinc-500">Gradually shift traffic between stable and canary deployments</p>
+        <p className="text-sm text-gray-500 dark:text-zinc-500">Gradually shift traffic between stable and canary deployments</p>
         <Badge variant={isEnabled ? "success" : "secondary"}>
           {isEnabled ? "Active" : "Disabled"}
         </Badge>
       </div>
 
       {/* Traffic split visualization */}
-      <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-5 mb-5">
+      <div className="bg-white dark:bg-zinc-900/50 border border-gray-200 dark:border-zinc-800 rounded-xl p-5 mb-5 shadow-sm">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-sm font-medium text-zinc-300">Traffic Distribution</h3>
+          <h3 className="text-sm font-medium text-gray-700 dark:text-zinc-300">Traffic Distribution</h3>
         </div>
 
         {/* Visual bar */}
-        <div className="w-full h-3 bg-zinc-800 rounded-full overflow-hidden flex mb-4">
+        <div className="w-full h-3 bg-gray-100 dark:bg-zinc-800 rounded-full overflow-hidden flex mb-4">
           <div
             className="h-full bg-emerald-500 transition-all duration-500"
             style={{ width: `${stableWeight}%` }}
@@ -150,18 +150,18 @@ export default function CanaryTab({ tenantSlug, appSlug, accessToken }: CanaryTa
           <div className="flex items-center gap-3">
             <div className="w-3 h-3 rounded-full bg-emerald-500" />
             <div>
-              <p className="text-sm font-medium text-zinc-200">Stable</p>
-              <p className="text-xs text-zinc-600 font-mono">
+              <p className="text-sm font-medium text-gray-800 dark:text-zinc-200">Stable</p>
+              <p className="text-xs text-gray-400 dark:text-zinc-600 font-mono">
                 {stableWeight}% traffic
                 {canary?.stable_image && ` · ${canary.stable_image.slice(0, 12)}`}
               </p>
             </div>
           </div>
           <div className="flex items-center gap-3">
-            <div className={`w-3 h-3 rounded-full ${isEnabled ? "bg-amber-500" : "bg-zinc-700"}`} />
+            <div className={`w-3 h-3 rounded-full ${isEnabled ? "bg-amber-500" : "bg-gray-400 dark:bg-zinc-700"}`} />
             <div>
-              <p className="text-sm font-medium text-zinc-200">Canary</p>
-              <p className="text-xs text-zinc-600 font-mono">
+              <p className="text-sm font-medium text-gray-800 dark:text-zinc-200">Canary</p>
+              <p className="text-xs text-gray-400 dark:text-zinc-600 font-mono">
                 {isEnabled ? `${canary?.canary_weight ?? 0}%` : "0%"} traffic
                 {canary?.canary_image && ` · ${canary.canary_image.slice(0, 12)}`}
               </p>
@@ -172,20 +172,20 @@ export default function CanaryTab({ tenantSlug, appSlug, accessToken }: CanaryTa
 
       {/* Controls */}
       {!isEnabled ? (
-        <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-5">
+        <div className="bg-white dark:bg-zinc-900/50 border border-gray-200 dark:border-zinc-800 rounded-xl p-5 shadow-sm">
           <div className="flex items-center gap-3 mb-4">
-            <GitCompare className="w-5 h-5 text-zinc-500" />
+            <GitCompare className="w-5 h-5 text-gray-500 dark:text-zinc-500" />
             <div>
-              <h3 className="text-sm font-medium text-zinc-300">Enable Canary Deployments</h3>
-              <p className="text-xs text-zinc-600 mt-0.5">
+              <h3 className="text-sm font-medium text-gray-700 dark:text-zinc-300">Enable Canary Deployments</h3>
+              <p className="text-xs text-gray-400 dark:text-zinc-600 mt-0.5">
                 Route a percentage of traffic to a new version before full rollout.
               </p>
             </div>
           </div>
 
           <div className="mb-4">
-            <label className="block text-xs font-medium text-zinc-400 mb-1.5">
-              Initial canary weight: <span className="text-zinc-200">{weight}%</span>
+            <label className="block text-xs font-medium text-gray-500 dark:text-zinc-400 mb-1.5">
+              Initial canary weight: <span className="text-gray-800 dark:text-zinc-200">{weight}%</span>
             </label>
             <input
               type="range"
@@ -193,9 +193,9 @@ export default function CanaryTab({ tenantSlug, appSlug, accessToken }: CanaryTa
               max={50}
               value={weight}
               onChange={(e) => setWeight(Number(e.target.value))}
-              className="w-full h-1.5 bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-amber-500"
+              className="w-full h-1.5 bg-gray-300 dark:bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-amber-500"
             />
-            <div className="flex justify-between text-xs text-zinc-600 mt-1">
+            <div className="flex justify-between text-xs text-gray-400 dark:text-zinc-600 mt-1">
               <span>1%</span>
               <span>50%</span>
             </div>
@@ -213,8 +213,8 @@ export default function CanaryTab({ tenantSlug, appSlug, accessToken }: CanaryTa
       ) : (
         <div className="space-y-4">
           {/* Weight slider */}
-          <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-5">
-            <label className="block text-xs font-medium text-zinc-400 mb-2">
+          <div className="bg-white dark:bg-zinc-900/50 border border-gray-200 dark:border-zinc-800 rounded-xl p-5 shadow-sm">
+            <label className="block text-xs font-medium text-gray-500 dark:text-zinc-400 mb-2">
               Canary traffic weight: <span className="text-amber-400 font-mono">{weight}%</span>
             </label>
             <div className="flex items-center gap-3">
@@ -224,12 +224,12 @@ export default function CanaryTab({ tenantSlug, appSlug, accessToken }: CanaryTa
                 max={100}
                 value={weight}
                 onChange={(e) => setWeight(Number(e.target.value))}
-                className="flex-1 h-1.5 bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-amber-500"
+                className="flex-1 h-1.5 bg-gray-300 dark:bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-amber-500"
               />
               <button
                 onClick={updateWeight}
                 disabled={updating || weight === (canary?.canary_weight ?? 0)}
-                className="px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-xs font-medium text-zinc-300 transition-colors disabled:opacity-30"
+                className="px-3 py-1.5 rounded-lg bg-gray-100 dark:bg-zinc-800 hover:bg-gray-200 dark:hover:bg-zinc-700 text-xs font-medium text-gray-700 dark:text-zinc-300 transition-colors disabled:opacity-30"
               >
                 {updating ? <Loader2 className="w-3 h-3 animate-spin" /> : "Apply"}
               </button>
@@ -268,7 +268,7 @@ export default function CanaryTab({ tenantSlug, appSlug, accessToken }: CanaryTa
           <button
             onClick={() => toggleCanary(false)}
             disabled={updating}
-            className="w-full text-center text-xs text-zinc-600 hover:text-zinc-400 py-2 transition-colors"
+            className="w-full text-center text-xs text-gray-400 dark:text-zinc-600 hover:text-gray-500 dark:hover:text-zinc-400 py-2 transition-colors"
           >
             Disable canary deployments
           </button>

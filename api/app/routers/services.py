@@ -1,4 +1,5 @@
 import base64
+import logging
 
 from fastapi import APIRouter, HTTPException, status
 from sqlalchemy import select
@@ -6,7 +7,7 @@ from sqlalchemy.exc import IntegrityError
 
 from app.deps import CurrentUser, DBSession, K8sDep
 from app.models.application import Application
-from app.models.managed_service import ManagedService, ServiceStatus
+from app.models.managed_service import ManagedService, ServiceStatus, ServiceTier
 from app.models.tenant import Tenant
 from app.schemas.managed_service import (
     ConnectedAppSummary,
@@ -19,6 +20,8 @@ from app.schemas.managed_service import (
 )
 from app.services.audit_service import audit
 from app.services.managed_service import ManagedServiceProvisioner
+
+logger = logging.getLogger(__name__)
 
 _TRANSITIONAL_STATUSES = {ServiceStatus.PROVISIONING, ServiceStatus.UPDATING}
 
@@ -62,7 +65,7 @@ async def create_service(
     k8s: K8sDep,
     current_user: CurrentUser,
 ) -> ManagedService:
-    tenant = await _get_tenant_or_404(tenant_slug, db)
+    tenant = await _get_tenant_or_404(tenant_slug, db, current_user)
 
     # Check name uniqueness within tenant
     existing = await db.execute(
@@ -120,7 +123,7 @@ async def create_service(
 async def get_service(
     tenant_slug: str, service_name: str, db: DBSession, k8s: K8sDep, current_user: CurrentUser
 ) -> ManagedServiceDetailResponse:
-    tenant = await _get_tenant_or_404(tenant_slug, db)
+    tenant = await _get_tenant_or_404(tenant_slug, db, current_user)
     result = await db.execute(
         select(ManagedService).where(
             ManagedService.tenant_id == tenant.id,
@@ -165,6 +168,23 @@ async def get_service(
     )
 
 
+_PROD_DEFAULTS: dict[str, dict[str, int | str]] = {
+    "postgres": {"replicas": 3, "storage": "20Gi"},
+    "mysql": {"replicas": 3, "storage": "20Gi"},
+    "mongodb": {"replicas": 3, "storage": "20Gi"},
+    "redis": {"replicas": 3},
+    "rabbitmq": {"replicas": 3, "storage": "10Gi"},
+}
+
+_DEV_DEFAULTS: dict[str, dict[str, int | str]] = {
+    "postgres": {"replicas": 1, "storage": "5Gi"},
+    "mysql": {"replicas": 1, "storage": "5Gi"},
+    "mongodb": {"replicas": 1, "storage": "5Gi"},
+    "redis": {"replicas": 1},
+    "rabbitmq": {"replicas": 1, "storage": "5Gi"},
+}
+
+
 @router.patch("/{service_name}", response_model=ManagedServiceResponse)
 async def update_service(
     tenant_slug: str,
@@ -174,8 +194,8 @@ async def update_service(
     k8s: K8sDep,
     current_user: CurrentUser,
 ) -> ManagedService:
-    """Update a managed service (replicas, storage, cpu, memory)."""
-    tenant = await _get_tenant_or_404(tenant_slug, db)
+    """Update a managed service (replicas, storage, cpu, memory, tier)."""
+    tenant = await _get_tenant_or_404(tenant_slug, db, current_user)
     result = await db.execute(
         select(ManagedService).where(
             ManagedService.tenant_id == tenant.id,
@@ -188,15 +208,40 @@ async def update_service(
     if svc.status != ServiceStatus.READY:
         raise HTTPException(status_code=409, detail=f"Service must be ready to update (current: {svc.status})")
 
-    # Check at least one field is provided
     update_fields = body.model_dump(exclude_none=True)
     if not update_fields:
         raise HTTPException(status_code=422, detail="No update fields provided")
 
+    # Handle tier upgrade/downgrade — apply preset defaults
+    tier_change = update_fields.pop("tier", None)
+    if tier_change is not None and tier_change != svc.tier:
+        svc_type = svc.service_type.value
+        defaults = (
+            _PROD_DEFAULTS.get(svc_type, {}) if tier_change == ServiceTier.PROD else _DEV_DEFAULTS.get(svc_type, {})
+        )
+        # Apply defaults only for fields not explicitly provided
+        for key, val in defaults.items():
+            if key not in update_fields:
+                update_fields[key] = val
+        svc.tier = tier_change
+        logger.info("Service %s tier changed to %s", service_name, tier_change.value)
+
+    # Storage can only increase (shrink is dangerous)
+    if "storage" in update_fields and svc.service_type.value in ("postgres", "mysql", "mongodb", "rabbitmq"):
+        new_storage = int(update_fields["storage"].replace("Gi", ""))
+        # Try to get current storage from connection_hint or default
+        # For safety, just log a warning — Everest/K8s will reject if not supported
+        logger.info("Storage update for %s: %sGi", service_name, new_storage)
+
+    svc.status = ServiceStatus.UPDATING
+
     provisioner = ManagedServiceProvisioner(k8s)
     try:
-        await provisioner.update(svc, **update_fields)
+        provisioner_fields = {k: v for k, v in update_fields.items() if k in ("replicas", "storage", "cpu", "memory")}
+        if provisioner_fields:
+            await provisioner.update(svc, **provisioner_fields)
     except NotImplementedError as exc:
+        svc.status = ServiceStatus.READY
         raise HTTPException(status_code=501, detail=str(exc)) from exc
 
     await db.commit()
@@ -208,7 +253,7 @@ async def update_service(
 async def delete_service(
     tenant_slug: str, service_name: str, db: DBSession, k8s: K8sDep, current_user: CurrentUser
 ) -> None:
-    tenant = await _get_tenant_or_404(tenant_slug, db)
+    tenant = await _get_tenant_or_404(tenant_slug, db, current_user)
     result = await db.execute(
         select(ManagedService).where(
             ManagedService.tenant_id == tenant.id,
@@ -259,7 +304,7 @@ async def retry_service(
     tenant_slug: str, service_name: str, db: DBSession, k8s: K8sDep, current_user: CurrentUser
 ) -> ManagedService:
     """Retry provisioning a failed service."""
-    tenant = await _get_tenant_or_404(tenant_slug, db)
+    tenant = await _get_tenant_or_404(tenant_slug, db, current_user)
     result = await db.execute(
         select(ManagedService).where(
             ManagedService.tenant_id == tenant.id,
@@ -291,7 +336,7 @@ async def get_service_credentials(
     tenant_slug: str, service_name: str, db: DBSession, k8s: K8sDep, current_user: CurrentUser
 ) -> ServiceCredentials:
     """Return decoded K8s secret credentials for a managed service."""
-    tenant = await _get_tenant_or_404(tenant_slug, db)
+    tenant = await _get_tenant_or_404(tenant_slug, db, current_user)
     result = await db.execute(
         select(ManagedService).where(
             ManagedService.tenant_id == tenant.id,

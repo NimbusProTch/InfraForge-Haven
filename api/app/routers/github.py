@@ -3,6 +3,7 @@ import secrets
 from urllib.parse import quote, urlencode
 
 import httpx
+import redis.asyncio as aioredis
 from fastapi import APIRouter, Header, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import select
@@ -19,6 +20,47 @@ GITHUB_API = "https://api.github.com"
 GITHUB_AUTH_URL = "https://github.com/login/oauth/authorize"
 GITHUB_TOKEN_URL = "https://github.com/login/oauth/access_token"
 _HEADERS = {"Accept": "application/vnd.github.v3+json"}
+
+# OAuth state storage — Redis-backed with in-memory fallback
+_oauth_redis: aioredis.Redis | None = None
+_oauth_states: dict[str, str] = {}  # fallback: state -> tenant_slug
+OAUTH_STATE_TTL = 600  # 10 minutes
+
+
+async def _get_oauth_redis() -> aioredis.Redis | None:
+    global _oauth_redis  # noqa: PLW0603
+    if _oauth_redis is not None:
+        return _oauth_redis
+    if settings.redis_url:
+        try:
+            _oauth_redis = aioredis.from_url(settings.redis_url, decode_responses=True)
+            await _oauth_redis.ping()
+            return _oauth_redis
+        except Exception:
+            logger.warning("Redis unavailable for OAuth state, using in-memory fallback")
+            _oauth_redis = None
+    return None
+
+
+async def _store_oauth_state(state: str, context: str) -> None:
+    r = await _get_oauth_redis()
+    if r:
+        await r.setex(f"oauth:state:{state}", OAUTH_STATE_TTL, context)
+    else:
+        _oauth_states[state] = context
+
+
+async def _validate_oauth_state(state: str) -> str | None:
+    """Validate and consume an OAuth state token. Returns context or None."""
+    r = await _get_oauth_redis()
+    if r:
+        key = f"oauth:state:{state}"
+        context = await r.get(key)
+        if context:
+            await r.delete(key)  # one-time use
+        return context
+    else:
+        return _oauth_states.pop(state, None)
 
 
 def _resolve_token(authorization: str | None, token: str | None) -> str:
@@ -38,12 +80,15 @@ def _auth_headers(token: str) -> dict:
 
 
 @router.get("/auth/url")
-async def get_auth_url() -> dict:
+async def get_auth_url(tenant_slug: str = Query("", description="Tenant slug for CSRF binding")) -> dict:
     """Return a GitHub OAuth authorization URL for the Connect GitHub popup flow."""
     if not settings.github_client_id:
         raise HTTPException(status_code=503, detail="GitHub OAuth not configured (GITHUB_CLIENT_ID missing)")
 
-    state = secrets.token_urlsafe(16)
+    state = secrets.token_urlsafe(32)
+    # Store state in Redis (or in-memory fallback) for CSRF validation
+    await _store_oauth_state(state, tenant_slug)
+
     # Build scope separately: urlencode encodes colon as %3A which GitHub
     # does not accept for scopes like "read:user". Use quote() with safe=":"
     # to preserve the colon while encoding the space as %20.
@@ -55,15 +100,27 @@ async def get_auth_url() -> dict:
     }
     query = urlencode(params)
     url = f"{GITHUB_AUTH_URL}?{query}&scope={scope}"
-    logger.info("Generated GitHub OAuth URL for state=%s", state[:8])
+    logger.info("Generated GitHub OAuth URL for state=%s tenant=%s", state[:8], tenant_slug)
     return {"url": url, "state": state}
 
 
 @router.get("/auth/callback")
-async def oauth_callback(code: str = Query(..., description="OAuth code from GitHub")) -> dict:
-    """Exchange a GitHub OAuth code for an access token."""
+async def oauth_callback(
+    code: str = Query(..., description="OAuth code from GitHub"),
+    state: str = Query(..., description="OAuth state for CSRF validation"),
+) -> dict:
+    """Exchange a GitHub OAuth code for an access token.
+
+    Validates the state parameter against the stored value to prevent CSRF attacks.
+    """
     if not settings.github_client_id or not settings.github_client_secret:
         raise HTTPException(status_code=503, detail="GitHub OAuth not configured")
+
+    # CSRF validation: state must match a previously issued token
+    context = await _validate_oauth_state(state)
+    if context is None:
+        logger.warning("OAuth callback with invalid/expired state=%s", state[:8] if state else "empty")
+        raise HTTPException(status_code=400, detail="Invalid or expired OAuth state token")
 
     async with httpx.AsyncClient() as client:
         response = await client.post(

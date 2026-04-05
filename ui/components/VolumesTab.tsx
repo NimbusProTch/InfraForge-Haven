@@ -94,7 +94,7 @@ export default function VolumesTab({ tenantSlug, appSlug, accessToken }: Volumes
   if (loading) {
     return (
       <div className="flex items-center justify-center py-16">
-        <Loader2 className="w-5 h-5 animate-spin text-zinc-600" />
+        <Loader2 className="w-5 h-5 animate-spin text-gray-400 dark:text-zinc-600" />
       </div>
     );
   }
@@ -102,7 +102,7 @@ export default function VolumesTab({ tenantSlug, appSlug, accessToken }: Volumes
   return (
     <div>
       <div className="flex items-center justify-between mb-5">
-        <p className="text-sm text-zinc-500">Persistent storage volumes backed by Longhorn</p>
+        <p className="text-sm text-gray-500 dark:text-zinc-500">Persistent storage volumes backed by Longhorn</p>
         <button
           onClick={() => setShowCreate(true)}
           className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-medium transition-colors"
@@ -115,33 +115,33 @@ export default function VolumesTab({ tenantSlug, appSlug, accessToken }: Volumes
       {/* Create modal */}
       {showCreate && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
-          <div className="bg-zinc-900 border border-zinc-800 rounded-xl w-full max-w-md mx-4 shadow-2xl overflow-hidden">
-            <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800">
+          <div className="bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-xl w-full max-w-md mx-4 shadow-2xl overflow-hidden">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-zinc-800">
               <div className="flex items-center gap-2">
                 <HardDrive className="w-4 h-4 text-cyan-500" />
-                <h2 className="text-sm font-semibold text-zinc-100">Create Volume</h2>
+                <h2 className="text-sm font-semibold text-gray-900 dark:text-zinc-100">Create Volume</h2>
               </div>
-              <button onClick={() => setShowCreate(false)} className="text-zinc-600 hover:text-zinc-300 transition-colors">
+              <button onClick={() => setShowCreate(false)} className="text-gray-400 dark:text-zinc-600 hover:text-gray-700 dark:hover:text-gray-700 dark:text-zinc-300 transition-colors">
                 <X className="w-4 h-4" />
               </button>
             </div>
 
             <div className="p-5 space-y-4">
               <div>
-                <label className="block text-xs font-medium text-zinc-400 mb-1.5">Name</label>
+                <label className="block text-xs font-medium text-gray-500 dark:text-zinc-400 mb-1.5">Name</label>
                 <input
                   type="text"
                   value={newName}
                   onChange={(e) => setNewName(e.target.value)}
                   placeholder="app-data"
-                  className="w-full px-3 py-2 rounded-lg border border-zinc-700 bg-zinc-800 text-sm text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-cyan-600 focus:ring-1 focus:ring-cyan-600/30 font-mono"
+                  className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-zinc-700 bg-gray-100 dark:bg-zinc-800 text-sm text-gray-900 dark:text-zinc-100 placeholder:text-gray-400 dark:placeholder:text-zinc-600 focus:outline-none focus:border-cyan-600 focus:ring-1 focus:ring-cyan-600/30 font-mono"
                   autoFocus
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-zinc-400 mb-1.5">
-                  Size: <span className="text-zinc-200 font-mono">{newSize} GiB</span>
+                <label className="block text-xs font-medium text-gray-500 dark:text-zinc-400 mb-1.5">
+                  Size: <span className="text-gray-800 dark:text-zinc-200 font-mono">{newSize} GiB</span>
                 </label>
                 <input
                   type="range"
@@ -151,14 +151,14 @@ export default function VolumesTab({ tenantSlug, appSlug, accessToken }: Volumes
                   onChange={(e) => setNewSize(Number(e.target.value))}
                   className="w-full h-1.5 bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-cyan-500"
                 />
-                <div className="flex justify-between text-xs text-zinc-600 mt-1">
+                <div className="flex justify-between text-xs text-gray-400 dark:text-zinc-600 mt-1">
                   <span>1 GiB</span>
                   <span>100 GiB</span>
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-zinc-400 mb-1.5">Access Mode</label>
+                <label className="block text-xs font-medium text-gray-500 dark:text-zinc-400 mb-1.5">Access Mode</label>
                 <div className="space-y-2">
                   {Object.entries(ACCESS_MODE_LABELS).map(([mode, label]) => (
                     <button
@@ -167,7 +167,7 @@ export default function VolumesTab({ tenantSlug, appSlug, accessToken }: Volumes
                       className={`w-full text-left px-3 py-2.5 rounded-lg border text-xs transition-colors ${
                         newAccessMode === mode
                           ? "border-cyan-600 bg-cyan-600/10 text-cyan-400"
-                          : "border-zinc-800 bg-zinc-800/50 text-zinc-500 hover:border-zinc-700"
+                          : "border-gray-200 dark:border-zinc-800 bg-gray-50 dark:bg-zinc-800/50 text-gray-500 dark:text-zinc-500 hover:border-gray-400 dark:hover:border-gray-300 dark:border-zinc-700"
                       }`}
                     >
                       <span className="font-medium">{label}</span>
@@ -177,20 +177,20 @@ export default function VolumesTab({ tenantSlug, appSlug, accessToken }: Volumes
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-zinc-400 mb-1.5">Mount Path</label>
+                <label className="block text-xs font-medium text-gray-500 dark:text-zinc-400 mb-1.5">Mount Path</label>
                 <input
                   type="text"
                   value={newMountPath}
                   onChange={(e) => setNewMountPath(e.target.value)}
                   placeholder="/data"
-                  className="w-full px-3 py-2 rounded-lg border border-zinc-700 bg-zinc-800 text-sm text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-cyan-600 focus:ring-1 focus:ring-cyan-600/30 font-mono"
+                  className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-zinc-700 bg-gray-100 dark:bg-zinc-800 text-sm text-gray-900 dark:text-zinc-100 placeholder:text-gray-400 dark:placeholder:text-zinc-600 focus:outline-none focus:border-cyan-600 focus:ring-1 focus:ring-cyan-600/30 font-mono"
                 />
               </div>
 
               <div className="flex justify-end gap-2 pt-2">
                 <button
                   onClick={() => setShowCreate(false)}
-                  className="px-3 py-1.5 rounded-lg text-xs font-medium text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800 transition-colors"
+                  className="px-3 py-1.5 rounded-lg text-xs font-medium text-gray-500 dark:text-zinc-500 hover:text-gray-900 dark:hover:text-gray-800 dark:text-zinc-200 hover:bg-gray-100 dark:hover:bg-gray-100 dark:bg-zinc-800 transition-colors"
                 >
                   Cancel
                 </button>
@@ -210,17 +210,17 @@ export default function VolumesTab({ tenantSlug, appSlug, accessToken }: Volumes
 
       {/* Volume list */}
       {volumes.length === 0 ? (
-        <div className="text-center py-16 border border-dashed border-zinc-800 rounded-xl">
-          <HardDrive className="w-8 h-8 mx-auto mb-2 text-zinc-700" />
-          <p className="text-sm text-zinc-500">No persistent volumes.</p>
-          <p className="text-xs text-zinc-600 mt-1">Attach a volume for data that survives pod restarts.</p>
+        <div className="text-center py-16 border border-dashed border-gray-200 dark:border-zinc-800 rounded-xl">
+          <HardDrive className="w-8 h-8 mx-auto mb-2 text-gray-400 dark:text-zinc-700" />
+          <p className="text-sm text-gray-500 dark:text-zinc-500">No persistent volumes.</p>
+          <p className="text-xs text-gray-400 dark:text-zinc-600 mt-1">Attach a volume for data that survives pod restarts.</p>
         </div>
       ) : (
         <div className="space-y-3">
           {volumes.map((vol) => (
             <div
               key={vol.name}
-              className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-4 hover:border-zinc-700 transition-colors"
+              className="bg-white dark:bg-zinc-900/50 border border-gray-200 dark:border-zinc-800 rounded-xl shadow-sm p-4 hover:border-gray-400 dark:hover:border-gray-300 dark:border-zinc-700 transition-colors"
             >
               <div className="flex items-start justify-between">
                 <div className="flex items-center gap-3">
@@ -229,10 +229,10 @@ export default function VolumesTab({ tenantSlug, appSlug, accessToken }: Volumes
                   </div>
                   <div>
                     <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium text-zinc-200 font-mono">{vol.name}</span>
+                      <span className="text-sm font-medium text-gray-800 dark:text-zinc-200 font-mono">{vol.name}</span>
                       <Badge variant="secondary">{vol.status ?? "Bound"}</Badge>
                     </div>
-                    <div className="flex items-center gap-3 mt-1 text-xs text-zinc-600">
+                    <div className="flex items-center gap-3 mt-1 text-xs text-gray-400 dark:text-zinc-600">
                       <span className="font-mono">{vol.size_gi} GiB</span>
                       <span>{vol.access_mode}</span>
                     </div>
@@ -242,7 +242,7 @@ export default function VolumesTab({ tenantSlug, appSlug, accessToken }: Volumes
                 <button
                   onClick={() => deleteVolume(vol.name)}
                   disabled={deleting === vol.name}
-                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium text-zinc-600 hover:text-red-400 hover:bg-red-950/30 transition-colors disabled:opacity-50"
+                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium text-gray-400 dark:text-zinc-600 hover:text-red-400 hover:bg-red-950/30 transition-colors disabled:opacity-50"
                 >
                   {deleting === vol.name ? (
                     <Loader2 className="w-3 h-3 animate-spin" />

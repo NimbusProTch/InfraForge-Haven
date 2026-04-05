@@ -176,7 +176,7 @@ export default function ObservabilityTab({
             <span className="text-xs text-gray-500 dark:text-[#666]">Avg CPU</span>
           </div>
           <p className="text-lg font-semibold text-gray-900 dark:text-white font-mono">
-            {avgCpu > 0 ? `${avgCpu}%` : "—"}
+            {pods.length === 0 ? "N/A" : avgCpu > 0 ? `${avgCpu}%` : "N/A"}
           </p>
           {avgCpu > 0 && <UsageBar percent={avgCpu} color="bg-blue-500" />}
         </div>
@@ -186,7 +186,7 @@ export default function ObservabilityTab({
             <span className="text-xs text-gray-500 dark:text-[#666]">Avg Memory</span>
           </div>
           <p className="text-lg font-semibold text-gray-900 dark:text-white font-mono">
-            {avgMemory > 0 ? `${avgMemory}%` : "—"}
+            {pods.length === 0 ? "N/A" : avgMemory > 0 ? `${avgMemory}%` : "N/A"}
           </p>
           {avgMemory > 0 && <UsageBar percent={avgMemory} color="bg-purple-500" />}
         </div>
@@ -196,9 +196,9 @@ export default function ObservabilityTab({
             <span className="text-xs text-gray-500 dark:text-[#666]">Pods</span>
           </div>
           <p className="text-lg font-semibold text-gray-900 dark:text-white font-mono">
-            {pods.filter((p) => p.status === "Running").length}/{pods.length}
+            {pods.length === 0 ? "No pods" : `${pods.filter((p) => p.status === "Running").length}/${pods.length}`}
           </p>
-          <p className="text-[10px] text-gray-400 dark:text-[#555]">ready</p>
+          <p className="text-[10px] text-gray-400 dark:text-[#555]">{pods.length > 0 ? "ready" : ""}</p>
         </div>
         <div className="bg-white dark:bg-[#141414] border border-gray-200 dark:border-[#222] rounded-lg px-4 py-3">
           <div className="flex items-center gap-1.5 mb-2">

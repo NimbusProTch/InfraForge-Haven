@@ -161,6 +161,13 @@ export default function NewAppPage() {
   }
 
   async function disconnectGitHub() {
+    // Clear server-side token first — only clear local state on success
+    try {
+      await api.github.disconnect(tenantSlug, s?.accessToken);
+    } catch (err) {
+      setReposError(err instanceof Error ? err.message : "Failed to disconnect. Please try again.");
+      return;
+    }
     localStorage.removeItem(GITHUB_TOKEN_KEY);
     setGithubToken(null);
     setRepos([]);
@@ -169,27 +176,30 @@ export default function NewAppPage() {
     setRepoUrl("");
     setBranch("main");
     setReposError("");
-    // Also clear server-side token
-    try {
-      await api.github.disconnect(tenantSlug, s?.accessToken);
-    } catch {
-      // ignore — localStorage already cleared
-    }
   }
 
+  const branchAbortRef = useRef<AbortController | null>(null);
+
   async function loadBranches(repo: GitHubRepo, token: string) {
+    // Cancel any in-flight branch request to prevent race conditions
+    branchAbortRef.current?.abort();
+    const controller = new AbortController();
+    branchAbortRef.current = controller;
+
     setBranchesLoading(true);
     setBranches([]);
     try {
       const [owner, repoName] = repo.full_name.split("/");
       const data = await api.github.branches(owner, repoName, token);
+      if (controller.signal.aborted) return; // stale response
       setBranches(data);
       const defaultBranch = data.find((b) => b.name === repo.default_branch) ?? data[0];
       if (defaultBranch) setBranch(defaultBranch.name);
     } catch {
+      if (controller.signal.aborted) return;
       // fall through — branch text input still available
     } finally {
-      setBranchesLoading(false);
+      if (!controller.signal.aborted) setBranchesLoading(false);
     }
   }
 

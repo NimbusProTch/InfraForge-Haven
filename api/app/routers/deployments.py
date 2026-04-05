@@ -4,6 +4,7 @@ import uuid
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, status
 from fastapi.responses import StreamingResponse
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select
 
 from app.config import settings
@@ -181,6 +182,37 @@ async def get_build_status(
     }
 
 
+class BuildRequest(BaseModel):
+    """Optional request body for build trigger."""
+
+    branch: str | None = Field(None, max_length=255, description="Branch override (uses app default if omitted)")
+    build_env_vars: dict[str, str] | None = Field(None, description="Build-time environment variables")
+
+    @field_validator("build_env_vars")
+    @classmethod
+    def validate_env_vars(cls, v: dict[str, str] | None) -> dict[str, str] | None:
+        if v is None:
+            return v
+        if len(v) > 50:
+            raise ValueError("Maximum 50 build environment variables allowed")
+        for key, val in v.items():
+            if len(key) > 256:
+                raise ValueError(f"Env var key too long (max 256): {key[:20]}...")
+            if len(val) > 32768:
+                raise ValueError(f"Env var value too long (max 32KB): {key}")
+        return v
+
+
+class DeployRequest(BaseModel):
+    """Optional request body for deploy trigger."""
+
+    replicas: int | None = Field(None, ge=1, le=10, description="Override replica count")
+    resource_cpu_limit: str | None = Field(None, pattern=r"^\d+m?$", description="CPU limit (e.g. 500m, 1)")
+    resource_memory_limit: str | None = Field(
+        None, pattern=r"^\d+(Mi|Gi)$", description="Memory limit (e.g. 512Mi, 1Gi)"
+    )
+
+
 @router.post("/build", response_model=DeploymentResponse, status_code=status.HTTP_202_ACCEPTED)
 async def trigger_build(
     tenant_slug: str,
@@ -191,14 +223,22 @@ async def trigger_build(
     argocd: ArgoCDDep,
     background_tasks: BackgroundTasks,
     current_user: CurrentUser,
+    body: BuildRequest | None = None,
 ) -> Deployment:
     """Manually trigger a full build + deploy pipeline.
 
-    The GitHub token is retrieved from the tenant's stored token in the database
-    rather than being passed as a query parameter.
+    Accepts optional branch override and build-time environment variables.
+    The GitHub token is retrieved from the tenant's stored token in the database.
     """
     tenant = await _get_tenant_or_404(tenant_slug, db, current_user)
     app = await _get_app_or_404(tenant.id, app_slug, db)
+
+    branch = (body.branch if body and body.branch else None) or app.branch
+    build_env_vars = (body.build_env_vars if body else None) or {}
+
+    # Merge build env vars with app env vars (build vars take precedence)
+    env_vars = dict(app.env_vars)
+    env_vars.update(build_env_vars)
 
     deployment = Deployment(
         application_id=app.id,
@@ -214,13 +254,13 @@ async def trigger_build(
         deployment_id=deployment.id,
         app_id=app.id,
         repo_url=app.repo_url,
-        branch=app.branch,
+        branch=branch,
         commit_sha="manual",
         app_slug=app.slug,
         tenant_slug=tenant.slug,
         namespace=tenant.namespace,
         tenant_id=tenant.id,
-        env_vars=dict(app.env_vars),
+        env_vars=env_vars,
         replicas=app.replicas,
         port=app.port,
         session_factory=get_session_factory(),
@@ -246,7 +286,7 @@ async def trigger_build(
         user_id=current_user.get("sub", ""),
         resource_type="deployment",
         resource_id=str(deployment.id),
-        extra={"app_slug": app.slug},
+        extra={"app_slug": app.slug, "branch": branch, "build_env_vars": list(build_env_vars.keys())},
     )
 
     return deployment
@@ -259,8 +299,12 @@ async def trigger_deploy(
     db: DBSession,
     k8s: K8sDep,
     current_user: CurrentUser,
+    body: DeployRequest | None = None,
 ) -> Deployment:
-    """Manually trigger a deployment for the current image_tag."""
+    """Manually trigger a deployment for the current image_tag.
+
+    Accepts optional replicas and resource limit overrides.
+    """
     tenant = await _get_tenant_or_404(tenant_slug, db, current_user)
     app = await _get_app_or_404(tenant.id, app_slug, db)
 
@@ -269,6 +313,17 @@ async def trigger_deploy(
             status_code=status.HTTP_409_CONFLICT,
             detail="No image built for this application yet. Push a commit to trigger a build.",
         )
+
+    # Apply deploy-time overrides to the app record
+    if body:
+        if body.replicas is not None:
+            app.replicas = body.replicas
+        if body.resource_cpu_limit is not None:
+            app.resource_cpu_limit = body.resource_cpu_limit
+        if body.resource_memory_limit is not None:
+            app.resource_memory_limit = body.resource_memory_limit
+        await db.commit()
+        await db.refresh(app)
 
     deployment = Deployment(
         application_id=app.id,
@@ -306,7 +361,7 @@ async def trigger_deploy(
         user_id=current_user.get("sub", ""),
         resource_type="deployment",
         resource_id=str(deployment.id),
-        extra={"app_slug": app.slug, "image_tag": app.image_tag},
+        extra={"app_slug": app.slug, "image_tag": app.image_tag, "replicas": app.replicas},
     )
 
     return deployment
@@ -496,15 +551,25 @@ async def stream_logs(
                 if latest_deployment.build_job_name:
                     yield f"data: [build job: {latest_deployment.build_job_name}]\n\n"
                     # Stream build pod logs from haven-builds namespace
+                    # Poll for pod to appear (up to 60s) with heartbeats
+                    build_pod = None
+                    phase = None
                     try:
-                        build_pods = await asyncio.to_thread(
-                            k8s.core_v1.list_namespaced_pod,
-                            namespace=settings.build_namespace,
-                            label_selector=f"job-name={latest_deployment.build_job_name}",
-                        )
-                        if build_pods.items:
-                            build_pod = build_pods.items[0].metadata.name
-                            phase = build_pods.items[0].status.phase
+                        for _wait in range(20):  # 20 * 3s = 60s max
+                            build_pods = await asyncio.to_thread(
+                                k8s.core_v1.list_namespaced_pod,
+                                namespace=settings.build_namespace,
+                                label_selector=f"job-name={latest_deployment.build_job_name}",
+                            )
+                            if build_pods.items:
+                                build_pod = build_pods.items[0].metadata.name
+                                phase = build_pods.items[0].status.phase
+                                break
+                            yield ": heartbeat\n\n"
+                            yield "data: [waiting for build pod to start...]\n\n"
+                            await asyncio.sleep(3)
+
+                        if build_pod and phase:
                             yield f"data: [build pod: {build_pod} ({phase})]\n\n"
                             if phase in ("Running", "Succeeded", "Failed"):
                                 # Try each container in order
@@ -524,7 +589,7 @@ async def stream_logs(
                                     except Exception:  # noqa: BLE001
                                         pass  # container may not have started yet
                         else:
-                            yield "data: [waiting for build pod to start...]\n\n"
+                            yield "data: [build pod did not start within 60s]\n\n"
                     except Exception as exc:  # noqa: BLE001
                         yield f"data: [could not fetch build logs: {exc}]\n\n"
                 yield "data: [end]\n\n"

@@ -29,7 +29,7 @@ function CopyButton({ text }: { text: string }) {
         setCopied(true);
         setTimeout(() => setCopied(false), 1500);
       }}
-      className="text-zinc-600 hover:text-zinc-300 transition-colors"
+      className="text-gray-400 dark:text-zinc-600 hover:text-gray-700 dark:hover:text-gray-700 dark:text-zinc-300 transition-colors"
     >
       {copied ? <Check className="w-3 h-3 text-emerald-500" /> : <Copy className="w-3 h-3" />}
     </button>
@@ -123,7 +123,7 @@ export default function DomainsTab({ tenantSlug, appSlug, accessToken }: Domains
   if (loading) {
     return (
       <div className="flex items-center justify-center py-16">
-        <Loader2 className="w-5 h-5 animate-spin text-zinc-600" />
+        <Loader2 className="w-5 h-5 animate-spin text-gray-400 dark:text-zinc-600" />
       </div>
     );
   }
@@ -131,7 +131,7 @@ export default function DomainsTab({ tenantSlug, appSlug, accessToken }: Domains
   return (
     <div>
       <div className="flex items-center justify-between mb-5">
-        <p className="text-sm text-zinc-500">Custom domains with automatic SSL via Let&apos;s Encrypt</p>
+        <p className="text-sm text-gray-500 dark:text-zinc-500">Custom domains with automatic SSL via Let&apos;s Encrypt</p>
         <button
           onClick={() => setShowAdd(true)}
           className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-medium transition-colors"
@@ -144,46 +144,46 @@ export default function DomainsTab({ tenantSlug, appSlug, accessToken }: Domains
       {/* Add domain modal */}
       {showAdd && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
-          <div className="bg-zinc-900 border border-zinc-800 rounded-xl w-full max-w-md mx-4 shadow-2xl overflow-hidden">
-            <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800">
+          <div className="bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-xl w-full max-w-md mx-4 shadow-2xl overflow-hidden">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-zinc-800">
               <div className="flex items-center gap-2">
                 <Globe className="w-4 h-4 text-blue-500" />
-                <h2 className="text-sm font-semibold text-zinc-100">Add Custom Domain</h2>
+                <h2 className="text-sm font-semibold text-gray-900 dark:text-zinc-100">Add Custom Domain</h2>
               </div>
-              <button onClick={() => setShowAdd(false)} className="text-zinc-600 hover:text-zinc-300 transition-colors">
+              <button onClick={() => setShowAdd(false)} className="text-gray-400 dark:text-zinc-600 hover:text-gray-700 dark:hover:text-gray-700 dark:text-zinc-300 transition-colors">
                 <X className="w-4 h-4" />
               </button>
             </div>
 
             <div className="p-5 space-y-4">
               <div>
-                <label className="block text-xs font-medium text-zinc-400 mb-1.5">Domain</label>
+                <label className="block text-xs font-medium text-gray-500 dark:text-zinc-400 mb-1.5">Domain</label>
                 <input
                   type="text"
                   value={newDomain}
                   onChange={(e) => setNewDomain(e.target.value)}
                   placeholder="app.gemeente-utrecht.nl"
-                  className="w-full px-3 py-2 rounded-lg border border-zinc-700 bg-zinc-800 text-sm text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600/30 font-mono"
+                  className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-zinc-700 bg-gray-100 dark:bg-zinc-800 text-sm text-gray-900 dark:text-zinc-100 placeholder:text-gray-400 dark:placeholder:text-zinc-600 focus:outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600/30 font-mono"
                   autoFocus
                 />
-                <p className="text-xs text-zinc-600 mt-1">Enter the domain without http:// or https://</p>
+                <p className="text-xs text-gray-400 dark:text-zinc-600 mt-1">Enter the domain without http:// or https://</p>
               </div>
 
               {/* DNS instructions preview */}
               {newDomain.trim() && (
-                <div className="bg-zinc-800/50 border border-zinc-700/50 rounded-lg p-3">
-                  <p className="text-xs font-medium text-zinc-400 mb-2">After adding, configure DNS:</p>
+                <div className="bg-gray-50 dark:bg-zinc-800/50 border border-zinc-700/50 rounded-lg p-3">
+                  <p className="text-xs font-medium text-gray-500 dark:text-zinc-400 mb-2">After adding, configure DNS:</p>
                   <div className="space-y-1.5">
                     <div className="flex items-center gap-2 text-xs">
-                      <span className="text-zinc-600 w-12">Type</span>
-                      <span className="font-mono text-zinc-300">CNAME</span>
+                      <span className="text-gray-400 dark:text-zinc-600 w-12">Type</span>
+                      <span className="font-mono text-gray-700 dark:text-zinc-300">CNAME</span>
                     </div>
                     <div className="flex items-center gap-2 text-xs">
-                      <span className="text-zinc-600 w-12">Name</span>
-                      <span className="font-mono text-zinc-300">{newDomain.trim()}</span>
+                      <span className="text-gray-400 dark:text-zinc-600 w-12">Name</span>
+                      <span className="font-mono text-gray-700 dark:text-zinc-300">{newDomain.trim()}</span>
                     </div>
                     <div className="flex items-center gap-2 text-xs">
-                      <span className="text-zinc-600 w-12">Value</span>
+                      <span className="text-gray-400 dark:text-zinc-600 w-12">Value</span>
                       <span className="font-mono text-emerald-400">{appSlug}.{tenantSlug}.apps.haven.nl</span>
                     </div>
                   </div>
@@ -193,7 +193,7 @@ export default function DomainsTab({ tenantSlug, appSlug, accessToken }: Domains
               <div className="flex justify-end gap-2 pt-2">
                 <button
                   onClick={() => setShowAdd(false)}
-                  className="px-3 py-1.5 rounded-lg text-xs font-medium text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800 transition-colors"
+                  className="px-3 py-1.5 rounded-lg text-xs font-medium text-gray-500 dark:text-zinc-500 hover:text-gray-900 dark:hover:text-gray-800 dark:text-zinc-200 hover:bg-gray-100 dark:hover:bg-gray-100 dark:bg-zinc-800 transition-colors"
                 >
                   Cancel
                 </button>
@@ -213,10 +213,10 @@ export default function DomainsTab({ tenantSlug, appSlug, accessToken }: Domains
 
       {/* Domain list */}
       {domains.length === 0 ? (
-        <div className="text-center py-16 border border-dashed border-zinc-800 rounded-xl">
-          <Globe className="w-8 h-8 mx-auto mb-2 text-zinc-700" />
-          <p className="text-sm text-zinc-500">No custom domains configured.</p>
-          <p className="text-xs text-zinc-600 mt-1">Add a domain and point your DNS to enable HTTPS access.</p>
+        <div className="text-center py-16 border border-dashed border-gray-200 dark:border-zinc-800 rounded-xl">
+          <Globe className="w-8 h-8 mx-auto mb-2 text-gray-400 dark:text-zinc-700" />
+          <p className="text-sm text-gray-500 dark:text-zinc-500">No custom domains configured.</p>
+          <p className="text-xs text-gray-400 dark:text-zinc-600 mt-1">Add a domain and point your DNS to enable HTTPS access.</p>
         </div>
       ) : (
         <div className="space-y-3">
@@ -227,7 +227,7 @@ export default function DomainsTab({ tenantSlug, appSlug, accessToken }: Domains
             return (
               <div
                 key={d.domain}
-                className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-4 hover:border-zinc-700 transition-colors"
+                className="bg-white dark:bg-zinc-900/50 border border-gray-200 dark:border-zinc-800 rounded-xl shadow-sm p-4 hover:border-gray-400 dark:hover:border-gray-300 dark:border-zinc-700 transition-colors"
               >
                 <div className="flex items-start justify-between">
                   <div className="flex items-center gap-3">
@@ -244,10 +244,10 @@ export default function DomainsTab({ tenantSlug, appSlug, accessToken }: Domains
                           href={`https://${d.domain}`}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="text-sm font-medium text-zinc-200 hover:text-zinc-100 font-mono flex items-center gap-1"
+                          className="text-sm font-medium text-gray-800 dark:text-zinc-200 hover:text-gray-900 dark:text-zinc-100 font-mono flex items-center gap-1"
                         >
                           {d.domain}
-                          <ExternalLink className="w-3 h-3 text-zinc-600" />
+                          <ExternalLink className="w-3 h-3 text-gray-400 dark:text-zinc-600" />
                         </a>
                         <CopyButton text={d.domain} />
                       </div>
@@ -282,7 +282,7 @@ export default function DomainsTab({ tenantSlug, appSlug, accessToken }: Domains
                     <button
                       onClick={() => deleteDomain(d.domain)}
                       disabled={deleting === d.domain}
-                      className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium text-zinc-600 hover:text-red-400 hover:bg-red-950/30 transition-colors disabled:opacity-50"
+                      className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium text-gray-400 dark:text-zinc-600 hover:text-red-400 hover:bg-red-950/30 transition-colors disabled:opacity-50"
                     >
                       {deleting === d.domain ? (
                         <Loader2 className="w-3 h-3 animate-spin" />
@@ -295,20 +295,20 @@ export default function DomainsTab({ tenantSlug, appSlug, accessToken }: Domains
 
                 {/* DNS instructions for unverified domains */}
                 {!d.verified_at && d.verification_token && (
-                  <div className="mt-3 bg-zinc-800/50 border border-zinc-700/50 rounded-lg p-3">
-                    <p className="text-xs font-medium text-zinc-400 mb-2">Add this DNS record to verify ownership:</p>
+                  <div className="mt-3 bg-gray-50 dark:bg-zinc-800/50 border border-zinc-700/50 rounded-lg p-3">
+                    <p className="text-xs font-medium text-gray-500 dark:text-zinc-400 mb-2">Add this DNS record to verify ownership:</p>
                     <div className="space-y-1.5">
                       <div className="flex items-center gap-2 text-xs">
-                        <span className="text-zinc-600 w-12">Type</span>
-                        <span className="font-mono text-zinc-300">TXT</span>
+                        <span className="text-gray-400 dark:text-zinc-600 w-12">Type</span>
+                        <span className="font-mono text-gray-700 dark:text-zinc-300">TXT</span>
                       </div>
                       <div className="flex items-center gap-2 text-xs">
-                        <span className="text-zinc-600 w-12">Name</span>
-                        <span className="font-mono text-zinc-300">_haven-verify.{d.domain}</span>
+                        <span className="text-gray-400 dark:text-zinc-600 w-12">Name</span>
+                        <span className="font-mono text-gray-700 dark:text-zinc-300">_haven-verify.{d.domain}</span>
                         <CopyButton text={`_haven-verify.${d.domain}`} />
                       </div>
                       <div className="flex items-center gap-2 text-xs">
-                        <span className="text-zinc-600 w-12">Value</span>
+                        <span className="text-gray-400 dark:text-zinc-600 w-12">Value</span>
                         <span className="font-mono text-emerald-400 truncate">{d.verification_token}</span>
                         <CopyButton text={d.verification_token} />
                       </div>

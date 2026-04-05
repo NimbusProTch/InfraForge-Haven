@@ -403,6 +403,8 @@ async def test_retry_failed_service(async_client: AsyncClient, db_session: Async
     """POST /services/{name}/retry must reset FAILED and re-provision."""
     from unittest.mock import AsyncMock, patch
 
+    from app.models.tenant_member import MemberRole, TenantMember
+
     tenant = Tenant(
         id=uuid.uuid4(),
         slug="retry-tenant",
@@ -414,6 +416,11 @@ async def test_retry_failed_service(async_client: AsyncClient, db_session: Async
         storage_limit="50Gi",
     )
     db_session.add(tenant)
+    db_session.add(
+        TenantMember(
+            id=uuid.uuid4(), tenant_id=tenant.id, user_id="test-user", email="test@t.nl", role=MemberRole("owner")
+        )
+    )
     svc = ManagedService(
         id=uuid.uuid4(),
         tenant_id=tenant.id,
@@ -457,6 +464,8 @@ async def test_retry_nonexistent_returns_404(async_client: AsyncClient, tenant_a
 
 async def test_delete_service_cleans_app_env_from_secrets(async_client: AsyncClient, db_session: AsyncSession):
     """Deleting a service must remove it from connected apps' env_from_secrets."""
+    from app.models.tenant_member import MemberRole, TenantMember
+
     tenant = Tenant(
         id=uuid.uuid4(),
         slug="del-tenant",
@@ -468,6 +477,11 @@ async def test_delete_service_cleans_app_env_from_secrets(async_client: AsyncCli
         storage_limit="50Gi",
     )
     db_session.add(tenant)
+    db_session.add(
+        TenantMember(
+            id=uuid.uuid4(), tenant_id=tenant.id, user_id="test-user", email="test@t.nl", role=MemberRole("owner")
+        )
+    )
 
     app_obj = Application(
         id=uuid.uuid4(),

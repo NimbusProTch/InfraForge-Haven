@@ -53,7 +53,7 @@ function CopyButton({ text }: { text: string }) {
         setCopied(true);
         setTimeout(() => setCopied(false), 1500);
       }}
-      className="text-zinc-600 hover:text-zinc-300 transition-colors"
+      className="text-gray-400 dark:text-zinc-600 hover:text-gray-700 dark:hover:text-zinc-300 transition-colors"
     >
       {copied ? <Check className="w-3 h-3 text-emerald-500" /> : <Copy className="w-3 h-3" />}
     </button>
@@ -131,7 +131,7 @@ export default function EnvironmentsTab({ tenantSlug, appSlug, accessToken }: En
   if (loading) {
     return (
       <div className="flex items-center justify-center py-16">
-        <Loader2 className="w-5 h-5 animate-spin text-zinc-600" />
+        <Loader2 className="w-5 h-5 animate-spin text-gray-400 dark:text-zinc-600" />
       </div>
     );
   }
@@ -141,7 +141,7 @@ export default function EnvironmentsTab({ tenantSlug, appSlug, accessToken }: En
       {/* Header */}
       <div className="flex items-center justify-between mb-5">
         <div>
-          <p className="text-sm text-zinc-500">
+          <p className="text-sm text-gray-500 dark:text-zinc-500">
             Deploy to staging, preview, or custom environments
           </p>
         </div>
@@ -157,32 +157,32 @@ export default function EnvironmentsTab({ tenantSlug, appSlug, accessToken }: En
       {/* Create modal */}
       {showCreate && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
-          <div className="bg-zinc-900 border border-zinc-800 rounded-xl w-full max-w-md mx-4 shadow-2xl overflow-hidden">
-            <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800">
+          <div className="bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-xl w-full max-w-md mx-4 shadow-2xl overflow-hidden">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-zinc-800">
               <div className="flex items-center gap-2">
                 <Layers className="w-4 h-4 text-blue-500" />
-                <h2 className="text-sm font-semibold text-zinc-100">Create Environment</h2>
+                <h2 className="text-sm font-semibold text-gray-900 dark:text-zinc-100">Create Environment</h2>
               </div>
-              <button onClick={() => setShowCreate(false)} className="text-zinc-600 hover:text-zinc-300 transition-colors">
+              <button onClick={() => setShowCreate(false)} className="text-gray-400 dark:text-zinc-600 hover:text-gray-700 dark:hover:text-zinc-300 transition-colors">
                 <X className="w-4 h-4" />
               </button>
             </div>
 
             <div className="p-5 space-y-4">
               <div>
-                <label className="block text-xs font-medium text-zinc-400 mb-1.5">Name</label>
+                <label className="block text-xs font-medium text-gray-500 dark:text-zinc-400 mb-1.5">Name</label>
                 <input
                   type="text"
                   value={newName}
                   onChange={(e) => setNewName(e.target.value)}
                   placeholder="staging-v2"
-                  className="w-full px-3 py-2 rounded-lg border border-zinc-700 bg-zinc-800 text-sm text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600/30 font-mono"
+                  className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-zinc-700 bg-gray-100 dark:bg-zinc-800 text-sm text-gray-900 dark:text-zinc-100 placeholder:text-gray-400 dark:placeholder:text-zinc-600 focus:outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600/30 font-mono"
                 />
-                <p className="text-xs text-zinc-600 mt-1">Lowercase letters, numbers, and hyphens only.</p>
+                <p className="text-xs text-gray-400 dark:text-zinc-600 mt-1">Lowercase letters, numbers, and hyphens only.</p>
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-zinc-400 mb-1.5">Type</label>
+                <label className="block text-xs font-medium text-gray-500 dark:text-zinc-400 mb-1.5">Type</label>
                 <div className="grid grid-cols-2 gap-2">
                   {(["staging", "preview"] as const).map((type) => {
                     const cfg = ENV_TYPE_CONFIG[type];
@@ -193,7 +193,7 @@ export default function EnvironmentsTab({ tenantSlug, appSlug, accessToken }: En
                         className={`px-3 py-2.5 rounded-lg border text-sm font-medium transition-colors ${
                           newType === type
                             ? cfg.color + " border-current"
-                            : "bg-zinc-800/50 border-zinc-800 text-zinc-500 hover:border-zinc-700"
+                            : "bg-gray-50 dark:bg-zinc-800/50 border-gray-200 dark:border-zinc-800 text-gray-500 dark:text-zinc-500 hover:border-gray-300 dark:hover:border-zinc-700"
                         }`}
                       >
                         {cfg.label}
@@ -204,20 +204,20 @@ export default function EnvironmentsTab({ tenantSlug, appSlug, accessToken }: En
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-zinc-400 mb-1.5">Branch</label>
+                <label className="block text-xs font-medium text-gray-500 dark:text-zinc-400 mb-1.5">Branch</label>
                 <input
                   type="text"
                   value={newBranch}
                   onChange={(e) => setNewBranch(e.target.value)}
                   placeholder="develop"
-                  className="w-full px-3 py-2 rounded-lg border border-zinc-700 bg-zinc-800 text-sm text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600/30 font-mono"
+                  className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-zinc-700 bg-gray-100 dark:bg-zinc-800 text-sm text-gray-900 dark:text-zinc-100 placeholder:text-gray-400 dark:placeholder:text-zinc-600 focus:outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600/30 font-mono"
                 />
               </div>
 
               <div className="flex justify-end gap-2 pt-2">
                 <button
                   onClick={() => setShowCreate(false)}
-                  className="px-3 py-1.5 rounded-lg text-xs font-medium text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800 transition-colors"
+                  className="px-3 py-1.5 rounded-lg text-xs font-medium text-gray-500 dark:text-zinc-500 hover:text-gray-800 dark:hover:text-zinc-200 hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors"
                 >
                   Cancel
                 </button>
@@ -237,10 +237,10 @@ export default function EnvironmentsTab({ tenantSlug, appSlug, accessToken }: En
 
       {/* Environment list */}
       {environments.length === 0 ? (
-        <div className="text-center py-16 border border-dashed border-zinc-800 rounded-xl">
-          <Layers className="w-8 h-8 mx-auto mb-2 text-zinc-700" />
-          <p className="text-sm text-zinc-500">No environments configured.</p>
-          <p className="text-xs text-zinc-600 mt-1">
+        <div className="text-center py-16 border border-dashed border-gray-200 dark:border-zinc-800 rounded-xl">
+          <Layers className="w-8 h-8 mx-auto mb-2 text-gray-400 dark:text-zinc-700" />
+          <p className="text-sm text-gray-500 dark:text-zinc-500">No environments configured.</p>
+          <p className="text-xs text-gray-400 dark:text-zinc-600 mt-1">
             Create a staging or preview environment, or push a PR to auto-create a preview.
           </p>
         </div>
@@ -253,14 +253,14 @@ export default function EnvironmentsTab({ tenantSlug, appSlug, accessToken }: En
             return (
               <div
                 key={env.id}
-                className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-4 hover:border-zinc-700 transition-colors"
+                className="bg-white dark:bg-zinc-900/50 border border-gray-200 dark:border-zinc-800 rounded-xl p-4 hover:border-gray-300 dark:hover:border-zinc-700 transition-colors shadow-sm"
               >
                 <div className="flex items-start justify-between">
                   <div className="flex items-center gap-3">
                     <div className={`w-2 h-2 rounded-full ${cfg.dot}`} />
                     <div>
                       <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium text-zinc-200">{env.name}</span>
+                        <span className="text-sm font-medium text-gray-800 dark:text-zinc-200">{env.name}</span>
                         <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${cfg.color}`}>
                           {cfg.label}
                         </span>
@@ -268,7 +268,7 @@ export default function EnvironmentsTab({ tenantSlug, appSlug, accessToken }: En
                           {env.status}
                         </Badge>
                       </div>
-                      <div className="flex items-center gap-3 mt-1.5 text-xs text-zinc-600">
+                      <div className="flex items-center gap-3 mt-1.5 text-xs text-gray-400 dark:text-zinc-600">
                         <span className="flex items-center gap-1">
                           <GitBranch className="w-3 h-3" />
                           {env.branch}
@@ -295,7 +295,7 @@ export default function EnvironmentsTab({ tenantSlug, appSlug, accessToken }: En
                         href={`https://${env.domain}`}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-xs font-medium text-zinc-300 hover:text-zinc-100 transition-colors"
+                        className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-gray-100 dark:bg-zinc-800 hover:bg-gray-200 dark:hover:bg-zinc-700 text-xs font-medium text-gray-700 dark:text-zinc-300 hover:text-gray-900 dark:hover:text-zinc-100 transition-colors"
                       >
                         <Globe className="w-3 h-3" />
                         Open
@@ -306,7 +306,7 @@ export default function EnvironmentsTab({ tenantSlug, appSlug, accessToken }: En
                       <button
                         onClick={() => deleteEnvironment(env.name)}
                         disabled={deleting === env.name}
-                        className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium text-zinc-600 hover:text-red-400 hover:bg-red-950/30 transition-colors disabled:opacity-50"
+                        className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium text-gray-400 dark:text-zinc-600 hover:text-red-400 hover:bg-red-950/30 transition-colors disabled:opacity-50"
                       >
                         {deleting === env.name ? (
                           <Loader2 className="w-3 h-3 animate-spin" />
@@ -320,9 +320,9 @@ export default function EnvironmentsTab({ tenantSlug, appSlug, accessToken }: En
 
                 {/* Domain row */}
                 {env.domain && (
-                  <div className="mt-3 flex items-center gap-1 bg-zinc-800/50 rounded-lg px-3 py-2">
-                    <Globe className="w-3 h-3 text-zinc-600 shrink-0" />
-                    <span className="text-xs font-mono text-zinc-400 truncate flex-1">
+                  <div className="mt-3 flex items-center gap-1 bg-gray-50 dark:bg-zinc-800/50 rounded-lg px-3 py-2">
+                    <Globe className="w-3 h-3 text-gray-400 dark:text-zinc-600 shrink-0" />
+                    <span className="text-xs font-mono text-gray-500 dark:text-zinc-400 truncate flex-1">
                       {env.domain}
                     </span>
                     <CopyButton text={env.domain} />
@@ -331,7 +331,7 @@ export default function EnvironmentsTab({ tenantSlug, appSlug, accessToken }: En
 
                 {/* Env vars count */}
                 {env.env_vars && Object.keys(env.env_vars).length > 0 && (
-                  <p className="mt-2 text-xs text-zinc-600">
+                  <p className="mt-2 text-xs text-gray-400 dark:text-zinc-600">
                     {Object.keys(env.env_vars).length} environment variable{Object.keys(env.env_vars).length !== 1 ? "s" : ""} overridden
                   </p>
                 )}
