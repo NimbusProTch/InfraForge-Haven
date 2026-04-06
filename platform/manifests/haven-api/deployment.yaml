@@ -39,9 +39,8 @@ spec:
             - sh
             - -c
             - |
-              # For DBs created via create_all(): stamp to latest migration
-              # (all migrations are idempotent, so upgrade head is safe either way)
-              python -m alembic -c alembic/alembic.ini stamp head 2>/dev/null || true
+              # Run pending migrations (idempotent — skips already-applied ones)
+              # NEVER use 'stamp head' here — it marks DB as migrated without running migrations
               python -m alembic -c alembic/alembic.ini upgrade head
           envFrom:
             - configMapRef:

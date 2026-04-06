@@ -458,6 +458,26 @@ haven-platform/
 - Plan dosyası güncel tutulmalı
 - Yeni gotcha'lar eklenmeli
 
+### Kural 6: DB Migration Kontrolü (Alembic)
+- Her SQLAlchemy model değişikliğinde Alembic migration YAZILMALI
+- `alembic upgrade head` init container'da otomatik çalışır — **ASLA `stamp head` kullanılmaz**
+- Deploy sonrası migration doğrulanmalı:
+  ```bash
+  kubectl exec -n haven-system deploy/haven-api -- python -m alembic -c alembic/alembic.ini current
+  ```
+- Migration uygulanmamışsa → pod restart: `kubectl rollout restart deploy/haven-api -n haven-system`
+- **Test**: Yeni kolon/tablo eklendiyse, API endpoint'i o kolonu döndürüyorsa → cluster'da curl ile doğrula
+
+### Kural 7: CORS Testi (Her API Deploy Sonrası)
+- Her API değişikliğinden sonra browser'dan test edilmeli (curl CORS hatası göstermez!)
+- Console'da `Access-Control-Allow-Origin` hatası varsa → merge YASAK
+- Exception handler'lar CORS headers içermeli (500/422/403 response'ları dahil)
+- Test komutu:
+  ```bash
+  curl -s -H "Origin: https://app.46.225.42.2.sslip.io" \
+    -I https://api.46.225.42.2.sslip.io/api/docs | grep -i "access-control"
+  ```
+
 ## Mevcut Durum (2026-03-31)
 
 ### Cluster Erişimi
@@ -475,7 +495,7 @@ haven-platform/
   ```
 - **Everest port-forward**: `kubectl port-forward -n everest-system svc/everest 8888:8080`
 - **Keycloak port-forward**: `kubectl port-forward -n keycloak svc/keycloak-keycloakx-http 8080:80`
-- **Keycloak lokal**: `http://localhost:8080` (haven realm, haven-api client, testdev/Test1234!)
+- **Keycloak lokal**: `http://localhost:8080` (haven realm, haven-ui client, admin / HavenAdmin2026!)
 - **Gitea port-forward**: `kubectl port-forward -n gitea-system svc/gitea-http 3030:3000`
 - **Gitea login**: `http://localhost:3030` (havenAdmin / HavenAdmin2026)
 - **Harbor external**: `http://harbor.46.225.42.2.sslip.io` (admin/HavenHarbor2026!)
