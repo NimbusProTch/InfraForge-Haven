@@ -417,7 +417,9 @@ async def deploy_built_image(
         if not deployment or deployment.application_id != app.id:
             raise HTTPException(status_code=404, detail="Deployment not found")
         if deployment.status != DeploymentStatus.BUILT:
-            raise HTTPException(status_code=409, detail=f"Deployment status is '{deployment.status.value}', expected 'built'")
+            raise HTTPException(
+                status_code=409, detail=f"Deployment status is '{deployment.status.value}', expected 'built'"
+            )
     else:
         # Find the latest BUILT deployment
         result = await db.execute(
@@ -428,7 +430,9 @@ async def deploy_built_image(
         )
         deployment = result.scalar_one_or_none()
         if not deployment:
-            raise HTTPException(status_code=404, detail="No BUILT deployment found. Run a build first with deploy=false.")
+            raise HTTPException(
+                status_code=404, detail="No BUILT deployment found. Run a build first with deploy=false."
+            )
 
     image_name = deployment.image_tag
     if not image_name:

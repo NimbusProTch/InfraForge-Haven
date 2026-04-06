@@ -121,7 +121,10 @@ class BuildQueueService:
         position = await self.get_queue_position(job_id)
         logger.info(
             "Enqueued build job %s tenant=%s app=%s position=%d",
-            job_id, tenant_slug, app_slug, position,
+            job_id,
+            tenant_slug,
+            app_slug,
+            position,
         )
         return job_id, position
 
@@ -262,10 +265,7 @@ class BuildQueueService:
         """
         pending = await self._redis.llen(QUEUE_KEY)
         active_members = await self._redis.smembers(ACTIVE_KEY)
-        active_jobs = [
-            m.decode() if isinstance(m, bytes) else m
-            for m in active_members
-        ]
+        active_jobs = [m.decode() if isinstance(m, bytes) else m for m in active_members]
         dlq = await self._redis.llen(DLQ_KEY)
 
         return {
