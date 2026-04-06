@@ -49,12 +49,36 @@ async def _get_tenant_or_404(tenant_slug: str, db: DBSession, current_user: dict
 
 
 @router.get("", response_model=list[ManagedServiceResponse])
-async def list_services(tenant_slug: str, db: DBSession, current_user: CurrentUser) -> list[ManagedService]:
+async def list_services(tenant_slug: str, db: DBSession, current_user: CurrentUser) -> list[dict]:
     tenant = await _get_tenant_or_404(tenant_slug, db, current_user)
     result = await db.execute(
         select(ManagedService).where(ManagedService.tenant_id == tenant.id).order_by(ManagedService.created_at.desc())
     )
-    return list(result.scalars().all())
+    services = list(result.scalars().all())
+
+    # Compute connected_apps for each service by scanning apps' env_from_secrets
+    apps_result = await db.execute(
+        select(Application).where(Application.tenant_id == tenant.id)
+    )
+    all_apps = list(apps_result.scalars().all())
+
+    # Build service_name → [app] mapping
+    svc_to_apps: dict[str, list[ConnectedAppSummary]] = {}
+    for app in all_apps:
+        for entry in app.env_from_secrets or []:
+            svc_name = entry.get("service_name", "")
+            if svc_name not in svc_to_apps:
+                svc_to_apps[svc_name] = []
+            svc_to_apps[svc_name].append(ConnectedAppSummary(slug=app.slug, name=app.name))
+
+    # Enrich service responses
+    enriched = []
+    for svc in services:
+        svc_dict = ManagedServiceResponse.model_validate(svc).model_dump()
+        svc_dict["connected_apps"] = svc_to_apps.get(svc.name, [])
+        enriched.append(svc_dict)
+
+    return enriched
 
 
 @router.post("", response_model=ManagedServiceResponse, status_code=status.HTTP_201_CREATED)

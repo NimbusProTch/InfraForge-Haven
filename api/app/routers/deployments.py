@@ -569,6 +569,14 @@ async def rollback_deployment(
     return rollback_record
 
 
+class SyncOptions(BaseModel):
+    """Options for ArgoCD sync."""
+
+    prune: bool = Field(True, description="Remove resources no longer in git")
+    force: bool = Field(False, description="Override immutable field changes")
+    dry_run: bool = Field(False, description="Preview only, no actual changes")
+
+
 @router.post("/sync", status_code=status.HTTP_202_ACCEPTED)
 async def sync_app(
     tenant_slug: str,
@@ -576,14 +584,37 @@ async def sync_app(
     db: DBSession,
     argocd: ArgoCDDep,
     current_user: CurrentUser,
+    body: SyncOptions | None = None,
 ) -> dict:
-    """Trigger an ArgoCD sync for this application."""
+    """Trigger an ArgoCD sync for this application with configurable options."""
     tenant = await _get_tenant_or_404(tenant_slug, db, current_user)
     await _get_app_or_404(tenant.id, app_slug, db)
 
     app_name = f"{tenant_slug}-{app_slug}"
-    triggered = await argocd.trigger_sync(app_name)
-    return {"triggered": triggered, "app_name": app_name}
+    opts = body or SyncOptions()
+    triggered = await argocd.trigger_sync(
+        app_name,
+        prune=opts.prune,
+        force=opts.force,
+        dry_run=opts.dry_run,
+    )
+    return {"triggered": triggered, "app_name": app_name, "options": opts.model_dump()}
+
+
+@router.get("/sync-diff")
+async def get_sync_diff(
+    tenant_slug: str,
+    app_slug: str,
+    db: DBSession,
+    argocd: ArgoCDDep,
+    current_user: CurrentUser,
+) -> list[dict]:
+    """Get resource diff between live and target state for ArgoCD sync modal."""
+    tenant = await _get_tenant_or_404(tenant_slug, db, current_user)
+    await _get_app_or_404(tenant.id, app_slug, db)
+
+    app_name = f"{tenant_slug}-{app_slug}"
+    return await argocd.get_resource_diff(app_name)
 
 
 @router.get("/sync-status")
