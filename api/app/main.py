@@ -267,11 +267,28 @@ app.add_middleware(RequestLoggingMiddleware)
 # ---------------------------------------------------------------------------
 # Global exception handlers
 # ---------------------------------------------------------------------------
+
+
+def _cors_headers(request: Request) -> dict[str, str]:
+    """Return CORS headers for error responses so browsers can read the error."""
+    origin = request.headers.get("origin", "")
+    if not origin:
+        return {}
+    allowed = [o.strip() for o in settings.cors_origins.split(",") if o.strip()]
+    if origin in allowed or "*" in allowed:
+        return {
+            "Access-Control-Allow-Origin": origin,
+            "Access-Control-Allow-Credentials": "true",
+        }
+    return {}
+
+
 @app.exception_handler(ValueError)
 async def value_error_handler(request: Request, exc: ValueError) -> JSONResponse:  # noqa: ARG001
     return JSONResponse(
         status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
         content={"detail": str(exc)},
+        headers=_cors_headers(request),
     )
 
 
@@ -280,6 +297,7 @@ async def permission_error_handler(request: Request, exc: PermissionError) -> JS
     return JSONResponse(
         status_code=status.HTTP_403_FORBIDDEN,
         content={"detail": str(exc)},
+        headers=_cors_headers(request),
     )
 
 
@@ -289,6 +307,7 @@ async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONR
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         content={"detail": "Internal server error"},
+        headers=_cors_headers(request),
     )
 
 
