@@ -1028,7 +1028,7 @@ export const api = {
       apiFetch<void>(`/organizations/${orgSlug}`, { method: "DELETE" }, token),
     listMembers: (orgSlug: string, token?: string) =>
       apiFetch<OrgMember[]>(`/organizations/${orgSlug}/members`, {}, token),
-    addMember: (orgSlug: string, body: { email: string; role: string }, token?: string) =>
+    addMember: (orgSlug: string, body: { user_id: string; email: string; role: string }, token?: string) =>
       apiFetch<OrgMember>(
         `/organizations/${orgSlug}/members`,
         { method: "POST", body: JSON.stringify(body) },

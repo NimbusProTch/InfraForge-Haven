@@ -1,22 +1,24 @@
-"""Organization + SSO endpoints (Sprint 9).
+"""Organization + SSO endpoints.
 
 Covers:
 - Organization CRUD (/organizations)
-- Member management (/organizations/{slug}/members)
-- SSO config (SAML/OIDC) (/organizations/{slug}/sso)
-- Tenant membership (/organizations/{slug}/tenants)
-- Billing aggregation summary (/organizations/{slug}/billing)
+- Member management (/organizations/{org_slug}/members)
+- SSO config (SAML/OIDC) (/organizations/{org_slug}/sso)
+- Tenant membership (/organizations/{org_slug}/tenants)
+- Billing aggregation summary (/organizations/{org_slug}/billing)
 """
 
 import logging
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 
+from app.auth.org_rbac import require_org_member, require_org_role
 from app.deps import CurrentUser, DBSession
 from app.models.organization import (
     Organization,
     OrganizationMember,
+    OrgMemberRole,
     OrgTenantMembership,
     SSOConfig,
 )
@@ -55,32 +57,53 @@ async def _get_org_or_404(org_slug: str, db: DBSession) -> Organization:
 
 @router.get("", response_model=list[OrganizationResponse])
 async def list_organizations(db: DBSession, current_user: CurrentUser) -> list[Organization]:
-    result = await db.execute(select(Organization).order_by(Organization.created_at.desc()))
+    """List organizations the current user is a member of."""
+    user_id = current_user.get("sub", "")
+    result = await db.execute(
+        select(Organization)
+        .join(OrganizationMember, OrganizationMember.organization_id == Organization.id)
+        .where(OrganizationMember.user_id == user_id)
+        .order_by(Organization.created_at.desc())
+    )
     return list(result.scalars().all())
 
 
 @router.post("", response_model=OrganizationResponse, status_code=status.HTTP_201_CREATED)
 async def create_organization(body: OrganizationCreate, db: DBSession, current_user: CurrentUser) -> Organization:
+    """Create organization and auto-add the creator as owner."""
     existing = await db.execute(select(Organization).where(Organization.slug == body.slug))
     if existing.scalar_one_or_none() is not None:
         raise HTTPException(status_code=409, detail=f"Organization '{body.slug}' already exists")
 
     org = Organization(slug=body.slug, name=body.name, plan=body.plan)
     db.add(org)
+    await db.flush()
+
+    # Auto-add creator as owner
+    owner = OrganizationMember(
+        organization_id=org.id,
+        user_id=current_user.get("sub", ""),
+        email=current_user.get("email", ""),
+        display_name=current_user.get("name", ""),
+        role=OrgMemberRole.owner,
+    )
+    db.add(owner)
     await db.commit()
     await db.refresh(org)
     return org
 
 
-@router.get("/{org_slug}", response_model=OrganizationResponse)
-async def get_organization(org_slug: str, db: DBSession, current_user: CurrentUser) -> Organization:
+@router.get("/{org_slug}", response_model=OrganizationResponse, dependencies=[Depends(require_org_member)])
+async def get_organization(org_slug: str, db: DBSession) -> Organization:
     return await _get_org_or_404(org_slug, db)
 
 
-@router.patch("/{org_slug}", response_model=OrganizationResponse)
-async def update_organization(
-    org_slug: str, body: OrganizationUpdate, db: DBSession, current_user: CurrentUser
-) -> Organization:
+@router.patch(
+    "/{org_slug}",
+    response_model=OrganizationResponse,
+    dependencies=[Depends(require_org_role("owner", "admin"))],
+)
+async def update_organization(org_slug: str, body: OrganizationUpdate, db: DBSession) -> Organization:
     org = await _get_org_or_404(org_slug, db)
     for field, value in body.model_dump(exclude_none=True).items():
         setattr(org, field, value)
@@ -89,20 +112,24 @@ async def update_organization(
     return org
 
 
-@router.delete("/{org_slug}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_organization(org_slug: str, db: DBSession, current_user: CurrentUser) -> None:
+@router.delete(
+    "/{org_slug}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(require_org_role("owner"))],
+)
+async def delete_organization(org_slug: str, db: DBSession) -> None:
     org = await _get_org_or_404(org_slug, db)
     await db.delete(org)
     await db.commit()
 
 
 # ---------------------------------------------------------------------------
-# Member management
+# Member management — admin+ required (except list: member+)
 # ---------------------------------------------------------------------------
 
 
-@router.get("/{org_slug}/members", response_model=list[OrgMemberResponse])
-async def list_members(org_slug: str, db: DBSession, current_user: CurrentUser) -> list[OrganizationMember]:
+@router.get("/{org_slug}/members", response_model=list[OrgMemberResponse], dependencies=[Depends(require_org_member)])
+async def list_members(org_slug: str, db: DBSession) -> list[OrganizationMember]:
     org = await _get_org_or_404(org_slug, db)
     result = await db.execute(
         select(OrganizationMember)
@@ -112,10 +139,13 @@ async def list_members(org_slug: str, db: DBSession, current_user: CurrentUser) 
     return list(result.scalars().all())
 
 
-@router.post("/{org_slug}/members", response_model=OrgMemberResponse, status_code=status.HTTP_201_CREATED)
-async def invite_member(
-    org_slug: str, body: OrgMemberInvite, db: DBSession, current_user: CurrentUser
-) -> OrganizationMember:
+@router.post(
+    "/{org_slug}/members",
+    response_model=OrgMemberResponse,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_org_role("owner", "admin"))],
+)
+async def invite_member(org_slug: str, body: OrgMemberInvite, db: DBSession) -> OrganizationMember:
     org = await _get_org_or_404(org_slug, db)
 
     # Prevent duplicate membership
@@ -141,10 +171,12 @@ async def invite_member(
     return member
 
 
-@router.patch("/{org_slug}/members/{user_id}", response_model=OrgMemberResponse)
-async def update_member_role(
-    org_slug: str, user_id: str, body: OrgMemberUpdate, db: DBSession, current_user: CurrentUser
-) -> OrganizationMember:
+@router.patch(
+    "/{org_slug}/members/{user_id}",
+    response_model=OrgMemberResponse,
+    dependencies=[Depends(require_org_role("owner", "admin"))],
+)
+async def update_member_role(org_slug: str, user_id: str, body: OrgMemberUpdate, db: DBSession) -> OrganizationMember:
     org = await _get_org_or_404(org_slug, db)
     result = await db.execute(
         select(OrganizationMember).where(
@@ -155,14 +187,30 @@ async def update_member_role(
     member = result.scalar_one_or_none()
     if member is None:
         raise HTTPException(status_code=404, detail="Member not found")
+
+    # Prevent demoting last owner
+    if member.role == OrgMemberRole.owner and body.role != OrgMemberRole.owner:
+        owner_count = await db.execute(
+            select(OrganizationMember).where(
+                OrganizationMember.organization_id == org.id,
+                OrganizationMember.role == OrgMemberRole.owner,
+            )
+        )
+        if len(list(owner_count.scalars().all())) <= 1:
+            raise HTTPException(status_code=400, detail="Cannot demote the last owner")
+
     member.role = body.role
     await db.commit()
     await db.refresh(member)
     return member
 
 
-@router.delete("/{org_slug}/members/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def remove_member(org_slug: str, user_id: str, db: DBSession, current_user: CurrentUser) -> None:
+@router.delete(
+    "/{org_slug}/members/{user_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(require_org_role("owner", "admin"))],
+)
+async def remove_member(org_slug: str, user_id: str, db: DBSession) -> None:
     org = await _get_org_or_404(org_slug, db)
     result = await db.execute(
         select(OrganizationMember).where(
@@ -173,17 +221,33 @@ async def remove_member(org_slug: str, user_id: str, db: DBSession, current_user
     member = result.scalar_one_or_none()
     if member is None:
         raise HTTPException(status_code=404, detail="Member not found")
+
+    # Prevent removing last owner
+    if member.role == OrgMemberRole.owner:
+        owner_count = await db.execute(
+            select(OrganizationMember).where(
+                OrganizationMember.organization_id == org.id,
+                OrganizationMember.role == OrgMemberRole.owner,
+            )
+        )
+        if len(list(owner_count.scalars().all())) <= 1:
+            raise HTTPException(status_code=400, detail="Cannot remove the last owner")
+
     await db.delete(member)
     await db.commit()
 
 
 # ---------------------------------------------------------------------------
-# SSO config (SAML / OIDC)
+# SSO config (SAML / OIDC) — owner only
 # ---------------------------------------------------------------------------
 
 
-@router.get("/{org_slug}/sso", response_model=list[SSOConfigResponse])
-async def list_sso_configs(org_slug: str, db: DBSession, current_user: CurrentUser) -> list[SSOConfig]:
+@router.get(
+    "/{org_slug}/sso",
+    response_model=list[SSOConfigResponse],
+    dependencies=[Depends(require_org_role("owner", "admin"))],
+)
+async def list_sso_configs(org_slug: str, db: DBSession) -> list[SSOConfig]:
     org = await _get_org_or_404(org_slug, db)
     result = await db.execute(
         select(SSOConfig).where(SSOConfig.organization_id == org.id).order_by(SSOConfig.created_at.desc())
@@ -191,10 +255,13 @@ async def list_sso_configs(org_slug: str, db: DBSession, current_user: CurrentUs
     return list(result.scalars().all())
 
 
-@router.post("/{org_slug}/sso", response_model=SSOConfigResponse, status_code=status.HTTP_201_CREATED)
-async def create_sso_config(
-    org_slug: str, body: SSOConfigCreate, db: DBSession, current_user: CurrentUser
-) -> SSOConfig:
+@router.post(
+    "/{org_slug}/sso",
+    response_model=SSOConfigResponse,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_org_role("owner"))],
+)
+async def create_sso_config(org_slug: str, body: SSOConfigCreate, db: DBSession) -> SSOConfig:
     org = await _get_org_or_404(org_slug, db)
 
     if body.sso_type.value == "oidc" and not body.discovery_url:
@@ -218,10 +285,12 @@ async def create_sso_config(
     return sso
 
 
-@router.patch("/{org_slug}/sso/{sso_id}", response_model=SSOConfigResponse)
-async def update_sso_config(
-    org_slug: str, sso_id: str, body: SSOConfigUpdate, db: DBSession, current_user: CurrentUser
-) -> SSOConfig:
+@router.patch(
+    "/{org_slug}/sso/{sso_id}",
+    response_model=SSOConfigResponse,
+    dependencies=[Depends(require_org_role("owner"))],
+)
+async def update_sso_config(org_slug: str, sso_id: str, body: SSOConfigUpdate, db: DBSession) -> SSOConfig:
     org = await _get_org_or_404(org_slug, db)
     result = await db.execute(select(SSOConfig).where(SSOConfig.organization_id == org.id, SSOConfig.id == sso_id))
     sso = result.scalar_one_or_none()
@@ -234,8 +303,12 @@ async def update_sso_config(
     return sso
 
 
-@router.delete("/{org_slug}/sso/{sso_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_sso_config(org_slug: str, sso_id: str, db: DBSession, current_user: CurrentUser) -> None:
+@router.delete(
+    "/{org_slug}/sso/{sso_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(require_org_role("owner"))],
+)
+async def delete_sso_config(org_slug: str, sso_id: str, db: DBSession) -> None:
     org = await _get_org_or_404(org_slug, db)
     result = await db.execute(select(SSOConfig).where(SSOConfig.organization_id == org.id, SSOConfig.id == sso_id))
     sso = result.scalar_one_or_none()
@@ -246,21 +319,28 @@ async def delete_sso_config(org_slug: str, sso_id: str, db: DBSession, current_u
 
 
 # ---------------------------------------------------------------------------
-# Tenant membership in org
+# Tenant membership in org — admin+ required (except list: member+)
 # ---------------------------------------------------------------------------
 
 
-@router.get("/{org_slug}/tenants", response_model=list[OrgTenantResponse])
-async def list_org_tenants(org_slug: str, db: DBSession, current_user: CurrentUser) -> list[OrgTenantMembership]:
+@router.get(
+    "/{org_slug}/tenants",
+    response_model=list[OrgTenantResponse],
+    dependencies=[Depends(require_org_member)],
+)
+async def list_org_tenants(org_slug: str, db: DBSession) -> list[OrgTenantMembership]:
     org = await _get_org_or_404(org_slug, db)
     result = await db.execute(select(OrgTenantMembership).where(OrgTenantMembership.organization_id == org.id))
     return list(result.scalars().all())
 
 
-@router.post("/{org_slug}/tenants", response_model=OrgTenantResponse, status_code=status.HTTP_201_CREATED)
-async def add_tenant_to_org(
-    org_slug: str, body: OrgTenantAdd, db: DBSession, current_user: CurrentUser
-) -> OrgTenantMembership:
+@router.post(
+    "/{org_slug}/tenants",
+    response_model=OrgTenantResponse,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_org_role("owner", "admin"))],
+)
+async def add_tenant_to_org(org_slug: str, body: OrgTenantAdd, db: DBSession) -> OrgTenantMembership:
     org = await _get_org_or_404(org_slug, db)
 
     # Prevent duplicate
@@ -280,8 +360,12 @@ async def add_tenant_to_org(
     return membership
 
 
-@router.delete("/{org_slug}/tenants/{tenant_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def remove_tenant_from_org(org_slug: str, tenant_id: str, db: DBSession, current_user: CurrentUser) -> None:
+@router.delete(
+    "/{org_slug}/tenants/{tenant_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(require_org_role("owner", "admin"))],
+)
+async def remove_tenant_from_org(org_slug: str, tenant_id: str, db: DBSession) -> None:
     org = await _get_org_or_404(org_slug, db)
     result = await db.execute(
         select(OrgTenantMembership).where(
@@ -297,12 +381,16 @@ async def remove_tenant_from_org(org_slug: str, tenant_id: str, db: DBSession, c
 
 
 # ---------------------------------------------------------------------------
-# Billing aggregation summary
+# Billing aggregation summary — billing+ role
 # ---------------------------------------------------------------------------
 
 
-@router.get("/{org_slug}/billing", response_model=BillingSummaryResponse)
-async def billing_summary(org_slug: str, db: DBSession, current_user: CurrentUser) -> BillingSummaryResponse:
+@router.get(
+    "/{org_slug}/billing",
+    response_model=BillingSummaryResponse,
+    dependencies=[Depends(require_org_role("owner", "admin", "billing"))],
+)
+async def billing_summary(org_slug: str, db: DBSession) -> BillingSummaryResponse:
     """Return billing aggregation summary for the organization."""
     org = await _get_org_or_404(org_slug, db)
     tenant_count_result = await db.execute(

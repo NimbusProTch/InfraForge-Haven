@@ -190,7 +190,8 @@ export default function OrganizationsPage() {
             {orgs.map((org) => (
               <div
                 key={org.id}
-                className="bg-white dark:bg-zinc-900/50 border border-gray-200 dark:border-zinc-800 rounded-xl p-4 hover:border-gray-300 dark:hover:border-zinc-700 transition-colors shadow-sm"
+                onClick={() => router.push(`/organizations/${org.slug}`)}
+                className="bg-white dark:bg-zinc-900/50 border border-gray-200 dark:border-zinc-800 rounded-xl p-4 hover:border-gray-300 dark:hover:border-zinc-700 transition-colors shadow-sm cursor-pointer"
               >
                 <div className="flex items-start justify-between">
                   <div className="flex items-center gap-3">
