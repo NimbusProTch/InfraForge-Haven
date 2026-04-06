@@ -46,26 +46,46 @@ class DeployService:
         env_vars: dict[str, str],
         service_secret_names: list[str] | None = None,
         port: int = _DEFAULT_APP_PORT,
+        # Extended app config
+        resource_cpu_request: str = "50m",
+        resource_cpu_limit: str = "500m",
+        resource_memory_request: str = "64Mi",
+        resource_memory_limit: str = "512Mi",
+        health_check_path: str = "",
+        custom_domain: str = "",
+        min_replicas: int = 1,
+        max_replicas: int = 5,
+        cpu_threshold: int = 70,
+        app_type: str = "web",
     ) -> None:
         """Create or update Deployment + Service + HTTPRoute + HPA."""
-        logger.info("Deploying app: namespace=%s app=%s image=%s port=%d", namespace, app_slug, image, port)
+        logger.info("Deploying app: namespace=%s app=%s image=%s port=%d type=%s", namespace, app_slug, image, port, app_type)
 
         if not self.k8s.is_available() or self.k8s.apps_v1 is None:
             logger.warning("K8s unavailable — skipping deploy for %s/%s", namespace, app_slug)
             return
 
-        await asyncio.gather(
-            self._apply_deployment(
-                namespace=namespace,
-                app_slug=app_slug,
-                image=image,
-                replicas=replicas,
-                env_vars=env_vars,
-                service_secret_names=service_secret_names,
-                port=port,
-            ),
-            self._apply_service(namespace=namespace, app_slug=app_slug, port=port),
+        await self._apply_deployment(
+            namespace=namespace,
+            app_slug=app_slug,
+            image=image,
+            replicas=replicas,
+            env_vars=env_vars,
+            service_secret_names=service_secret_names,
+            port=port,
+            resource_cpu_request=resource_cpu_request,
+            resource_cpu_limit=resource_cpu_limit,
+            resource_memory_request=resource_memory_request,
+            resource_memory_limit=resource_memory_limit,
+            health_check_path=health_check_path,
         )
+
+        # Workers don't need Service, HTTPRoute, or HPA
+        if app_type == "worker":
+            logger.info("Deploy complete (worker, no ingress): namespace=%s app=%s", namespace, app_slug)
+            return
+
+        await self._apply_service(namespace=namespace, app_slug=app_slug, port=port)
 
         # HTTPRoute and HPA after service exists
         await asyncio.gather(
@@ -73,8 +93,15 @@ class DeployService:
                 namespace=namespace,
                 tenant_slug=tenant_slug,
                 app_slug=app_slug,
+                custom_domain=custom_domain,
             ),
-            self._apply_hpa(namespace=namespace, app_slug=app_slug),
+            self._apply_hpa(
+                namespace=namespace,
+                app_slug=app_slug,
+                min_replicas=min_replicas,
+                max_replicas=max_replicas,
+                cpu_threshold=cpu_threshold,
+            ),
         )
 
         logger.info("Deploy complete: namespace=%s app=%s", namespace, app_slug)
@@ -217,6 +244,11 @@ class DeployService:
         env_vars: dict[str, str],
         service_secret_names: list[str] | None = None,
         port: int = _DEFAULT_APP_PORT,
+        resource_cpu_request: str = "50m",
+        resource_cpu_limit: str = "500m",
+        resource_memory_request: str = "64Mi",
+        resource_memory_limit: str = "512Mi",
+        health_check_path: str = "",
     ) -> None:
         env_list = [k8s_client_lib.V1EnvVar(name="PORT", value=str(port))]
         env_list += [k8s_client_lib.V1EnvVar(name=k, value=v) for k, v in env_vars.items()]
@@ -225,6 +257,26 @@ class DeployService:
             k8s_client_lib.V1EnvFromSource(secret_ref=k8s_client_lib.V1SecretEnvSource(name=sn, optional=True))
             for sn in (service_secret_names or [])
         ]
+
+        # Use HTTP probe when health_check_path is configured, otherwise TCP
+        if health_check_path:
+            liveness_probe = k8s_client_lib.V1Probe(
+                http_get=k8s_client_lib.V1HTTPGetAction(path=health_check_path, port=port),
+                initial_delay_seconds=10,
+                period_seconds=10,
+            )
+            readiness_probe = k8s_client_lib.V1Probe(
+                http_get=k8s_client_lib.V1HTTPGetAction(path=health_check_path, port=port),
+                initial_delay_seconds=5,
+                period_seconds=5,
+            )
+        else:
+            liveness_probe = k8s_client_lib.V1Probe(
+                tcp_socket=k8s_client_lib.V1TCPSocketAction(port=port),
+                initial_delay_seconds=10,
+                period_seconds=10,
+            )
+            readiness_probe = None
 
         deployment = k8s_client_lib.V1Deployment(
             api_version="apps/v1",
@@ -249,14 +301,11 @@ class DeployService:
                                 env=env_list,
                                 env_from=env_from,
                                 resources=k8s_client_lib.V1ResourceRequirements(
-                                    requests={"cpu": "50m", "memory": "64Mi"},
-                                    limits={"cpu": "500m", "memory": "512Mi"},
+                                    requests={"cpu": resource_cpu_request, "memory": resource_memory_request},
+                                    limits={"cpu": resource_cpu_limit, "memory": resource_memory_limit},
                                 ),
-                                liveness_probe=k8s_client_lib.V1Probe(
-                                    tcp_socket=k8s_client_lib.V1TCPSocketAction(port=port),
-                                    initial_delay_seconds=10,
-                                    period_seconds=10,
-                                ),
+                                liveness_probe=liveness_probe,
+                                readiness_probe=readiness_probe,
                                 security_context=k8s_client_lib.V1SecurityContext(
                                     allow_privilege_escalation=False,
                                     run_as_non_root=True,
@@ -343,8 +392,13 @@ class DeployService:
         namespace: str,
         tenant_slug: str,
         app_slug: str,
+        custom_domain: str = "",
     ) -> None:
         hostname = f"{app_slug}.{tenant_slug}.apps.{settings.lb_ip}.sslip.io"
+        hostnames = [hostname]
+        if custom_domain:
+            hostnames.append(custom_domain)
+
         httproute = {
             "apiVersion": "gateway.networking.k8s.io/v1",
             "kind": "HTTPRoute",
@@ -360,7 +414,7 @@ class DeployService:
                         "name": "haven-gateway",
                     }
                 ],
-                "hostnames": [hostname],
+                "hostnames": hostnames,
                 "rules": [
                     {
                         "matches": [{"path": {"type": "PathPrefix", "value": "/"}}],
@@ -384,7 +438,15 @@ class DeployService:
             # Gateway API CRD may not be installed (e.g. local dev)
             logger.warning("HTTPRoute skipped (CRD not available): %s", e.reason)
 
-    async def _apply_hpa(self, *, namespace: str, app_slug: str) -> None:
+    async def _apply_hpa(
+        self,
+        *,
+        namespace: str,
+        app_slug: str,
+        min_replicas: int = 1,
+        max_replicas: int = 5,
+        cpu_threshold: int = 70,
+    ) -> None:
         if self.k8s.autoscaling_v2 is None:
             logger.warning("autoscaling_v2 not available — skipping HPA for %s", app_slug)
             return
@@ -403,8 +465,8 @@ class DeployService:
                     kind="Deployment",
                     name=app_slug,
                 ),
-                min_replicas=1,
-                max_replicas=5,
+                min_replicas=min_replicas,
+                max_replicas=max_replicas,
                 metrics=[
                     k8s_client_lib.V2MetricSpec(
                         type="Resource",
@@ -412,7 +474,7 @@ class DeployService:
                             name="cpu",
                             target=k8s_client_lib.V2MetricTarget(
                                 type="Utilization",
-                                average_utilization=70,
+                                average_utilization=cpu_threshold,
                             ),
                         ),
                     )

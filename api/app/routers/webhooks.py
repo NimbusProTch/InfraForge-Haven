@@ -99,6 +99,10 @@ async def _handle_push(
         logger.info("Push webhook ignored: branch %s != configured %s", branch, app.branch)
         return {"status": "ignored", "reason": "branch mismatch"}
 
+    if not app.auto_deploy:
+        logger.info("Push webhook ignored: auto_deploy disabled for app %s", app.slug)
+        return {"status": "ignored", "reason": "auto_deploy disabled"}
+
     tenant = await db.get(Tenant, app.tenant_id)
     if tenant is None:
         raise HTTPException(status_code=500, detail="Tenant not found for application")
@@ -142,6 +146,7 @@ async def _handle_push(
             argocd=argocd,
             dockerfile_path=app.dockerfile_path,
             build_context=app.build_context,
+            use_dockerfile=app.use_dockerfile,
             custom_domain=app.custom_domain or "",
             health_check_path=app.health_check_path or "",
             resource_cpu_request=app.resource_cpu_request,

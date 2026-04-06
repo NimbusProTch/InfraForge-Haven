@@ -31,11 +31,12 @@ class BuildService:
         github_token: str | None = None,
         dockerfile_path: str | None = None,
         build_context: str | None = None,
+        use_dockerfile: bool = False,
     ) -> str:
         """Submit a BuildKit build Job and return the K8s job name."""
         job_name = f"build-{app_slug}-{commit_sha[:8]}-{uuid.uuid4().hex[:6]}"
         logger.info(
-            "Submitting build job: job=%s repo=%s branch=%s commit=%s image=%s dockerfile=%s context=%s",
+            "Submitting build job: job=%s repo=%s branch=%s commit=%s image=%s dockerfile=%s context=%s use_dockerfile=%s",
             job_name,
             repo_url,
             branch,
@@ -43,6 +44,7 @@ class BuildService:
             image_name,
             dockerfile_path,
             build_context,
+            use_dockerfile,
         )
 
         job_body = self._build_job_manifest(
@@ -56,6 +58,7 @@ class BuildService:
             github_token=github_token,
             dockerfile_path=dockerfile_path,
             build_context=build_context,
+            use_dockerfile=use_dockerfile,
         )
 
         await asyncio.to_thread(
@@ -159,6 +162,7 @@ class BuildService:
         github_token: str | None = None,
         dockerfile_path: str | None = None,
         build_context: str | None = None,
+        use_dockerfile: bool = False,
     ) -> k8s_client_lib.V1Job:
         """Construct the K8s Job manifest for the build pipeline.
 
@@ -188,7 +192,20 @@ class BuildService:
         df_check_path = f"/workspace/{dockerfile_path}" if dockerfile_path else "/workspace/Dockerfile"
         nixpacks_target = f"/workspace/{build_context}" if build_context else "/workspace"
 
-        nixpacks_cmd = (
+        # When use_dockerfile=True, skip Nixpacks entirely — require a Dockerfile to exist
+        if use_dockerfile:
+            nixpacks_cmd = (
+                f"if [ -f '{df_check_path}' ]; then "
+                f"  echo 'Using Dockerfile: {df_check_path}' && "
+                f"  cp '{df_check_path}' '{nixpacks_target}/Dockerfile' 2>/dev/null || true; "
+                "elif [ -f /workspace/Dockerfile ]; then "
+                "  echo 'Using existing Dockerfile'; "
+                "else "
+                f"  echo 'ERROR: use_dockerfile is enabled but no Dockerfile found at {df_check_path}' && exit 1; "
+                "fi"
+            )
+        else:
+            nixpacks_cmd = (
             f"if [ -f '{df_check_path}' ]; then "
             f"  echo 'Using Dockerfile: {df_check_path}' && "
             f"  cp '{df_check_path}' '{nixpacks_target}/Dockerfile' 2>/dev/null || true; "
