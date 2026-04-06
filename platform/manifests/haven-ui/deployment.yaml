@@ -30,7 +30,7 @@ spec:
                 topologyKey: kubernetes.io/hostname
       containers:
         - name: haven-ui
-          image: harbor.46.225.42.2.sslip.io/library/haven-ui:39bc803
+          image: harbor.46.225.42.2.sslip.io/library/haven-ui:9ab7fca
           imagePullPolicy: Always
           ports:
             - name: http
