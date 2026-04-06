@@ -1,6 +1,5 @@
 """Tests for build-only pipeline mode (deploy=False → BUILT status)."""
 
-import pytest
 
 from app.models.deployment import DeploymentStatus
 
@@ -49,12 +48,15 @@ class TestBuildOnlyMode:
         # Check that 'if not deploy' appears in the function
         found_deploy_check = False
         for node in ast.walk(tree):
-            if isinstance(node, ast.If):
-                # Check for 'if not deploy' pattern
-                if isinstance(node.test, ast.UnaryOp) and isinstance(node.test.op, ast.Not):
-                    if isinstance(node.test.operand, ast.Name) and node.test.operand.id == "deploy":
-                        found_deploy_check = True
-                        break
+            if (  # noqa: SIM102
+                isinstance(node, ast.If)
+                and isinstance(node.test, ast.UnaryOp)
+                and isinstance(node.test.op, ast.Not)
+                and isinstance(node.test.operand, ast.Name)
+                and node.test.operand.id == "deploy"
+            ):
+                found_deploy_check = True
+                break
         assert found_deploy_check, "Pipeline should have 'if not deploy:' branch for build-only mode"
 
 
