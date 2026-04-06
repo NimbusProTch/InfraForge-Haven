@@ -458,6 +458,37 @@ haven-platform/
 - Plan dosyası güncel tutulmalı
 - Yeni gotcha'lar eklenmeli
 
+### Kural 6: 4-Agent Review (PR Merge Öncesi ZORUNLU)
+Her PR merge edilmeden önce 4 review agent **paralel** olarak çalıştırılmalı.
+Tüm agent'lar APPROVE vermeden merge YASAK.
+
+#### Agent 1: Architect Agent
+- **Görev**: Mimari tutarlılık, API alignment (frontend↔backend), güvenlik, integration points
+- **Kontrol**: Endpoint imzaları eşleşiyor mu? Data flow tutarlı mı? Orphaned code var mı?
+- **Çıktı**: Architecture Score (X/10), blocking issues, APPROVE/NEEDS_WORK
+
+#### Agent 2: Senior Backend Agent
+- **Görev**: Backend kod kalitesi, type hints, error handling, SQL injection, test coverage
+- **Kontrol**: `pytest tests/ -q`, `ruff check .`, `ruff format --check .`
+- **Çıktı**: Code Quality Score (X/10), test results (pass/fail count), APPROVE/NEEDS_WORK
+
+#### Agent 3: Senior Frontend Agent
+- **Görev**: Component kalitesi, state management, accessibility, memory leaks, TypeScript
+- **Kontrol**: `npm run lint`, `npx tsc --noEmit`, `npx playwright test`
+- **Çıktı**: Frontend Quality Score (X/10), per-component review, APPROVE/NEEDS_WORK
+
+#### Agent 4: Team Lead Agent
+- **Görev**: Definition of Done compliance, CI status, deploy doğrulama, test count artışı
+- **Kontrol**: PRs merged? CI green? Pods running? API accessible? CLAUDE.md güncel?
+- **Çıktı**: DoD Compliance (PASS/FAIL), sprint completion status, APPROVE/NEEDS_WORK
+
+#### Süreç
+1. PR oluşturulduktan sonra 4 agent **tek mesajda paralel** başlatılır
+2. Her agent kendi alanını bağımsız inceler
+3. NEEDS_WORK veren agent varsa → sorun düzeltilir → agent tekrar çalıştırılır
+4. 4/4 APPROVE → merge edilir
+5. Herhangi bir agent CRITICAL bug bulursa → merge YASAK, önce fix
+
 ## Mevcut Durum (2026-03-31)
 
 ### Cluster Erişimi
