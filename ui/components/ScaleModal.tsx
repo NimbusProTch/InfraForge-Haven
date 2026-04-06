@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { api } from "@/lib/api";
 import {
   Dialog,
@@ -60,6 +60,19 @@ export function ScaleModal({
   const [selectedTier, setSelectedTier] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+
+  // Reset state when modal opens (prevents stale values after scaling)
+  useEffect(() => {
+    if (open) {
+      setReplicas(currentReplicas);
+      setHpaEnabled(minReplicas !== maxReplicas);
+      setMinR(minReplicas);
+      setMaxR(maxReplicas);
+      setCpuTarget(cpuThreshold);
+      setSelectedTier(null);
+      setError("");
+    }
+  }, [open, currentReplicas, minReplicas, maxReplicas, cpuThreshold]);
 
   // Detect current tier
   const currentTier = RESOURCE_TIERS.find(
