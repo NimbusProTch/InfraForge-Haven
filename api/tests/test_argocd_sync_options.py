@@ -17,7 +17,6 @@ import pytest
 
 from app.services.argocd_service import ArgoCDService
 
-
 # ---------------------------------------------------------------------------
 # trigger_sync options tests
 # ---------------------------------------------------------------------------

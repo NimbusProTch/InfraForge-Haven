@@ -12,13 +12,12 @@ from __future__ import annotations
 
 import types
 import uuid
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from app.models.managed_service import ServiceStatus, ServiceTier, ServiceType
 from app.schemas.application import ApplicationCreate, RequestedServiceSpec
-
 
 # ---------------------------------------------------------------------------
 # Schema Tests
@@ -44,15 +43,15 @@ class TestRequestedServiceSpec:
             assert spec.service_type == stype
 
     def test_invalid_service_type(self):
-        with pytest.raises(Exception):
+        with pytest.raises(ValueError):
             RequestedServiceSpec(service_type="oracle")
 
     def test_invalid_tier(self):
-        with pytest.raises(Exception):
+        with pytest.raises(ValueError):
             RequestedServiceSpec(service_type="postgres", tier="enterprise")
 
     def test_invalid_name_pattern(self):
-        with pytest.raises(Exception):
+        with pytest.raises(ValueError):
             RequestedServiceSpec(service_type="postgres", name="My DB")
 
 
