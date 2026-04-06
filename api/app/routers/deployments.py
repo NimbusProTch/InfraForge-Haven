@@ -283,6 +283,21 @@ async def trigger_build(
         deploy=deploy,
     )
 
+    # Enqueue build for queue position tracking (best-effort, does not block pipeline)
+    queue_position: int | None = None
+    try:
+        from app.routers.build_queue import _get_build_queue_service
+
+        queue_svc = _get_build_queue_service()
+        if queue_svc is not None:
+            _job_id, queue_position = await queue_svc.enqueue_build(
+                tenant_slug=tenant_slug,
+                app_slug=app_slug,
+                deployment_id=str(deployment.id),
+            )
+    except Exception as exc:
+        logger.debug("Build queue enqueue skipped: %s", exc)
+
     await audit(
         db,
         tenant_id=tenant.id,
@@ -290,7 +305,12 @@ async def trigger_build(
         user_id=current_user.get("sub", ""),
         resource_type="deployment",
         resource_id=str(deployment.id),
-        extra={"app_slug": app.slug, "branch": branch, "build_env_vars": list(build_env_vars.keys())},
+        extra={
+            "app_slug": app.slug,
+            "branch": branch,
+            "build_env_vars": list(build_env_vars.keys()),
+            "queue_position": queue_position,
+        },
     )
 
     return deployment
