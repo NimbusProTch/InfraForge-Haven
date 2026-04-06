@@ -76,7 +76,6 @@ export function AppShell({ children, userEmail }: AppShellProps) {
       )}
       {/* Sidebar — Creative Tim Material Dashboard style */}
       <aside className="w-64 flex flex-col shrink-0 bg-gradient-to-b from-gray-900 via-gray-800 to-gray-900 shadow-xl"
-        style={{ backgroundImage: "linear-gradient(180deg, rgba(0,0,0,0.8) 0%, rgba(0,0,0,0.9) 100%), url('/sidebar-bg.jpg')", backgroundSize: "cover" }}
       >
         {/* Logo */}
         <div className="flex items-center gap-2.5 px-5 h-16 border-b border-white/10">
