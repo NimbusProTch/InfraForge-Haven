@@ -84,3 +84,39 @@ GitQueueDep = Annotated[GitQueueService | None, Depends(get_git_queue)]
 # Auth
 # ---------------------------------------------------------------------------
 CurrentUser = Annotated[dict[str, Any], Depends(verify_token)]
+
+
+# ---------------------------------------------------------------------------
+# Common tenant/app lookup helpers (shared across routers)
+# ---------------------------------------------------------------------------
+async def get_tenant_or_404(
+    tenant_slug: str,
+    db: AsyncSession,
+    current_user: dict[str, Any] | None = None,
+) -> "Tenant":
+    """Fetch a tenant by slug or raise 404.
+
+    If *current_user* is provided, also verifies the user is a member of the tenant
+    (raises 403 if not).
+    """
+    from fastapi import HTTPException
+    from sqlalchemy import select
+
+    from app.models.tenant import Tenant
+
+    result = await db.execute(select(Tenant).where(Tenant.slug == tenant_slug))
+    tenant = result.scalar_one_or_none()
+    if tenant is None:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+
+    if current_user:
+        from app.models.tenant_member import TenantMember
+
+        uid = current_user.get("sub", "")
+        mem = await db.execute(
+            select(TenantMember).where(TenantMember.tenant_id == tenant.id, TenantMember.user_id == uid)
+        )
+        if mem.scalar_one_or_none() is None:
+            raise HTTPException(status_code=403, detail="You are not a member of this tenant")
+
+    return tenant

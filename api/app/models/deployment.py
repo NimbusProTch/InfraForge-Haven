@@ -45,6 +45,7 @@ class Deployment(Base, TimestampMixin):
     environment: Mapped["Environment | None"] = relationship(back_populates="deployments")
 
 
+# TODO: Remove unused model — replaced by K8s Job direct API
 class BuildJob(Base, TimestampMixin):
     __tablename__ = "build_jobs"
 
