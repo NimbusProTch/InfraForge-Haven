@@ -358,10 +358,9 @@ async def list_repos(
 async def list_repo_tree(
     owner: str,
     repo: str,
-    current_user: CurrentUser,
     ref: str = "main",
     authorization: str | None = Header(None),
-    token: str | None = Query(None, description="Deprecated: use Authorization: Bearer header"),
+    token: str | None = Query(None, description="GitHub token (query param or Authorization: Bearer header)"),
 ) -> list:
     """List files/directories in a repository (for monorepo support)."""
     t = _resolve_token(authorization, token)
@@ -385,10 +384,9 @@ async def list_repo_tree(
 async def detect_repo_deps(
     owner: str,
     repo: str,
-    current_user: CurrentUser,
     ref: str = "main",
     authorization: str | None = Header(None),
-    token: str | None = Query(None, description="Deprecated: use Authorization: Bearer header"),
+    token: str | None = Query(None, description="GitHub token (query param or Authorization: Bearer header)"),
 ) -> dict:
     """Detect language, framework, and service dependencies for a repository."""
     from app.services.detection_service import detect_dependencies

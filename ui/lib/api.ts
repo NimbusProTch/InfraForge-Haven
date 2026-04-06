@@ -777,11 +777,17 @@ export const api = {
         accessToken
       ),
     /** List files in a repository (monorepo support) */
-    tree: (owner: string, repo: string, ref: string, token: string) =>
-      apiFetch<RepoTreeItem[]>(`/github/repos/${owner}/${repo}/tree?ref=${ref}`, {}, token),
+    tree: (owner: string, repo: string, ref: string, githubToken: string) =>
+      apiFetch<RepoTreeItem[]>(
+        `/github/repos/${owner}/${repo}/tree?ref=${ref}&token=${encodeURIComponent(githubToken)}`,
+        {}
+      ),
     /** Detect dependencies for a repository */
-    detect: (owner: string, repo: string, ref: string, token: string) =>
-      apiFetch<DetectedDeps>(`/github/repos/${owner}/${repo}/detect?ref=${ref}`, {}, token),
+    detect: (owner: string, repo: string, ref: string, githubToken: string) =>
+      apiFetch<DetectedDeps>(
+        `/github/repos/${owner}/${repo}/detect?ref=${ref}&token=${encodeURIComponent(githubToken)}`,
+        {}
+      ),
   },
   members: {
     list: (tenantSlug: string, token?: string) =>
