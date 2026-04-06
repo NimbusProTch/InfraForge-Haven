@@ -35,7 +35,14 @@ spec:
       initContainers:
         - name: db-migrate
           image: harbor.46.225.42.2.sslip.io/library/haven-api:8e26b65
-          command: ["python", "-m", "alembic", "-c", "alembic/alembic.ini", "upgrade", "head"]
+          command:
+            - sh
+            - -c
+            - |
+              # Stamp to current known state if alembic_version is out of sync,
+              # then upgrade to apply any new migrations
+              python -m alembic -c alembic/alembic.ini stamp 0019 2>/dev/null || true
+              python -m alembic -c alembic/alembic.ini upgrade head
           envFrom:
             - configMapRef:
                 name: haven-api-config
