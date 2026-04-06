@@ -300,6 +300,35 @@ haven-platform/
 - [x] Background credential provisioning loop (UI bağımlılığı kaldırıldı) — PR #4
 - [x] 778 backend tests (all passing)
 
+### Phase 1 Sprint 4.5: UX Overhaul + Pipeline Fix + Auth Hardening ✅
+- [x] Fix: Create App slug validation (silent HTML5 pattern → JS validation with errors)
+- [x] Fix: Pod readiness — detect terminated containers + init container failures
+- [x] Fix: Queue page "unavailable" → show actual error + retry button
+- [x] Fix: ObservabilityTab "Loading pods" → "No deployment yet" or retry
+- [x] Add gitops_commit_sha field to Deployment model
+- [x] Keycloak token: 5min → 1hr access, 8hr SSO session (haven-realm.json + setup script)
+- [x] Frontend 401 interceptor with Promise-based mutex (race-condition safe)
+- [x] Session expiry toast notification before redirect
+- [x] Token refresh safety margin: 60s → 5min
+- [x] New App wizard: 4-step form (Identity → Source → Build → Runtime → Review)
+- [x] GitHubFileBrowser component (repo file tree dropdown for Dockerfile selection)
+- [x] GitHubRepoPicker component (searchable, org-grouped repo picker)
+- [x] Build vs Deploy separation: BUILT status, deploy-image endpoint
+- [x] Pipeline: deploy=False stops after build (BUILT status)
+- [x] SSE heartbeat fix (data: format for UI parser)
+- [x] Auto-start log streaming on build/deploy
+- [x] BUILT status UI support (badge, pipeline viz, deploy button)
+- [x] AddServiceModal enterprise redesign with official DB logos + backup config
+- [x] BackupPanel component (list backups, trigger snapshot, restore)
+- [x] Backup API client methods (list, trigger, restore, schedule)
+- [x] Build queue service (Redis FIFO, per-tenant concurrency limits)
+- [x] Build queue endpoints (status, jobs, position) with graceful Redis fallback
+- [x] Dashboard stats: gradient cards, app health dots
+- [x] App cards: port, domain, mini deployment status, quick actions
+- [x] Config validation: warn about missing recommended settings at startup
+- [x] buildOnly() and deployImage() API client methods
+- [x] 1081 backend tests (was 929, +152 new)
+
 ### Phase 1 Sprint 4: Monorepo + Smart Detection (SONRAKI)
 - [ ] `dockerfile_path` — Hangi Dockerfile kullanılacak (`backend/Dockerfile`)
 - [ ] `build_context` — Build root dizini (`./backend`)
@@ -505,7 +534,7 @@ haven-builds             → BuildKit daemon + build job pod'ları
 - Build pipeline: tenant'ın `github_token`'ını kullanarak private repo clone yapabiliyor
 
 ### Test Durumu
-- Backend unit testleri: **929** (E1-E8 sprint'leri + H1-H3 enterprise hardening: RBAC enforcement, per-service backup/restore, multi-replica log streaming, Redis/RabbitMQ scale, signup flow, observability, GitOps verification, full regression lifecycle, tenant/app/service CRUD)
+- Backend unit testleri: **1081** (E1-E8 sprint'leri + H1-H3 enterprise hardening + Sprint 4.5 UX overhaul: RBAC enforcement, per-service backup/restore, multi-replica log streaming, Redis/RabbitMQ scale, signup flow, observability, GitOps verification, full regression lifecycle, tenant/app/service CRUD)
 - Playwright E2E: **36 test** (5 DB lifecycle + credentials flow + env vars)
 - Real cluster E2E: 3 tenants × (app + 2 services + build + deploy + delete) — all verified
 - CI/CD: GitHub Actions → Lint ✅ → Test (929) ✅ → Docker Build ✅ → Harbor Push ✅ → Manifest Update ✅ → ArgoCD Sync ✅
