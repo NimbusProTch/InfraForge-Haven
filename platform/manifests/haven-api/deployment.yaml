@@ -34,7 +34,7 @@ spec:
                 topologyKey: kubernetes.io/hostname
       initContainers:
         - name: db-migrate
-          image: harbor.46.225.42.2.sslip.io/library/haven-api:7a19461
+          image: harbor.46.225.42.2.sslip.io/library/haven-api:e9cdb9a
           command:
             - sh
             - -c
@@ -57,7 +57,7 @@ spec:
               memory: "256Mi"
       containers:
         - name: haven-api
-          image: harbor.46.225.42.2.sslip.io/library/haven-api:7a19461
+          image: harbor.46.225.42.2.sslip.io/library/haven-api:e9cdb9a
           imagePullPolicy: Always
           ports:
             - name: http
