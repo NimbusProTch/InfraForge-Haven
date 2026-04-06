@@ -2,15 +2,58 @@
  * Playwright test helpers — API mocking, auth bypass, test data factories.
  */
 import { type Page, type Route } from "@playwright/test";
+import { EncryptJWT } from "jose";
+import { hkdf } from "@panva/hkdf";
 
 const API_BASE = "http://localhost:8000/api/v1";
+const NEXTAUTH_SECRET = "test-secret-for-playwright-e2e-testing-only";
 
 // ---------------------------------------------------------------------------
-// Auth bypass — mock NextAuth session
+// Auth bypass — mock NextAuth session (middleware + client-side)
 // ---------------------------------------------------------------------------
+
+/** Derive the next-auth encryption key from the secret */
+async function deriveKey(): Promise<Uint8Array> {
+  return new Uint8Array(
+    await hkdf("sha256", NEXTAUTH_SECRET, "", "NextAuth.js Generated Encryption Key", 32)
+  );
+}
+
+/** Create an encrypted JWT session token that next-auth middleware accepts */
+async function createSessionToken(): Promise<string> {
+  const key = await deriveKey();
+  return new EncryptJWT({
+    name: "Test User",
+    email: "test@haven.nl",
+    accessToken: "mock-jwt-token",
+    refreshToken: "mock-refresh",
+    expiresAt: Math.floor(Date.now() / 1000) + 86400,
+    provider: "keycloak",
+    sub: "test-user-id",
+  })
+    .setProtectedHeader({ alg: "dir", enc: "A256GCM" })
+    .setIssuedAt()
+    .setExpirationTime("24h")
+    .setJti("test-jti")
+    .encrypt(key);
+}
 
 export async function mockSession(page: Page) {
-  // Mock the NextAuth session endpoint
+  // Set the session cookie so next-auth middleware allows access
+  const token = await createSessionToken();
+  await page.context().addCookies([
+    {
+      name: "next-auth.session-token",
+      value: token,
+      domain: "localhost",
+      path: "/",
+      httpOnly: true,
+      sameSite: "Lax",
+      expires: Math.floor(Date.now() / 1000) + 86400,
+    },
+  ]);
+
+  // Mock the NextAuth session endpoint (client-side useSession)
   await page.route("**/api/auth/session", (route) =>
     route.fulfill({
       status: 200,
