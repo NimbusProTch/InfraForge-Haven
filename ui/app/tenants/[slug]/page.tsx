@@ -627,6 +627,17 @@ export default function TenantDetailPage() {
                       </div>
                     )}
 
+                    {/* Connected apps */}
+                    {svc.connected_apps && svc.connected_apps.length > 0 && (
+                      <div className="mt-2 flex items-center gap-2 text-xs text-gray-500 dark:text-zinc-500">
+                        <Link2 className="w-3 h-3 shrink-0" />
+                        <span>Connected to:</span>
+                        {svc.connected_apps.map((ca: { slug: string; name: string }) => (
+                          <span key={ca.slug} className="font-medium text-gray-700 dark:text-zinc-300">{ca.name}</span>
+                        ))}
+                      </div>
+                    )}
+
                     {/* Action buttons */}
                     <div className="mt-3 flex items-center gap-2 border-t border-gray-200 dark:border-zinc-800/50 pt-3">
                       {svc.status === "ready" && (

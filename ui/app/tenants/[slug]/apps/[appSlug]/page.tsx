@@ -18,6 +18,11 @@ import VolumesTab from "@/components/VolumesTab";
 import CanaryTab from "@/components/CanaryTab";
 import { AnsiTerminal } from "@/components/ui/ansi-terminal";
 import { BuildModal, DeployModal } from "@/components/BuildDeployModal";
+import { ScaleModal } from "@/components/ScaleModal";
+import { SyncModal } from "@/components/SyncModal";
+import { RestartModal } from "@/components/RestartModal";
+import { ConnectedServicesPanel } from "@/components/ConnectedServicesPanel";
+import type { AppServiceEntry } from "@/lib/api";
 import {
   Activity,
   GitBranch,
@@ -613,7 +618,7 @@ export default function AppDetailPage() {
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<"build" | "deploy" | null>(null);
   const [rolling, setRolling] = useState<string | null>(null);
-  const [syncing, setSyncing] = useState(false);
+  // syncing state removed — SyncModal handles its own state
   const [syncStatus, setSyncStatus] = useState<{ health: string; sync: string } | null>(null);
   const [argoHistory, setArgoHistory] = useState<Array<Record<string, unknown>>>([]);
 
@@ -630,6 +635,10 @@ export default function AppDetailPage() {
   const [activeLogStep, setActiveLogStep] = useState<string | null>(null);
   const [showBuildModal, setShowBuildModal] = useState(false);
   const [showDeployModal, setShowDeployModal] = useState(false);
+  const [showScaleModal, setShowScaleModal] = useState(false);
+  const [showSyncModal, setShowSyncModal] = useState(false);
+  const [showRestartModal, setShowRestartModal] = useState(false);
+  const [appServices, setAppServices] = useState<AppServiceEntry[]>([]);
   const [lastStatusRefresh, setLastStatusRefresh] = useState<Date>(new Date());
   const [refreshingStatus, setRefreshingStatus] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
@@ -688,6 +697,8 @@ export default function AppDetailPage() {
         setDeployments(d as Deployment[]);
         void loadSyncStatus();
         void loadArgoHistory();
+        // Load connected services
+        api.apps.getServices(tenantSlug, appSlug, accessToken).then(setAppServices).catch(() => {});
       } catch {
         router.push(`/tenants/${tenantSlug}`);
       } finally {
@@ -707,6 +718,14 @@ export default function AppDetailPage() {
       setEditBranch(a.branch);
       setEditReplicas(a.replicas);
     } catch { /* ignore */ }
+  }, [tenantSlug, appSlug, status, accessToken]);
+
+  const loadAppServices = useCallback(async () => {
+    if (status !== "authenticated") return;
+    try {
+      const svcs = await api.apps.getServices(tenantSlug, appSlug, accessToken);
+      setAppServices(svcs);
+    } catch { /* ignore — services endpoint may not exist for old apps */ }
   }, [tenantSlug, appSlug, status, accessToken]);
 
   const refreshStatus = useCallback(async () => {
@@ -891,18 +910,7 @@ export default function AppDetailPage() {
     }
   }
 
-  async function handleSync() {
-    setSyncing(true);
-    try {
-      await api.deployments.sync(tenantSlug, appSlug, accessToken);
-      toastSuccess("ArgoCD sync triggered");
-      setTimeout(() => void loadSyncStatus(), 2000);
-    } catch (err) {
-      toastError(err instanceof Error ? err.message : "Sync failed");
-    } finally {
-      setSyncing(false);
-    }
-  }
+  // handleSync removed — SyncModal handles sync with options
 
   if (status === "loading" || loading) {
     return (
@@ -1012,50 +1020,17 @@ export default function AppDetailPage() {
               )}
               Deploy
             </button>
-            {/* Scale dropdown */}
-            <div className="relative group">
-              <button
-                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 hover:bg-gray-50 dark:hover:bg-zinc-700 text-gray-700 dark:text-zinc-200 text-sm font-semibold transition-all shadow-sm hover:shadow"
-              >
-                <Layers className="w-4 h-4" />
-                Scale
-                <ChevronDown className="w-3.5 h-3.5" />
-              </button>
-              <div className="absolute right-0 mt-1 w-36 bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-lg shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-10">
-                {[1, 2, 3, 5].map((n) => (
-                  <button
-                    key={n}
-                    onClick={async () => {
-                      try {
-                        await api.apps.update(tenantSlug, appSlug, { replicas: n }, accessToken);
-                        await loadApp();
-                        toastSuccess(`Scaled to ${n} replica${n > 1 ? "s" : ""}`);
-                      } catch (err) {
-                        toastError(err instanceof Error ? err.message : "Scale failed");
-                      }
-                    }}
-                    className={`w-full text-left px-3 py-2 text-xs transition-colors ${
-                      app.replicas === n
-                        ? "text-emerald-400 bg-emerald-500/10"
-                        : "text-gray-500 dark:text-zinc-400 hover:text-gray-900 dark:hover:text-zinc-200 hover:bg-gray-100 dark:hover:bg-zinc-800"
-                    }`}
-                  >
-                    {n} replica{n > 1 ? "s" : ""} {app.replicas === n ? "✓" : ""}
-                  </button>
-                ))}
-              </div>
-            </div>
+            {/* Scale */}
+            <button
+              onClick={() => setShowScaleModal(true)}
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 hover:bg-gray-50 dark:hover:bg-zinc-700 text-gray-700 dark:text-zinc-200 text-sm font-semibold transition-all shadow-sm hover:shadow"
+            >
+              <Layers className="w-4 h-4" />
+              Scale
+            </button>
             {/* Restart */}
             <button
-              onClick={async () => {
-                if (!confirm("This will restart all pods. Continue?")) return;
-                try {
-                  await api.apps.restart(tenantSlug, appSlug, accessToken);
-                  toastSuccess("Restart initiated");
-                } catch (err) {
-                  toastError(err instanceof Error ? err.message : "Restart failed");
-                }
-              }}
+              onClick={() => setShowRestartModal(true)}
               className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 hover:bg-gray-50 dark:hover:bg-zinc-700 text-gray-700 dark:text-zinc-200 text-sm font-semibold transition-all shadow-sm hover:shadow"
               title="Restart all pods"
             >
@@ -1063,16 +1038,11 @@ export default function AppDetailPage() {
               Restart
             </button>
             <button
-              onClick={handleSync}
-              disabled={syncing}
-              title="Force ArgoCD to re-sync this application with the GitOps repository"
-              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 hover:bg-gray-50 dark:hover:bg-zinc-700 text-gray-700 dark:text-zinc-200 text-sm font-semibold transition-all shadow-sm hover:shadow disabled:opacity-50"
+              onClick={() => setShowSyncModal(true)}
+              title="ArgoCD sync with diff preview and options"
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 hover:bg-gray-50 dark:hover:bg-zinc-700 text-gray-700 dark:text-zinc-200 text-sm font-semibold transition-all shadow-sm hover:shadow"
             >
-              {syncing ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <RefreshCw className="w-4 h-4" />
-              )}
+              <RefreshCw className="w-4 h-4" />
               ArgoCD Sync
             </button>
           </div>
@@ -1194,6 +1164,33 @@ export default function AppDetailPage() {
             </div>
           </div>
         )}
+
+        {/* Provisioning banner */}
+        {app.pending_services && app.pending_services.length > 0 && (
+          <div className="mb-4 flex items-center gap-3 px-4 py-3 rounded-lg border border-amber-200 dark:border-amber-500/20 bg-amber-50 dark:bg-amber-500/5">
+            <Loader2 className="w-4 h-4 text-amber-500 animate-spin shrink-0" />
+            <div className="text-sm">
+              <span className="font-medium text-amber-700 dark:text-amber-400">Services provisioning: </span>
+              <span className="text-amber-600 dark:text-amber-300">
+                {app.pending_services.map((s) => `${s.service_name} (${s.service_type})`).join(", ")}
+              </span>
+              <p className="text-xs text-amber-500 dark:text-amber-500/70 mt-0.5">
+                Build is available but deploy may fail without connected services.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* Connected Services */}
+        <div className="mb-4">
+          <ConnectedServicesPanel
+            tenantSlug={tenantSlug}
+            appSlug={appSlug}
+            services={appServices}
+            accessToken={accessToken}
+            onRefresh={loadAppServices}
+          />
+        </div>
 
         {/* Tabs */}
         <Tabs defaultValue="deployments">
@@ -1461,6 +1458,40 @@ export default function AppDetailPage() {
         replicas={app.replicas}
         cpuLimit={app.resource_cpu_limit || "500m"}
         memoryLimit={app.resource_memory_limit || "512Mi"}
+      />
+      <ScaleModal
+        open={showScaleModal}
+        onClose={() => setShowScaleModal(false)}
+        tenantSlug={tenantSlug}
+        appSlug={appSlug}
+        currentReplicas={app.replicas}
+        currentCpuRequest={app.resource_cpu_request || "50m"}
+        currentCpuLimit={app.resource_cpu_limit || "500m"}
+        currentMemoryRequest={app.resource_memory_request || "64Mi"}
+        currentMemoryLimit={app.resource_memory_limit || "512Mi"}
+        minReplicas={app.min_replicas || 1}
+        maxReplicas={app.max_replicas || 5}
+        cpuThreshold={app.cpu_threshold || 70}
+        accessToken={accessToken}
+        onSuccess={() => { void loadApp(); toastSuccess("Scale applied"); }}
+      />
+      <SyncModal
+        open={showSyncModal}
+        onClose={() => setShowSyncModal(false)}
+        tenantSlug={tenantSlug}
+        appSlug={appSlug}
+        accessToken={accessToken}
+        onSuccess={() => { void loadSyncStatus(); toastSuccess("Sync complete"); }}
+      />
+      <RestartModal
+        open={showRestartModal}
+        onClose={() => setShowRestartModal(false)}
+        tenantSlug={tenantSlug}
+        appSlug={appSlug}
+        replicas={app.replicas}
+        namespace={`tenant-${tenantSlug}`}
+        accessToken={accessToken}
+        onSuccess={() => toastSuccess("Restart initiated")}
       />
     </AppShell>
   );
