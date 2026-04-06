@@ -281,6 +281,7 @@ async def trigger_build(
         min_replicas=app.min_replicas,
         max_replicas=app.max_replicas,
         cpu_threshold=app.cpu_threshold,
+        app_type=app.app_type or "web",
         deploy=deploy,
     )
 

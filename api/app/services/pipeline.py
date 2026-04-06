@@ -68,6 +68,7 @@ async def run_pipeline(
     min_replicas: int = 1,
     max_replicas: int = 5,
     cpu_threshold: int = 70,
+    app_type: str = "web",
     # Monorepo support
     dockerfile_path: str | None = None,
     build_context: str | None = None,
@@ -228,6 +229,7 @@ async def run_pipeline(
                 min_replicas=min_replicas,
                 max_replicas=max_replicas,
                 cpu_threshold=cpu_threshold,
+                app_type=app_type,
             )
     except Exception as exc:
         logger.exception("Deploy failed for deployment %s", deployment_id)
