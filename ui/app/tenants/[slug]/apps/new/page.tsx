@@ -30,7 +30,10 @@ import {
   Shield,
   Cpu,
   Heart,
+  Database,
+  X,
 } from "lucide-react";
+import { ServiceIcon } from "@/components/icons/ServiceIcons";
 
 const GITHUB_TOKEN_KEY = "haven_github_oauth_token";
 
@@ -39,7 +42,22 @@ const STEPS = [
   { number: 2, label: "Source Code", icon: Github },
   { number: 3, label: "Build", icon: Cog },
   { number: 4, label: "Runtime", icon: Rocket },
+  { number: 5, label: "Services", icon: Database },
 ];
+
+const SERVICE_TYPES = [
+  { type: "postgres" as const, label: "PostgreSQL", description: "Relational database with ACID compliance" },
+  { type: "mysql" as const, label: "MySQL", description: "Popular relational database" },
+  { type: "mongodb" as const, label: "MongoDB", description: "Flexible document database" },
+  { type: "redis" as const, label: "Redis", description: "In-memory cache and data store" },
+  { type: "rabbitmq" as const, label: "RabbitMQ", description: "Message broker for async processing" },
+] as const;
+
+interface SelectedService {
+  service_type: "postgres" | "mysql" | "mongodb" | "redis" | "rabbitmq";
+  name: string;
+  tier: "dev" | "prod";
+}
 
 const APP_TYPES = [
   {
@@ -181,6 +199,9 @@ export default function NewAppPage() {
   const [customDomain, setCustomDomain] = useState("");
   const [healthCheckPath, setHealthCheckPath] = useState("/health");
   const [resourceTierId, setResourceTierId] = useState<"starter" | "standard" | "performance">("standard");
+
+  // Step 5 — Services
+  const [selectedServices, setSelectedServices] = useState<SelectedService[]>([]);
 
   // Submit state
   const [loading, setLoading] = useState(false);
@@ -383,11 +404,11 @@ export default function NewAppPage() {
     }
     setErrors({});
 
-    if (currentStep === 4) {
+    if (currentStep === 5) {
       setShowReview(true);
       return;
     }
-    setCurrentStep((p) => Math.min(p + 1, 4));
+    setCurrentStep((p) => Math.min(p + 1, 5));
   }
 
   function goPrev() {
@@ -424,6 +445,15 @@ export default function NewAppPage() {
         resource_memory_limit: selectedResourceTier.memLimit,
         ...(dockerfilePath ? { dockerfile_path: dockerfilePath, use_dockerfile: true } : {}),
         ...(buildContext ? { build_context: buildContext } : {}),
+        ...(selectedServices.length > 0
+          ? {
+              requested_services: selectedServices.map((s) => ({
+                service_type: s.service_type,
+                name: s.name,
+                tier: s.tier,
+              })),
+            }
+          : {}),
       };
 
       const app = await api.apps.create(tenantSlug, body, accessToken);
@@ -1111,6 +1141,125 @@ export default function NewAppPage() {
           </div>
         )}
 
+        {/* ── Step 5: Services ── */}
+        {currentStep === 5 && !showReview && (
+          <div className={cardBase}>
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-1">
+              Services
+            </h2>
+            <p className="text-sm text-gray-500 dark:text-[#888] mb-6">
+              Does your app need a database, cache, or message broker?
+              Select services to provision alongside your application.
+            </p>
+
+            {/* Service type grid */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mb-6">
+              {SERVICE_TYPES.map((svc) => {
+                const isSelected = selectedServices.some((s) => s.service_type === svc.type);
+                return (
+                  <button
+                    key={svc.type}
+                    type="button"
+                    onClick={() => {
+                      if (isSelected) {
+                        setSelectedServices((prev) => prev.filter((s) => s.service_type !== svc.type));
+                      } else {
+                        setSelectedServices((prev) => [
+                          ...prev,
+                          {
+                            service_type: svc.type,
+                            name: `${slug}-${svc.type}`,
+                            tier: "dev" as const,
+                          },
+                        ]);
+                      }
+                    }}
+                    className={`flex items-center gap-3 p-4 rounded-xl border-2 text-left transition-all ${
+                      isSelected
+                        ? "border-blue-500 bg-blue-50/50 dark:bg-blue-500/10 ring-1 ring-blue-500/30"
+                        : "border-gray-200 dark:border-[#2e2e2e] hover:border-gray-300 dark:hover:border-[#444]"
+                    }`}
+                  >
+                    <ServiceIcon type={svc.type} size={32} />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium text-sm text-gray-900 dark:text-white">{svc.label}</span>
+                        {isSelected && <Check className="w-4 h-4 text-blue-500" />}
+                      </div>
+                      <span className="text-xs text-gray-500 dark:text-[#888]">{svc.description}</span>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Selected services config */}
+            {selectedServices.length > 0 && (
+              <div className="space-y-3">
+                <h3 className="text-sm font-medium text-gray-700 dark:text-[#ccc]">
+                  Selected Services ({selectedServices.length})
+                </h3>
+                {selectedServices.map((svc, idx) => (
+                  <div
+                    key={svc.service_type}
+                    className="flex items-center gap-3 p-3 rounded-lg border border-gray-200 dark:border-[#2e2e2e] bg-gray-50/50 dark:bg-[#0a0a0a]"
+                  >
+                    <ServiceIcon type={svc.service_type} size={24} />
+                    <div className="flex-1 min-w-0">
+                      <input
+                        type="text"
+                        value={svc.name}
+                        onChange={(e) => {
+                          const updated = [...selectedServices];
+                          updated[idx] = { ...updated[idx], name: e.target.value };
+                          setSelectedServices(updated);
+                        }}
+                        className="text-sm font-mono bg-transparent border-0 border-b border-gray-300 dark:border-[#444] text-gray-900 dark:text-white focus:outline-none focus:border-blue-500 w-full"
+                      />
+                    </div>
+                    <div className="flex items-center gap-1">
+                      {(["dev", "prod"] as const).map((tier) => (
+                        <button
+                          key={tier}
+                          type="button"
+                          onClick={() => {
+                            const updated = [...selectedServices];
+                            updated[idx] = { ...updated[idx], tier };
+                            setSelectedServices(updated);
+                          }}
+                          className={`px-2.5 py-1 text-xs rounded-md font-medium transition-colors ${
+                            svc.tier === tier
+                              ? tier === "prod"
+                                ? "bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-400"
+                                : "bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-400"
+                              : "bg-gray-100 text-gray-500 dark:bg-[#1a1a1a] dark:text-[#666] hover:bg-gray-200 dark:hover:bg-[#222]"
+                          }`}
+                        >
+                          {tier}
+                        </button>
+                      ))}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedServices((prev) => prev.filter((s) => s.service_type !== svc.service_type))}
+                      className="p-1 text-gray-400 hover:text-red-500 transition-colors"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {selectedServices.length === 0 && (
+              <p className="text-center text-sm text-gray-400 dark:text-[#666] py-4">
+                No services selected — your app will be created without managed services.
+                You can always add them later from the app detail page.
+              </p>
+            )}
+          </div>
+        )}
+
         {/* ── Review ── */}
         {showReview && (
           <div className={cardBase}>
@@ -1235,6 +1384,28 @@ export default function NewAppPage() {
               </div>
             </div>
 
+            {/* Services review */}
+            {selectedServices.length > 0 && (
+              <div className="border border-gray-100 dark:border-[#1e1e1e] rounded-xl p-5">
+                <h3 className="text-sm font-semibold text-gray-500 dark:text-[#999] uppercase tracking-wider mb-3 flex items-center gap-2">
+                  <Database className="w-4 h-4" /> Services
+                </h3>
+                <div className="space-y-2">
+                  {selectedServices.map((svc) => (
+                    <div key={svc.service_type} className="flex items-center gap-3">
+                      <ServiceIcon type={svc.service_type} size={20} />
+                      <span className="font-mono text-sm text-gray-900 dark:text-white">{svc.name}</span>
+                      <span className={`text-xs px-2 py-0.5 rounded-md font-medium ${
+                        svc.tier === "prod"
+                          ? "bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-400"
+                          : "bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-400"
+                      }`}>{svc.tier}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {submitError && (
               <p className="text-sm text-red-500 bg-red-500/10 border border-red-500/20 rounded-lg px-4 py-3 mt-4">
                 {submitError}
@@ -1293,7 +1464,7 @@ export default function NewAppPage() {
               onClick={goNext}
               className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold transition-colors"
             >
-              {currentStep === 4 ? "Review" : "Next"}
+              {currentStep === 5 ? "Review" : "Next"}
               <ArrowRight className="w-4 h-4" />
             </button>
           </div>

@@ -385,6 +385,7 @@ export interface Application {
   auto_deploy: boolean;
   // Managed service connections
   env_from_secrets: Array<{ service_name: string; secret_name: string; namespace: string }> | null;
+  pending_services: Array<{ service_name: string; service_type: string }> | null;
   created_at: string;
   updated_at: string;
 }
@@ -405,11 +406,43 @@ export interface ManagedService {
   name: string;
   service_type: "postgres" | "mysql" | "mongodb" | "redis" | "rabbitmq";
   tier: "dev" | "prod";
-  status: "provisioning" | "ready" | "failed" | "deleting";
+  status: "provisioning" | "ready" | "failed" | "deleting" | "degraded" | "updating";
   secret_name: string | null;
   connection_hint: string | null;
+  error_message: string | null;
+  connected_apps: Array<{ slug: string; name: string }>;
   created_at: string;
   updated_at: string;
+}
+
+export interface AppServiceEntry {
+  service_name: string;
+  service_type: string;
+  tier: string;
+  status: string;
+  connection_hint: string | null;
+  database_url_key: string | null;
+  connected: boolean;
+  pending: boolean;
+  error_message?: string | null;
+}
+
+export interface SyncDiffEntry {
+  kind: string;
+  name: string;
+  namespace: string;
+  group: string;
+  version: string;
+  sync_status: string;
+  health_status: string;
+  health_message: string;
+  requires_pruning: boolean;
+}
+
+export interface SyncOptions {
+  prune?: boolean;
+  force?: boolean;
+  dry_run?: boolean;
 }
 
 export interface ServiceCredentials {
@@ -592,6 +625,12 @@ export const api = {
       ),
     delete: (tenantSlug: string, appSlug: string, token?: string) =>
       apiFetch<void>(`/tenants/${tenantSlug}/apps/${appSlug}`, { method: "DELETE" }, token),
+    getServices: (tenantSlug: string, appSlug: string, token?: string) =>
+      apiFetch<AppServiceEntry[]>(
+        `/tenants/${tenantSlug}/apps/${appSlug}/services`,
+        {},
+        token
+      ),
     restart: (tenantSlug: string, appSlug: string, token?: string) =>
       apiFetch<{ status: string; app_slug: string }>(
         `/tenants/${tenantSlug}/apps/${appSlug}/restart`,
@@ -662,6 +701,23 @@ export const api = {
       apiFetch<{ triggered: boolean; app_name: string }>(
         `/tenants/${tenantSlug}/apps/${appSlug}/sync`,
         { method: "POST" },
+        token
+      ),
+    syncWithOptions: (
+      tenantSlug: string,
+      appSlug: string,
+      options: SyncOptions,
+      token?: string
+    ) =>
+      apiFetch<{ triggered: boolean; app_name: string; options: SyncOptions }>(
+        `/tenants/${tenantSlug}/apps/${appSlug}/sync`,
+        { method: "POST", body: JSON.stringify(options) },
+        token
+      ),
+    syncDiff: (tenantSlug: string, appSlug: string, token?: string) =>
+      apiFetch<SyncDiffEntry[]>(
+        `/tenants/${tenantSlug}/apps/${appSlug}/sync-diff`,
+        {},
         token
       ),
     syncStatus: (tenantSlug: string, appSlug: string, token?: string) =>
