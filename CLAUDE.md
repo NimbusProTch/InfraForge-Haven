@@ -329,9 +329,29 @@ haven-platform/
 - [x] buildOnly() and deployImage() API client methods
 - [x] 1081 backend tests (was 929, +152 new)
 
+### Phase 1 Sprint 5: Broken Fields + Service Dependencies ✅
+- [x] Backend: 9 broken field fix (deploy_service, auto_deploy, use_dockerfile, dockerfile_path, build_context, custom_domain, health_check_path, canary_enabled, canary_weight) — PR #47
+- [x] Backend: requested_services + auto-connect on app create — PR #47
+- [x] Backend: ArgoCD sync options (diff, prune, force, dry_run) — PR #47
+- [x] Backend: connected_apps enrichment on service responses — PR #47
+- [x] Backend: app services endpoint (GET /apps/{slug}/services) — PR #47
+- [x] 1185 backend tests (was 1081, +104 new)
+
+### Phase 1 Sprint 5.5: Frontend — Modals, Services UX, E2E ✅
+- [x] Frontend: API client types + methods (AppServiceEntry, SyncDiffEntry, SyncOptions) — PR #48
+- [x] Frontend: Wizard Step 5 "Services" (5 DB types, select/deselect, review) — PR #48
+- [x] Frontend: ConnectedServicesPanel (status badges, credentials viewer, disconnect) — PR #48
+- [x] Frontend: ScaleModal (replica presets, resource tiers, HPA, impact preview) — PR #48
+- [x] Frontend: SyncModal (ArgoCD status, diff, options, history, dry run) — PR #48
+- [x] Frontend: RestartModal (pod count, rolling restart warning, downtime info) — PR #48
+- [x] Entegrasyon: Modal'ları app detail'e bağla — PR #49
+- [x] Entegrasyon: ConnectedServicesPanel app detail'e ekle — PR #49
+- [x] Entegrasyon: Provisioning banner — PR #49
+- [x] Entegrasyon: Tenant services connected_apps — PR #49
+- [x] 33 Playwright E2E tests + auth bypass fix — PR #50
+- [x] 152 Playwright tests (was 36, +116 new)
+
 ### Phase 1 Sprint 4: Monorepo + Smart Detection (SONRAKI)
-- [ ] `dockerfile_path` — Hangi Dockerfile kullanılacak (`backend/Dockerfile`)
-- [ ] `build_context` — Build root dizini (`./backend`)
 - [ ] Repo içindeki app'leri/dizinleri listeleme (GitHub API tree endpoint)
 - [ ] Akıllı backend detection: framework + dependency analizi
 - [ ] Auto-detect: DB ihtiyacı (SQLAlchemy, Prisma, TypeORM → PostgreSQL provision)
@@ -534,8 +554,8 @@ haven-builds             → BuildKit daemon + build job pod'ları
 - Build pipeline: tenant'ın `github_token`'ını kullanarak private repo clone yapabiliyor
 
 ### Test Durumu
-- Backend unit testleri: **1081** (E1-E8 sprint'leri + H1-H3 enterprise hardening + Sprint 4.5 UX overhaul: RBAC enforcement, per-service backup/restore, multi-replica log streaming, Redis/RabbitMQ scale, signup flow, observability, GitOps verification, full regression lifecycle, tenant/app/service CRUD)
-- Playwright E2E: **36 test** (5 DB lifecycle + credentials flow + env vars)
+- Backend unit testleri: **1185** (Sprint 5: broken fields, service deps, ArgoCD sync, connected_apps — +104 yeni)
+- Playwright E2E: **152 test** (Sprint 5.5: modals, services panel, wizard, provisioning banner, auth fix — +116 yeni)
 - Real cluster E2E: 3 tenants × (app + 2 services + build + deploy + delete) — all verified
 - CI/CD: GitHub Actions → Lint ✅ → Test (929) ✅ → Docker Build ✅ → Harbor Push ✅ → Manifest Update ✅ → ArgoCD Sync ✅
 
