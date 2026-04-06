@@ -87,10 +87,12 @@ async def test_webhook_ignored_when_auto_deploy_disabled():
 
     # Mock request with push payload
     mock_request = MagicMock()
-    mock_request.json = AsyncMock(return_value={
-        "ref": "refs/heads/main",
-        "after": "abc1234567890",
-    })
+    mock_request.json = AsyncMock(
+        return_value={
+            "ref": "refs/heads/main",
+            "after": "abc1234567890",
+        }
+    )
 
     result = await _handle_push("test-token-123", mock_request, mock_db, MagicMock(), MagicMock(), MagicMock())
 
@@ -116,16 +118,20 @@ async def test_webhook_proceeds_when_auto_deploy_enabled():
     mock_db.refresh = AsyncMock()
 
     mock_request = MagicMock()
-    mock_request.json = AsyncMock(return_value={
-        "ref": "refs/heads/main",
-        "after": "abc1234567890",
-    })
+    mock_request.json = AsyncMock(
+        return_value={
+            "ref": "refs/heads/main",
+            "after": "abc1234567890",
+        }
+    )
 
     with patch("app.routers.webhooks.run_pipeline", new_callable=AsyncMock):
         with patch("app.routers.webhooks.get_session_factory"):
             with patch("app.routers.webhooks.Deployment") as mock_dep:
                 mock_dep.return_value = MagicMock(id=uuid.uuid4())
-                result = await _handle_push("test-token-123", mock_request, mock_db, MagicMock(), MagicMock(), MagicMock())
+                result = await _handle_push(
+                    "test-token-123", mock_request, mock_db, MagicMock(), MagicMock(), MagicMock()
+                )
 
     assert result["status"] == "queued"
 
@@ -143,10 +149,12 @@ async def test_webhook_branch_mismatch_still_checked_before_auto_deploy():
     mock_db.execute.return_value = mock_result
 
     mock_request = MagicMock()
-    mock_request.json = AsyncMock(return_value={
-        "ref": "refs/heads/develop",
-        "after": "abc1234567890",
-    })
+    mock_request.json = AsyncMock(
+        return_value={
+            "ref": "refs/heads/develop",
+            "after": "abc1234567890",
+        }
+    )
 
     result = await _handle_push("test-token-123", mock_request, mock_db, MagicMock(), MagicMock(), MagicMock())
     assert result["reason"] == "branch mismatch"

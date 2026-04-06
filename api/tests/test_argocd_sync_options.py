@@ -148,7 +148,12 @@ class TestGetResourceDiff:
                 "resources": [
                     {"kind": "Deployment", "name": "myapp", "status": "OutOfSync", "health": {"status": "Healthy"}},
                     {"kind": "Service", "name": "myapp", "status": "Synced", "health": {"status": "Healthy"}},
-                    {"kind": "HPA", "name": "myapp", "status": "Synced", "health": {"status": "Degraded", "message": "invalid metrics"}},
+                    {
+                        "kind": "HPA",
+                        "name": "myapp",
+                        "status": "Synced",
+                        "health": {"status": "Degraded", "message": "invalid metrics"},
+                    },
                 ],
             }
         }

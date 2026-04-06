@@ -384,9 +384,7 @@ def test_alembic_migration_chain():
     """Migration 0021 should follow 0020."""
     import importlib.util
 
-    spec = importlib.util.spec_from_file_location(
-        "migration_0021", "alembic/versions/0021_add_pending_services.py"
-    )
+    spec = importlib.util.spec_from_file_location("migration_0021", "alembic/versions/0021_add_pending_services.py")
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     assert mod.revision == "0021"

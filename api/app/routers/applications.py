@@ -530,16 +530,18 @@ async def get_app_services(
             )
         )
         svc = svc_result.scalar_one_or_none()
-        result.append({
-            "service_name": svc_name,
-            "service_type": svc.service_type.value if svc else "unknown",
-            "tier": svc.tier.value if svc else "dev",
-            "status": svc.status.value if svc else "unknown",
-            "connection_hint": entry.get("connection_hint", ""),
-            "database_url_key": entry.get("database_url_key"),
-            "connected": True,
-            "pending": False,
-        })
+        result.append(
+            {
+                "service_name": svc_name,
+                "service_type": svc.service_type.value if svc else "unknown",
+                "tier": svc.tier.value if svc else "dev",
+                "status": svc.status.value if svc else "unknown",
+                "connection_hint": entry.get("connection_hint", ""),
+                "database_url_key": entry.get("database_url_key"),
+                "connected": True,
+                "pending": False,
+            }
+        )
 
     # Pending services (from pending_services)
     for entry in app.pending_services or []:
@@ -554,17 +556,19 @@ async def get_app_services(
             )
         )
         svc = svc_result.scalar_one_or_none()
-        result.append({
-            "service_name": svc_name,
-            "service_type": entry.get("service_type", svc.service_type.value if svc else "unknown"),
-            "tier": svc.tier.value if svc else "dev",
-            "status": svc.status.value if svc else "provisioning",
-            "connection_hint": svc.connection_hint if svc else None,
-            "database_url_key": None,
-            "connected": False,
-            "pending": True,
-            "error_message": svc.error_message if svc else None,
-        })
+        result.append(
+            {
+                "service_name": svc_name,
+                "service_type": entry.get("service_type", svc.service_type.value if svc else "unknown"),
+                "tier": svc.tier.value if svc else "dev",
+                "status": svc.status.value if svc else "provisioning",
+                "connection_hint": svc.connection_hint if svc else None,
+                "database_url_key": None,
+                "connected": False,
+                "pending": True,
+                "error_message": svc.error_message if svc else None,
+            }
+        )
 
     return result
 

@@ -206,128 +206,128 @@ class BuildService:
             )
         else:
             nixpacks_cmd = (
-            f"if [ -f '{df_check_path}' ]; then "
-            f"  echo 'Using Dockerfile: {df_check_path}' && "
-            f"  cp '{df_check_path}' '{nixpacks_target}/Dockerfile' 2>/dev/null || true; "
-            "elif [ ! -f /workspace/Dockerfile ]; then "
-            "  apk add --no-cache curl tar grep && "
-            "  NIXPACKS_VERSION=1.41.0 && "
-            "  ARCH=$(uname -m) && "
-            '  case "$ARCH" in aarch64|arm64) NIXARCH="aarch64" ;; *) NIXARCH="x86_64" ;; esac && '
-            "  curl -fsSL -o /tmp/nixpacks.tar.gz "
-            "    https://github.com/railwayapp/nixpacks/releases/download/v${NIXPACKS_VERSION}/"
-            "nixpacks-v${NIXPACKS_VERSION}-${NIXARCH}-unknown-linux-musl.tar.gz && "
-            "  tar -xzf /tmp/nixpacks.tar.gz -C /tmp && "
-            "  chmod +x /tmp/nixpacks && "
-            # --- First attempt: plain nixpacks build ---
-            "  if /tmp/nixpacks build /workspace --out /workspace; then "
-            "    cp /workspace/.nixpacks/Dockerfile /workspace/Dockerfile && "
-            "    sed -i 's/uv==$NIXPACKS_UV_VERSION/uv/g' /workspace/Dockerfile; "
-            "  else "
-            # --- Detect start command for common languages ---
-            '    echo "nixpacks failed, attempting start-command detection..." && '
-            "    START_CMD= && "
-            # Python detection
-            "    if [ -f /workspace/requirements.txt ] || [ -f /workspace/pyproject.toml ] || [ -f /workspace/setup.py ]; then "  # noqa: E501
-            "      if [ -f /workspace/main.py ]; then "
-            '        START_CMD="python main.py"; '
-            "      elif [ -f /workspace/app.py ]; then "
-            '        START_CMD="python app.py"; '
-            "      elif [ -f /workspace/manage.py ]; then "
-            '        START_CMD="python manage.py runserver 0.0.0.0:8000"; '
-            "      elif [ -f /workspace/wsgi.py ]; then "
-            '        START_CMD="gunicorn wsgi:application --bind 0.0.0.0:8000"; '
-            "      elif grep -q -i 'uvicorn\\|fastapi' /workspace/requirements.txt 2>/dev/null; then "
-            '        APP_MODULE=$(grep -rl "FastAPI()" /workspace --include="*.py" 2>/dev/null | head -1 | '
-            "          sed 's|/workspace/||;s|/|.|g;s|\\.py$||') && "
-            '        if [ -n "$APP_MODULE" ]; then '
-            '          START_CMD="uvicorn ${APP_MODULE}:app --host 0.0.0.0 --port 8000"; '
-            "        else "
-            '          START_CMD="uvicorn app:app --host 0.0.0.0 --port 8000"; '
-            "        fi; "
-            "      elif grep -q -i 'flask' /workspace/requirements.txt 2>/dev/null; then "
-            '        START_CMD="flask run --host 0.0.0.0 --port 8000"; '
-            "      elif grep -q -i 'django' /workspace/requirements.txt 2>/dev/null; then "
-            '        START_CMD="python manage.py runserver 0.0.0.0:8000"; '
-            "      fi; "
-            # Node.js detection (use sh-compatible parsing with sed)
-            "    elif [ -f /workspace/package.json ]; then "
-            '      START_CMD=$(sed -n \'s/.*"start" *: *"\\(.*\\)".*/\\1/p\' /workspace/package.json | head -1) && '
-            '      if [ -z "$START_CMD" ]; then '
-            "        if [ -f /workspace/index.js ]; then "
-            '          START_CMD="node index.js"; '
-            "        elif [ -f /workspace/server.js ]; then "
-            '          START_CMD="node server.js"; '
-            "        elif [ -f /workspace/app.js ]; then "
-            '          START_CMD="node app.js"; '
-            "        fi; "
-            "      fi; "
-            # Go detection
-            "    elif [ -f /workspace/go.mod ]; then "
-            "      if [ -f /workspace/main.go ]; then "
-            '        START_CMD="go run main.go"; '
-            "      elif [ -d /workspace/cmd ]; then "
-            "        FIRST_CMD=$(ls /workspace/cmd/ 2>/dev/null | head -1) && "
-            '        if [ -n "$FIRST_CMD" ]; then '
-            '          START_CMD="go run ./cmd/${FIRST_CMD}"; '
-            "        fi; "
-            "      fi; "
-            # Ruby detection
-            "    elif [ -f /workspace/Gemfile ]; then "
-            "      if [ -f /workspace/config.ru ]; then "
-            '        START_CMD="bundle exec rackup config.ru -p 8000 -o 0.0.0.0"; '
-            "      fi; "
-            # Rust detection
-            "    elif [ -f /workspace/Cargo.toml ]; then "
-            '      START_CMD="cargo run --release"; '
-            "    fi && "
-            # --- Retry nixpacks with detected start command ---
-            '    if [ -n "$START_CMD" ]; then '
-            '      echo "Detected start command: $START_CMD" && '
-            '      if /tmp/nixpacks build /workspace --out /workspace --start-cmd "$START_CMD"; then '
-            "        cp /workspace/.nixpacks/Dockerfile /workspace/Dockerfile && "
-            "        sed -i 's/uv==$NIXPACKS_UV_VERSION/uv/g' /workspace/Dockerfile; "
-            "      else "
-            # --- Fallback: generate a simple Dockerfile ---
-            '        echo "nixpacks retry failed, generating fallback Dockerfile..." && '
-            "        FALLBACK_DOCKERFILE=/workspace/Dockerfile && "
-            "        if [ -f /workspace/requirements.txt ] || [ -f /workspace/pyproject.toml ]; then "
-            '          printf "FROM python:3.12-slim\\nWORKDIR /app\\nCOPY . .\\n" > $FALLBACK_DOCKERFILE && '
-            "          if [ -f /workspace/requirements.txt ]; then "
-            '            printf "RUN pip install --no-cache-dir -r requirements.txt\\n" >> $FALLBACK_DOCKERFILE; '
-            "          elif [ -f /workspace/pyproject.toml ]; then "
-            '            printf "RUN pip install --no-cache-dir .\\n" >> $FALLBACK_DOCKERFILE; '
-            "          fi && "
-            '          printf "EXPOSE 8000\\nCMD %s\\n" "$START_CMD" >> $FALLBACK_DOCKERFILE; '
-            "        elif [ -f /workspace/package.json ]; then "
-            '          printf "FROM node:20-slim\\nWORKDIR /app\\nCOPY package*.json ./\\nRUN npm ci --production\\nCOPY . .\\nEXPOSE 8000\\nCMD %s\\n" "$START_CMD" > $FALLBACK_DOCKERFILE; '  # noqa: E501
-            "        elif [ -f /workspace/go.mod ]; then "
-            '          printf "FROM golang:1.22-alpine\\nWORKDIR /app\\nCOPY go.* ./\\nRUN go mod download\\nCOPY . .\\nRUN go build -o /app/server .\\nEXPOSE 8000\\nCMD [\\"/app/server\\"]\\n" > $FALLBACK_DOCKERFILE; '  # noqa: E501
-            "        fi; "
-            "      fi; "
-            "    else "
-            # No start command detected — generate minimal fallback Dockerfile
-            '      echo "No start command detected, generating fallback Dockerfile..." && '
-            "      FALLBACK_DOCKERFILE=/workspace/Dockerfile && "
-            "      if [ -f /workspace/requirements.txt ] || [ -f /workspace/pyproject.toml ]; then "
-            '        printf "FROM python:3.12-slim\\nWORKDIR /app\\nCOPY . .\\n" > $FALLBACK_DOCKERFILE && '
-            "        if [ -f /workspace/requirements.txt ]; then "
-            '          printf "RUN pip install --no-cache-dir -r requirements.txt\\n" >> $FALLBACK_DOCKERFILE; '
-            "        elif [ -f /workspace/pyproject.toml ]; then "
-            '          printf "RUN pip install --no-cache-dir .\\n" >> $FALLBACK_DOCKERFILE; '
-            "        fi && "
-            '        printf "EXPOSE 8000\\nCMD [\\"python\\", \\"-c\\", \\"print(\'app running\')\\"]\\n" >> $FALLBACK_DOCKERFILE; '  # noqa: E501
-            "      elif [ -f /workspace/package.json ]; then "
-            '        printf "FROM node:20-slim\\nWORKDIR /app\\nCOPY package*.json ./\\nRUN npm ci --production\\nCOPY . .\\nEXPOSE 8000\\nCMD [\\"node\\", \\"index.js\\"]\\n" > $FALLBACK_DOCKERFILE; '  # noqa: E501
-            "      elif [ -f /workspace/go.mod ]; then "
-            '        printf "FROM golang:1.22-alpine\\nWORKDIR /app\\nCOPY go.* ./\\nRUN go mod download\\nCOPY . .\\nRUN go build -o /app/server .\\nEXPOSE 8000\\nCMD [\\"/app/server\\"]\\n" > $FALLBACK_DOCKERFILE; '  # noqa: E501
-            "      else "
-            '        echo "ERROR: Unable to detect language or start command" && exit 1; '
-            "      fi; "
-            "    fi; "
-            "  fi; "
-            "fi"
-        )
+                f"if [ -f '{df_check_path}' ]; then "
+                f"  echo 'Using Dockerfile: {df_check_path}' && "
+                f"  cp '{df_check_path}' '{nixpacks_target}/Dockerfile' 2>/dev/null || true; "
+                "elif [ ! -f /workspace/Dockerfile ]; then "
+                "  apk add --no-cache curl tar grep && "
+                "  NIXPACKS_VERSION=1.41.0 && "
+                "  ARCH=$(uname -m) && "
+                '  case "$ARCH" in aarch64|arm64) NIXARCH="aarch64" ;; *) NIXARCH="x86_64" ;; esac && '
+                "  curl -fsSL -o /tmp/nixpacks.tar.gz "
+                "    https://github.com/railwayapp/nixpacks/releases/download/v${NIXPACKS_VERSION}/"
+                "nixpacks-v${NIXPACKS_VERSION}-${NIXARCH}-unknown-linux-musl.tar.gz && "
+                "  tar -xzf /tmp/nixpacks.tar.gz -C /tmp && "
+                "  chmod +x /tmp/nixpacks && "
+                # --- First attempt: plain nixpacks build ---
+                "  if /tmp/nixpacks build /workspace --out /workspace; then "
+                "    cp /workspace/.nixpacks/Dockerfile /workspace/Dockerfile && "
+                "    sed -i 's/uv==$NIXPACKS_UV_VERSION/uv/g' /workspace/Dockerfile; "
+                "  else "
+                # --- Detect start command for common languages ---
+                '    echo "nixpacks failed, attempting start-command detection..." && '
+                "    START_CMD= && "
+                # Python detection
+                "    if [ -f /workspace/requirements.txt ] || [ -f /workspace/pyproject.toml ] || [ -f /workspace/setup.py ]; then "  # noqa: E501
+                "      if [ -f /workspace/main.py ]; then "
+                '        START_CMD="python main.py"; '
+                "      elif [ -f /workspace/app.py ]; then "
+                '        START_CMD="python app.py"; '
+                "      elif [ -f /workspace/manage.py ]; then "
+                '        START_CMD="python manage.py runserver 0.0.0.0:8000"; '
+                "      elif [ -f /workspace/wsgi.py ]; then "
+                '        START_CMD="gunicorn wsgi:application --bind 0.0.0.0:8000"; '
+                "      elif grep -q -i 'uvicorn\\|fastapi' /workspace/requirements.txt 2>/dev/null; then "
+                '        APP_MODULE=$(grep -rl "FastAPI()" /workspace --include="*.py" 2>/dev/null | head -1 | '
+                "          sed 's|/workspace/||;s|/|.|g;s|\\.py$||') && "
+                '        if [ -n "$APP_MODULE" ]; then '
+                '          START_CMD="uvicorn ${APP_MODULE}:app --host 0.0.0.0 --port 8000"; '
+                "        else "
+                '          START_CMD="uvicorn app:app --host 0.0.0.0 --port 8000"; '
+                "        fi; "
+                "      elif grep -q -i 'flask' /workspace/requirements.txt 2>/dev/null; then "
+                '        START_CMD="flask run --host 0.0.0.0 --port 8000"; '
+                "      elif grep -q -i 'django' /workspace/requirements.txt 2>/dev/null; then "
+                '        START_CMD="python manage.py runserver 0.0.0.0:8000"; '
+                "      fi; "
+                # Node.js detection (use sh-compatible parsing with sed)
+                "    elif [ -f /workspace/package.json ]; then "
+                '      START_CMD=$(sed -n \'s/.*"start" *: *"\\(.*\\)".*/\\1/p\' /workspace/package.json | head -1) && '
+                '      if [ -z "$START_CMD" ]; then '
+                "        if [ -f /workspace/index.js ]; then "
+                '          START_CMD="node index.js"; '
+                "        elif [ -f /workspace/server.js ]; then "
+                '          START_CMD="node server.js"; '
+                "        elif [ -f /workspace/app.js ]; then "
+                '          START_CMD="node app.js"; '
+                "        fi; "
+                "      fi; "
+                # Go detection
+                "    elif [ -f /workspace/go.mod ]; then "
+                "      if [ -f /workspace/main.go ]; then "
+                '        START_CMD="go run main.go"; '
+                "      elif [ -d /workspace/cmd ]; then "
+                "        FIRST_CMD=$(ls /workspace/cmd/ 2>/dev/null | head -1) && "
+                '        if [ -n "$FIRST_CMD" ]; then '
+                '          START_CMD="go run ./cmd/${FIRST_CMD}"; '
+                "        fi; "
+                "      fi; "
+                # Ruby detection
+                "    elif [ -f /workspace/Gemfile ]; then "
+                "      if [ -f /workspace/config.ru ]; then "
+                '        START_CMD="bundle exec rackup config.ru -p 8000 -o 0.0.0.0"; '
+                "      fi; "
+                # Rust detection
+                "    elif [ -f /workspace/Cargo.toml ]; then "
+                '      START_CMD="cargo run --release"; '
+                "    fi && "
+                # --- Retry nixpacks with detected start command ---
+                '    if [ -n "$START_CMD" ]; then '
+                '      echo "Detected start command: $START_CMD" && '
+                '      if /tmp/nixpacks build /workspace --out /workspace --start-cmd "$START_CMD"; then '
+                "        cp /workspace/.nixpacks/Dockerfile /workspace/Dockerfile && "
+                "        sed -i 's/uv==$NIXPACKS_UV_VERSION/uv/g' /workspace/Dockerfile; "
+                "      else "
+                # --- Fallback: generate a simple Dockerfile ---
+                '        echo "nixpacks retry failed, generating fallback Dockerfile..." && '
+                "        FALLBACK_DOCKERFILE=/workspace/Dockerfile && "
+                "        if [ -f /workspace/requirements.txt ] || [ -f /workspace/pyproject.toml ]; then "
+                '          printf "FROM python:3.12-slim\\nWORKDIR /app\\nCOPY . .\\n" > $FALLBACK_DOCKERFILE && '
+                "          if [ -f /workspace/requirements.txt ]; then "
+                '            printf "RUN pip install --no-cache-dir -r requirements.txt\\n" >> $FALLBACK_DOCKERFILE; '
+                "          elif [ -f /workspace/pyproject.toml ]; then "
+                '            printf "RUN pip install --no-cache-dir .\\n" >> $FALLBACK_DOCKERFILE; '
+                "          fi && "
+                '          printf "EXPOSE 8000\\nCMD %s\\n" "$START_CMD" >> $FALLBACK_DOCKERFILE; '
+                "        elif [ -f /workspace/package.json ]; then "
+                '          printf "FROM node:20-slim\\nWORKDIR /app\\nCOPY package*.json ./\\nRUN npm ci --production\\nCOPY . .\\nEXPOSE 8000\\nCMD %s\\n" "$START_CMD" > $FALLBACK_DOCKERFILE; '  # noqa: E501
+                "        elif [ -f /workspace/go.mod ]; then "
+                '          printf "FROM golang:1.22-alpine\\nWORKDIR /app\\nCOPY go.* ./\\nRUN go mod download\\nCOPY . .\\nRUN go build -o /app/server .\\nEXPOSE 8000\\nCMD [\\"/app/server\\"]\\n" > $FALLBACK_DOCKERFILE; '  # noqa: E501
+                "        fi; "
+                "      fi; "
+                "    else "
+                # No start command detected — generate minimal fallback Dockerfile
+                '      echo "No start command detected, generating fallback Dockerfile..." && '
+                "      FALLBACK_DOCKERFILE=/workspace/Dockerfile && "
+                "      if [ -f /workspace/requirements.txt ] || [ -f /workspace/pyproject.toml ]; then "
+                '        printf "FROM python:3.12-slim\\nWORKDIR /app\\nCOPY . .\\n" > $FALLBACK_DOCKERFILE && '
+                "        if [ -f /workspace/requirements.txt ]; then "
+                '          printf "RUN pip install --no-cache-dir -r requirements.txt\\n" >> $FALLBACK_DOCKERFILE; '
+                "        elif [ -f /workspace/pyproject.toml ]; then "
+                '          printf "RUN pip install --no-cache-dir .\\n" >> $FALLBACK_DOCKERFILE; '
+                "        fi && "
+                '        printf "EXPOSE 8000\\nCMD [\\"python\\", \\"-c\\", \\"print(\'app running\')\\"]\\n" >> $FALLBACK_DOCKERFILE; '  # noqa: E501
+                "      elif [ -f /workspace/package.json ]; then "
+                '        printf "FROM node:20-slim\\nWORKDIR /app\\nCOPY package*.json ./\\nRUN npm ci --production\\nCOPY . .\\nEXPOSE 8000\\nCMD [\\"node\\", \\"index.js\\"]\\n" > $FALLBACK_DOCKERFILE; '  # noqa: E501
+                "      elif [ -f /workspace/go.mod ]; then "
+                '        printf "FROM golang:1.22-alpine\\nWORKDIR /app\\nCOPY go.* ./\\nRUN go mod download\\nCOPY . .\\nRUN go build -o /app/server .\\nEXPOSE 8000\\nCMD [\\"/app/server\\"]\\n" > $FALLBACK_DOCKERFILE; '  # noqa: E501
+                "      else "
+                '        echo "ERROR: Unable to detect language or start command" && exit 1; '
+                "      fi; "
+                "    fi; "
+                "  fi; "
+                "fi"
+            )
 
         init_containers = [
             k8s_client_lib.V1Container(

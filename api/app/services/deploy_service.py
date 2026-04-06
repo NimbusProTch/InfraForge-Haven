@@ -59,7 +59,9 @@ class DeployService:
         app_type: str = "web",
     ) -> None:
         """Create or update Deployment + Service + HTTPRoute + HPA."""
-        logger.info("Deploying app: namespace=%s app=%s image=%s port=%d type=%s", namespace, app_slug, image, port, app_type)
+        logger.info(
+            "Deploying app: namespace=%s app=%s image=%s port=%d type=%s", namespace, app_slug, image, port, app_type
+        )
 
         if not self.k8s.is_available() or self.k8s.apps_v1 is None:
             logger.warning("K8s unavailable — skipping deploy for %s/%s", namespace, app_slug)

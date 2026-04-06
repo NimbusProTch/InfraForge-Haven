@@ -127,7 +127,9 @@ class ArgoCDService:
                     timeout=15.0,
                 )
             if response.is_success:
-                logger.info("Triggered sync for ArgoCD app %s (prune=%s force=%s dry_run=%s)", app_name, prune, force, dry_run)
+                logger.info(
+                    "Triggered sync for ArgoCD app %s (prune=%s force=%s dry_run=%s)", app_name, prune, force, dry_run
+                )
                 return True
             logger.warning("ArgoCD sync trigger failed: %d", response.status_code)
             return False
@@ -165,17 +167,19 @@ class ArgoCDService:
                 sync_status = res.get("status", "Unknown")
                 # Only include resources that are OutOfSync or have health issues
                 if sync_status == "OutOfSync" or res.get("health", {}).get("status") not in ("Healthy", None):
-                    diffs.append({
-                        "kind": res.get("kind", ""),
-                        "name": res.get("name", ""),
-                        "namespace": res.get("namespace", ""),
-                        "group": res.get("group", ""),
-                        "version": res.get("version", ""),
-                        "sync_status": sync_status,
-                        "health_status": res.get("health", {}).get("status", ""),
-                        "health_message": res.get("health", {}).get("message", ""),
-                        "requires_pruning": res.get("requiresPruning", False),
-                    })
+                    diffs.append(
+                        {
+                            "kind": res.get("kind", ""),
+                            "name": res.get("name", ""),
+                            "namespace": res.get("namespace", ""),
+                            "group": res.get("group", ""),
+                            "version": res.get("version", ""),
+                            "sync_status": sync_status,
+                            "health_status": res.get("health", {}).get("status", ""),
+                            "health_message": res.get("health", {}).get("message", ""),
+                            "requires_pruning": res.get("requiresPruning", False),
+                        }
+                    )
 
             return diffs
         except Exception as exc:  # noqa: BLE001

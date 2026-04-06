@@ -92,13 +92,15 @@ async def _auto_connect_pending_services(db: object, svc: object, tenant: object
         }
         db_url_key = db_url_key_map.get(svc.service_type)
 
-        existing_secrets.append({
-            "service_name": svc.name,
-            "secret_name": svc.secret_name,
-            "namespace": svc.service_namespace,
-            "connection_hint": svc.connection_hint,
-            "database_url_key": db_url_key,
-        })
+        existing_secrets.append(
+            {
+                "service_name": svc.name,
+                "secret_name": svc.secret_name,
+                "namespace": svc.service_namespace,
+                "connection_hint": svc.connection_hint,
+                "database_url_key": db_url_key,
+            }
+        )
 
         # Inject DATABASE_URL into env_vars
         if svc.connection_hint and db_url_key:
@@ -117,7 +119,9 @@ async def _auto_connect_pending_services(db: object, svc: object, tenant: object
         await db.commit()
         logger.info(
             "Auto-connected service %s to app %s (pending_services remaining: %d)",
-            svc.name, app.slug, len(remaining),
+            svc.name,
+            app.slug,
+            len(remaining),
         )
 
 

@@ -57,9 +57,7 @@ async def list_services(tenant_slug: str, db: DBSession, current_user: CurrentUs
     services = list(result.scalars().all())
 
     # Compute connected_apps for each service by scanning apps' env_from_secrets
-    apps_result = await db.execute(
-        select(Application).where(Application.tenant_id == tenant.id)
-    )
+    apps_result = await db.execute(select(Application).where(Application.tenant_id == tenant.id))
     all_apps = list(apps_result.scalars().all())
 
     # Build service_name → [app] mapping
