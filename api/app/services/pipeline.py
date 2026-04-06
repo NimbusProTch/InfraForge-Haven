@@ -68,9 +68,11 @@ async def run_pipeline(
     min_replicas: int = 1,
     max_replicas: int = 5,
     cpu_threshold: int = 70,
+    app_type: str = "web",
     # Monorepo support
     dockerfile_path: str | None = None,
     build_context: str | None = None,
+    use_dockerfile: bool = False,
     # Optional: environment context (staging/preview)
     environment_id: uuid.UUID | None = None,
     # Build-only mode: if False, stops after successful build (BUILT status)
@@ -107,6 +109,7 @@ async def run_pipeline(
             github_token=github_token,
             dockerfile_path=dockerfile_path,
             build_context=build_context,
+            use_dockerfile=use_dockerfile,
         )
     except Exception as exc:
         logger.exception("Failed to submit build job for deployment %s", deployment_id)
@@ -217,6 +220,16 @@ async def run_pipeline(
                 env_vars=env_vars,
                 service_secret_names=secret_names,
                 port=port,
+                resource_cpu_request=resource_cpu_request,
+                resource_cpu_limit=resource_cpu_limit,
+                resource_memory_request=resource_memory_request,
+                resource_memory_limit=resource_memory_limit,
+                health_check_path=health_check_path,
+                custom_domain=custom_domain,
+                min_replicas=min_replicas,
+                max_replicas=max_replicas,
+                cpu_threshold=cpu_threshold,
+                app_type=app_type,
             )
     except Exception as exc:
         logger.exception("Deploy failed for deployment %s", deployment_id)

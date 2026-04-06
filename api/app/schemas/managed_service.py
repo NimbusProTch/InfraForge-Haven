@@ -34,6 +34,7 @@ class ManagedServiceResponse(BaseModel):
     secret_name: str | None
     connection_hint: str | None
     error_message: str | None = None
+    connected_apps: list["ConnectedAppSummary"] = []
     created_at: datetime
     updated_at: datetime
 

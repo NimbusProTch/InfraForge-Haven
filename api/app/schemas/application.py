@@ -5,6 +5,14 @@ from datetime import datetime
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 
+class RequestedServiceSpec(BaseModel):
+    """Service to provision alongside the application during creation."""
+
+    service_type: str = Field(..., pattern=r"^(postgres|mysql|mongodb|redis|rabbitmq)$")
+    name: str | None = Field(default=None, min_length=1, max_length=63, pattern=r"^[a-z0-9][a-z0-9-]*[a-z0-9]$")
+    tier: str = Field(default="dev", pattern=r"^(dev|prod)$")
+
+
 class ApplicationCreate(BaseModel):
     slug: str | None = Field(default=None, min_length=3, max_length=63, pattern=r"^[a-z0-9][a-z0-9-]*[a-z0-9]$")
     name: str = Field(..., min_length=1, max_length=255)
@@ -56,6 +64,9 @@ class ApplicationCreate(BaseModel):
     canary_enabled: bool = Field(default=False)
     canary_weight: int = Field(default=10, ge=0, le=100)
     volumes: list[dict] | None = Field(default=None)
+
+    # Service dependencies — provisioned alongside the app during creation
+    requested_services: list[RequestedServiceSpec] | None = Field(default=None)
 
 
 class ApplicationUpdate(BaseModel):
@@ -140,6 +151,8 @@ class ApplicationResponse(BaseModel):
 
     # Managed service connections
     env_from_secrets: list[dict] | None = None
+    # Services awaiting provisioning + auto-connect
+    pending_services: list[dict] | None = None
 
     created_at: datetime
     updated_at: datetime

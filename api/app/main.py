@@ -49,6 +49,82 @@ logger = logging.getLogger(__name__)
 limiter = Limiter(key_func=get_remote_address, default_limits=["200/minute"])
 
 
+async def _auto_connect_pending_services(db: object, svc: object, tenant: object) -> None:
+    """Auto-connect a READY service to apps that requested it during creation.
+
+    Scans all apps in the tenant for matching pending_services entries.
+    When found, performs the same logic as connect-service endpoint:
+    appends to env_from_secrets, injects DATABASE_URL, clears pending entry.
+    """
+    from sqlalchemy import select
+
+    from app.models.application import Application
+    from app.models.managed_service import ServiceType
+
+    result = await db.execute(
+        select(Application).where(
+            Application.tenant_id == tenant.id,
+            Application.pending_services.isnot(None),
+        )
+    )
+    apps = list(result.scalars().all())
+
+    for app in apps:
+        pending = list(app.pending_services or [])
+        matched = [p for p in pending if p.get("service_name") == svc.name]
+        if not matched:
+            continue
+
+        # Connect the service to the app
+        existing_secrets: list[dict] = list(app.env_from_secrets or [])
+        if any(e.get("service_name") == svc.name for e in existing_secrets):
+            # Already connected, just remove from pending
+            remaining = [p for p in pending if p.get("service_name") != svc.name]
+            app.pending_services = remaining or None
+            await db.commit()
+            continue
+
+        # Build connection entry (same as connect-service endpoint)
+        db_url_key_map = {
+            ServiceType.POSTGRES: "DATABASE_URL",
+            ServiceType.MYSQL: "MYSQL_URL",
+            ServiceType.MONGODB: "MONGODB_URL",
+        }
+        db_url_key = db_url_key_map.get(svc.service_type)
+
+        existing_secrets.append(
+            {
+                "service_name": svc.name,
+                "secret_name": svc.secret_name,
+                "namespace": svc.service_namespace,
+                "connection_hint": svc.connection_hint,
+                "database_url_key": db_url_key,
+            }
+        )
+
+        # Inject DATABASE_URL into env_vars
+        if svc.connection_hint and db_url_key:
+            env_vars = dict(app.env_vars or {})
+            env_vars[db_url_key] = svc.connection_hint
+            if db_url_key != "DATABASE_URL":
+                env_vars["DATABASE_URL"] = svc.connection_hint
+            app.env_vars = env_vars
+
+        app.env_from_secrets = existing_secrets
+
+        # Remove from pending
+        remaining = [p for p in pending if p.get("service_name") != svc.name]
+        app.pending_services = remaining or None
+
+        await db.commit()
+        logger.info(
+            "Auto-connected service %s to app %s (pending_services remaining: %d)",
+            svc.name,
+            app.slug,
+            len(remaining),
+        )
+
+
 async def _credential_provisioning_tick(session_factory: object) -> int:
     """Single tick of the credential provisioning loop. Returns count of services processed.
 
@@ -112,6 +188,12 @@ async def _credential_provisioning_tick(session_factory: object) -> int:
                 if tenant and tenant.namespace:
                     await provisioner.sync_details(svc, tenant_namespace=tenant.namespace)
                 await db.commit()
+
+                # Auto-connect: if service just became READY with credentials,
+                # check if any app has it in pending_services and auto-connect
+                if svc.status == ServiceStatus.READY and svc.credentials_provisioned:
+                    await _auto_connect_pending_services(db, svc, tenant)
+
                 processed += 1
         except Exception:
             logger.exception("Credential provisioning failed for service %s", svc_id)

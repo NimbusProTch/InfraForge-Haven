@@ -271,6 +271,7 @@ async def trigger_build(
         argocd=argocd,
         dockerfile_path=app.dockerfile_path,
         build_context=app.build_context,
+        use_dockerfile=app.use_dockerfile,
         custom_domain=app.custom_domain or "",
         health_check_path=app.health_check_path or "",
         resource_cpu_request=app.resource_cpu_request,
@@ -280,6 +281,7 @@ async def trigger_build(
         min_replicas=app.min_replicas,
         max_replicas=app.max_replicas,
         cpu_threshold=app.cpu_threshold,
+        app_type=app.app_type or "web",
         deploy=deploy,
     )
 
@@ -374,6 +376,16 @@ async def trigger_deploy(
             service_secret_names=secret_names,
             port=app.port,
             k8s=k8s,
+            resource_cpu_request=app.resource_cpu_request,
+            resource_cpu_limit=app.resource_cpu_limit,
+            resource_memory_request=app.resource_memory_request,
+            resource_memory_limit=app.resource_memory_limit,
+            health_check_path=app.health_check_path or "",
+            custom_domain=app.custom_domain or "",
+            min_replicas=app.min_replicas,
+            max_replicas=app.max_replicas,
+            cpu_threshold=app.cpu_threshold,
+            app_type=app.app_type or "web",
         ),
         name=f"redeploy-{deployment.id}",
     )
@@ -458,6 +470,16 @@ async def deploy_built_image(
             service_secret_names=secret_names,
             port=app.port,
             k8s=k8s,
+            resource_cpu_request=app.resource_cpu_request,
+            resource_cpu_limit=app.resource_cpu_limit,
+            resource_memory_request=app.resource_memory_request,
+            resource_memory_limit=app.resource_memory_limit,
+            health_check_path=app.health_check_path or "",
+            custom_domain=app.custom_domain or "",
+            min_replicas=app.min_replicas,
+            max_replicas=app.max_replicas,
+            cpu_threshold=app.cpu_threshold,
+            app_type=app.app_type or "web",
         ),
         name=f"deploy-image-{deployment.id}",
     )
@@ -532,10 +554,28 @@ async def rollback_deployment(
             service_secret_names=secret_names,
             port=app.port,
             k8s=k8s,
+            resource_cpu_request=app.resource_cpu_request,
+            resource_cpu_limit=app.resource_cpu_limit,
+            resource_memory_request=app.resource_memory_request,
+            resource_memory_limit=app.resource_memory_limit,
+            health_check_path=app.health_check_path or "",
+            custom_domain=app.custom_domain or "",
+            min_replicas=app.min_replicas,
+            max_replicas=app.max_replicas,
+            cpu_threshold=app.cpu_threshold,
+            app_type=app.app_type or "web",
         ),
         name=f"rollback-{rollback_record.id}",
     )
     return rollback_record
+
+
+class SyncOptions(BaseModel):
+    """Options for ArgoCD sync."""
+
+    prune: bool = Field(True, description="Remove resources no longer in git")
+    force: bool = Field(False, description="Override immutable field changes")
+    dry_run: bool = Field(False, description="Preview only, no actual changes")
 
 
 @router.post("/sync", status_code=status.HTTP_202_ACCEPTED)
@@ -545,14 +585,37 @@ async def sync_app(
     db: DBSession,
     argocd: ArgoCDDep,
     current_user: CurrentUser,
+    body: SyncOptions | None = None,
 ) -> dict:
-    """Trigger an ArgoCD sync for this application."""
+    """Trigger an ArgoCD sync for this application with configurable options."""
     tenant = await _get_tenant_or_404(tenant_slug, db, current_user)
     await _get_app_or_404(tenant.id, app_slug, db)
 
     app_name = f"{tenant_slug}-{app_slug}"
-    triggered = await argocd.trigger_sync(app_name)
-    return {"triggered": triggered, "app_name": app_name}
+    opts = body or SyncOptions()
+    triggered = await argocd.trigger_sync(
+        app_name,
+        prune=opts.prune,
+        force=opts.force,
+        dry_run=opts.dry_run,
+    )
+    return {"triggered": triggered, "app_name": app_name, "options": opts.model_dump()}
+
+
+@router.get("/sync-diff")
+async def get_sync_diff(
+    tenant_slug: str,
+    app_slug: str,
+    db: DBSession,
+    argocd: ArgoCDDep,
+    current_user: CurrentUser,
+) -> list[dict]:
+    """Get resource diff between live and target state for ArgoCD sync modal."""
+    tenant = await _get_tenant_or_404(tenant_slug, db, current_user)
+    await _get_app_or_404(tenant.id, app_slug, db)
+
+    app_name = f"{tenant_slug}-{app_slug}"
+    return await argocd.get_resource_diff(app_name)
 
 
 @router.get("/sync-status")
@@ -777,6 +840,17 @@ async def _run_redeploy(
     service_secret_names: list[str],
     port: int = 8000,
     k8s,  # type: ignore[type-arg]
+    # Extended app config
+    resource_cpu_request: str = "50m",
+    resource_cpu_limit: str = "500m",
+    resource_memory_request: str = "64Mi",
+    resource_memory_limit: str = "512Mi",
+    health_check_path: str = "",
+    custom_domain: str = "",
+    min_replicas: int = 1,
+    max_replicas: int = 5,
+    cpu_threshold: int = 70,
+    app_type: str = "web",
 ) -> None:
     """Re-deploy an existing image without going through the build step."""
     from app.models.deployment import Deployment as _Deployment
@@ -802,6 +876,16 @@ async def _run_redeploy(
                 env_vars=env_vars,
                 service_secret_names=service_secret_names,
                 port=port,
+                resource_cpu_request=resource_cpu_request,
+                resource_cpu_limit=resource_cpu_limit,
+                resource_memory_request=resource_memory_request,
+                resource_memory_limit=resource_memory_limit,
+                health_check_path=health_check_path,
+                custom_domain=custom_domain,
+                min_replicas=min_replicas,
+                max_replicas=max_replicas,
+                cpu_threshold=cpu_threshold,
+                app_type=app_type,
             )
         except Exception as exc:
             logger.exception("Redeploy failed for deployment %s", deployment_id)

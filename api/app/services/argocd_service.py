@@ -94,27 +94,97 @@ class ArgoCDService:
 
         return False, f"Application {app_name} not healthy after {timeout}s"
 
-    async def trigger_sync(self, app_name: str) -> bool:
-        """Trigger an ArgoCD sync for immediate reconciliation."""
+    async def trigger_sync(
+        self,
+        app_name: str,
+        *,
+        prune: bool = True,
+        force: bool = False,
+        dry_run: bool = False,
+    ) -> bool:
+        """Trigger an ArgoCD sync with configurable options.
+
+        Args:
+            prune: Remove resources that are no longer in git
+            force: Override immutable field changes
+            dry_run: Preview only, no actual changes
+        """
         if not self._url:
             return False
+
+        json_body: dict = {"prune": prune}
+        if force:
+            json_body["strategy"] = {"apply": {"force": True}}
+        if dry_run:
+            json_body["dryRun"] = True
 
         try:
             async with httpx.AsyncClient(verify=False) as client:  # noqa: S501
                 response = await client.post(
                     f"{self._url}/api/v1/applications/{app_name}/sync",
                     headers=self._headers(),
-                    json={"prune": True},
+                    json=json_body,
                     timeout=15.0,
                 )
             if response.is_success:
-                logger.info("Triggered sync for ArgoCD app %s", app_name)
+                logger.info(
+                    "Triggered sync for ArgoCD app %s (prune=%s force=%s dry_run=%s)", app_name, prune, force, dry_run
+                )
                 return True
             logger.warning("ArgoCD sync trigger failed: %d", response.status_code)
             return False
         except Exception as exc:  # noqa: BLE001
             logger.warning("ArgoCD sync trigger error: %s", exc)
             return False
+
+    async def get_resource_diff(self, app_name: str) -> list[dict]:
+        """Get diff between live and target state for managed resources.
+
+        Returns a list of resource diffs, each containing:
+          kind, name, status (Synced/OutOfSync), diff (live vs target fields)
+        """
+        if not self._url:
+            return []
+
+        try:
+            async with httpx.AsyncClient(verify=False) as client:  # noqa: S501
+                # Fetch app with refresh to get latest diff info
+                response = await client.get(
+                    f"{self._url}/api/v1/applications/{app_name}",
+                    headers=self._headers(),
+                    params={"refresh": "normal"},
+                    timeout=20.0,
+                )
+            if not response.is_success:
+                return []
+
+            data = response.json()
+            status = data.get("status", {})
+            resources = status.get("resources", [])
+
+            diffs = []
+            for res in resources:
+                sync_status = res.get("status", "Unknown")
+                # Only include resources that are OutOfSync or have health issues
+                if sync_status == "OutOfSync" or res.get("health", {}).get("status") not in ("Healthy", None):
+                    diffs.append(
+                        {
+                            "kind": res.get("kind", ""),
+                            "name": res.get("name", ""),
+                            "namespace": res.get("namespace", ""),
+                            "group": res.get("group", ""),
+                            "version": res.get("version", ""),
+                            "sync_status": sync_status,
+                            "health_status": res.get("health", {}).get("status", ""),
+                            "health_message": res.get("health", {}).get("message", ""),
+                            "requires_pruning": res.get("requiresPruning", False),
+                        }
+                    )
+
+            return diffs
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("ArgoCD get_resource_diff error for %s: %s", app_name, exc)
+            return []
 
     async def get_app_resources(self, app_name: str) -> list[dict]:
         """Get managed resources for an ArgoCD Application."""
