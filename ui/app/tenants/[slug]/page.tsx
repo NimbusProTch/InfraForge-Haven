@@ -21,6 +21,7 @@ import {
   ArrowRight,
   Plus,
   Box,
+  Building2,
   Database,
   Loader2,
   GitBranch,
@@ -261,6 +262,12 @@ export default function TenantDetailPage() {
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
   const [deletingTenant, setDeletingTenant] = useState(false);
 
+  // Org assignment
+  const [showOrgAssign, setShowOrgAssign] = useState(false);
+  const [orgs, setOrgs] = useState<Array<{ id: string; slug: string; name: string; plan: string }>>([]);
+  const [selectedOrgSlug, setSelectedOrgSlug] = useState("");
+  const [assigningOrg, setAssigningOrg] = useState(false);
+
   const accessToken = (session as typeof session & { accessToken?: string })?.accessToken;
 
   useEffect(() => {
@@ -408,7 +415,19 @@ export default function TenantDetailPage() {
                 {tenant.active ? "active" : "inactive"}
               </Badge>
             </div>
-            <p className="text-sm text-gray-400 dark:text-zinc-600 font-mono pl-10">{tenant.namespace}</p>
+            <div className="flex items-center gap-2 pl-10 mt-1">
+              <p className="text-sm text-gray-400 dark:text-zinc-600 font-mono">{tenant.namespace}</p>
+              <button
+                onClick={async () => {
+                  const o = await api.organizations.list(accessToken).catch(() => []);
+                  setOrgs(o as unknown as Array<{ id: string; slug: string; name: string; plan: string }>);
+                  setShowOrgAssign(true);
+                }}
+                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-medium text-violet-500 hover:text-violet-600 bg-violet-50 hover:bg-violet-100 dark:bg-violet-500/10 dark:hover:bg-violet-500/20 dark:text-violet-400 transition-colors"
+              >
+                <Building2 className="w-3 h-3" /> Assign to Org
+              </button>
+            </div>
           </div>
           <button
             onClick={() => setShowDeleteDialog(true)}
@@ -464,6 +483,76 @@ export default function TenantDetailPage() {
                   )}
                   Delete Project
                 </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Org assignment modal */}
+        {showOrgAssign && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
+            <div className="bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-xl w-full max-w-md mx-4 shadow-2xl overflow-hidden">
+              <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-zinc-800">
+                <div className="flex items-center gap-2">
+                  <Building2 className="w-4 h-4 text-violet-500" />
+                  <h2 className="text-sm font-semibold text-gray-900 dark:text-zinc-100">Assign to Organization</h2>
+                </div>
+                <button onClick={() => setShowOrgAssign(false)} className="text-gray-400 hover:text-gray-700 dark:hover:text-zinc-300">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              <div className="p-5 space-y-4">
+                {orgs.length === 0 ? (
+                  <div className="text-center py-4">
+                    <p className="text-sm text-gray-500 dark:text-zinc-500 mb-3">No organizations found. Create one first.</p>
+                    <button
+                      onClick={() => { setShowOrgAssign(false); router.push("/organizations"); }}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-violet-600 hover:bg-violet-700 text-white text-xs font-medium transition-colors"
+                    >
+                      <Plus className="w-3 h-3" /> Create Organization
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-500 dark:text-zinc-400 mb-1.5">Organization</label>
+                      <select
+                        value={selectedOrgSlug}
+                        onChange={(e) => setSelectedOrgSlug(e.target.value)}
+                        className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-zinc-700 bg-gray-100 dark:bg-zinc-800 text-sm text-gray-900 dark:text-zinc-100"
+                      >
+                        <option value="">Select organization...</option>
+                        {orgs.map((o) => (
+                          <option key={o.slug} value={o.slug}>{o.name} ({o.slug})</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="flex justify-end gap-2">
+                      <button onClick={() => setShowOrgAssign(false)} className="px-3 py-1.5 rounded-lg text-xs text-gray-500 hover:text-gray-900 transition-colors">Cancel</button>
+                      <button
+                        onClick={async () => {
+                          if (!selectedOrgSlug || !tenant) return;
+                          setAssigningOrg(true);
+                          try {
+                            await api.organizations.bindTenant(selectedOrgSlug, { tenant_id: tenant.id }, accessToken);
+                            toastSuccess(`Assigned to ${selectedOrgSlug}`);
+                            setShowOrgAssign(false);
+                            setSelectedOrgSlug("");
+                          } catch (err) {
+                            toastError(err instanceof Error ? err.message : "Failed to assign");
+                          } finally {
+                            setAssigningOrg(false);
+                          }
+                        }}
+                        disabled={!selectedOrgSlug || assigningOrg}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-violet-600 hover:bg-violet-700 text-white text-xs font-medium disabled:opacity-40 transition-colors"
+                      >
+                        {assigningOrg && <Loader2 className="w-3 h-3 animate-spin" />}
+                        Assign
+                      </button>
+                    </div>
+                  </>
+                )}
               </div>
             </div>
           </div>

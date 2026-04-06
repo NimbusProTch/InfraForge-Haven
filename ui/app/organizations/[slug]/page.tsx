@@ -93,6 +93,15 @@ export default function OrganizationDetailPage() {
   const [selectedTenantId, setSelectedTenantId] = useState("");
   const [addingTenant, setAddingTenant] = useState(false);
 
+  // Confirmation modal state
+  const [confirmAction, setConfirmAction] = useState<{
+    title: string;
+    message: string;
+    destructive?: boolean;
+    onConfirm: () => void;
+  } | null>(null);
+  const [confirmLoading, setConfirmLoading] = useState(false);
+
   useEffect(() => {
     if (status === "unauthenticated") router.push("/auth/signin");
   }, [status, router]);
@@ -159,15 +168,25 @@ export default function OrganizationDetailPage() {
     }
   }
 
-  async function handleRemoveMember(userId: string, email: string) {
-    if (!confirm(`Remove ${email} from this organization?`)) return;
-    try {
-      await api.organizations.removeMember(slug, userId, accessToken);
-      toastSuccess(`Removed ${email}`);
-      loadData();
-    } catch (err) {
-      toastError(err instanceof Error ? err.message : "Failed to remove member");
-    }
+  function handleRemoveMember(userId: string, email: string) {
+    setConfirmAction({
+      title: "Remove Member",
+      message: `Are you sure you want to remove ${email} from this organization? They will lose access to all organization resources.`,
+      destructive: true,
+      onConfirm: async () => {
+        setConfirmLoading(true);
+        try {
+          await api.organizations.removeMember(slug, userId, accessToken);
+          toastSuccess(`Removed ${email}`);
+          setConfirmAction(null);
+          loadData();
+        } catch (err) {
+          toastError(err instanceof Error ? err.message : "Failed to remove member");
+        } finally {
+          setConfirmLoading(false);
+        }
+      },
+    });
   }
 
   // ── Tenant actions ──
@@ -188,15 +207,25 @@ export default function OrganizationDetailPage() {
     }
   }
 
-  async function handleRemoveTenant(tenantId: string) {
-    if (!confirm("Remove this project from the organization?")) return;
-    try {
-      await api.organizations.unbindTenant(slug, tenantId, accessToken);
-      toastSuccess("Project removed");
-      loadData();
-    } catch (err) {
-      toastError(err instanceof Error ? err.message : "Failed to remove project");
-    }
+  function handleRemoveTenant(tenantId: string, tenantName: string) {
+    setConfirmAction({
+      title: "Remove Project",
+      message: `Remove "${tenantName}" from this organization? The project will still exist but won't be managed under this organization.`,
+      destructive: true,
+      onConfirm: async () => {
+        setConfirmLoading(true);
+        try {
+          await api.organizations.unbindTenant(slug, tenantId, accessToken);
+          toastSuccess("Project removed from organization");
+          setConfirmAction(null);
+          loadData();
+        } catch (err) {
+          toastError(err instanceof Error ? err.message : "Failed to remove project");
+        } finally {
+          setConfirmLoading(false);
+        }
+      },
+    });
   }
 
   // ── Derived ──
@@ -305,7 +334,7 @@ export default function OrganizationDetailPage() {
                   <div className="flex items-center gap-2">
                     {item.tenant && <Badge variant="secondary">{item.tenant.tier}</Badge>}
                     <button
-                      onClick={(e) => { e.stopPropagation(); handleRemoveTenant(item.tenant_id); }}
+                      onClick={(e) => { e.stopPropagation(); handleRemoveTenant(item.tenant_id, item.tenant?.name || item.tenant_id); }}
                       className="p-1.5 rounded-md text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors"
                       title="Remove from organization"
                     >
@@ -327,7 +356,17 @@ export default function OrganizationDetailPage() {
                     </button>
                   </div>
                   <div className="p-5 space-y-4">
-                    {unboundTenants.length === 0 ? (
+                    {unboundTenants.length === 0 && allTenants.length === 0 ? (
+                      <div className="text-center py-4">
+                        <p className="text-sm text-gray-500 dark:text-zinc-500 mb-3">You don&apos;t have any projects yet.</p>
+                        <button
+                          onClick={() => { setShowAddTenant(false); router.push("/tenants"); }}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-medium transition-colors"
+                        >
+                          <Plus className="w-3 h-3" /> Create Project
+                        </button>
+                      </div>
+                    ) : unboundTenants.length === 0 ? (
                       <p className="text-sm text-gray-500 dark:text-zinc-500">All your projects are already in this organization.</p>
                     ) : (
                       <div>
@@ -514,6 +553,41 @@ export default function OrganizationDetailPage() {
             )}
           </TabsContent>
         </Tabs>
+
+        {/* Confirmation Modal */}
+        {confirmAction && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
+            <div className="bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-xl w-full max-w-sm mx-4 shadow-2xl overflow-hidden">
+              <div className="px-5 py-4 border-b border-gray-200 dark:border-zinc-800">
+                <h2 className="text-sm font-semibold text-gray-900 dark:text-zinc-100">{confirmAction.title}</h2>
+              </div>
+              <div className="p-5">
+                <p className="text-sm text-gray-600 dark:text-zinc-400 leading-relaxed">{confirmAction.message}</p>
+              </div>
+              <div className="flex justify-end gap-2 px-5 py-3 bg-gray-50 dark:bg-zinc-800/50 border-t border-gray-200 dark:border-zinc-800">
+                <button
+                  onClick={() => setConfirmAction(null)}
+                  disabled={confirmLoading}
+                  className="px-4 py-2 rounded-lg text-sm font-medium text-gray-600 dark:text-zinc-400 hover:bg-gray-100 dark:hover:bg-zinc-700 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={confirmAction.onConfirm}
+                  disabled={confirmLoading}
+                  className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium text-white transition-colors disabled:opacity-50 ${
+                    confirmAction.destructive
+                      ? "bg-red-600 hover:bg-red-700"
+                      : "bg-blue-600 hover:bg-blue-700"
+                  }`}
+                >
+                  {confirmLoading && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                  Confirm
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </AppShell>
   );
