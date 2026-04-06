@@ -242,6 +242,33 @@ Haven API (FastAPI)
 
 ---
 
+## Definition of Done (ZORUNLU)
+
+Bir task "done" sayılması için aşağıdaki TÜM adımlar tamamlanmış olmalı:
+
+1. **Kod yazıldı** — feature/fix implementasyonu tamamlandı
+2. **Yeni testler yazıldı** — test count artmalı, her yeni feature/fix için test olmalı
+3. **Tüm testler geçti** — `pytest tests/ -q` ile lokal olarak doğrulandı
+4. **Lint + Format geçti** — `ruff check .` + `ruff format --check .` (CI ile aynı)
+5. **PR açıldı** — feature branch'ten main'e PR oluşturuldu
+6. **CI green** — GitHub Actions: Lint ✅, Test ✅, Build & Push ✅, Update Manifest ✅
+7. **Review onaylandı** — Architect + Tester agent'lar approve etti (blocking bug varsa düzeltildi)
+8. **PR merge edildi** — main branch'e merge
+9. **Cluster'a deploy oldu** — ArgoCD sync, pod'lar yeni image ile Running
+10. **API erişilebilir** — `curl https://api.46.225.42.2.sslip.io/api/docs` → 200
+11. **Yeni endpoint'ler doğrulandı** — OpenAPI spec'te yeni endpoint'ler görünüyor
+
+**KURAL: CI geçmesi YETERLİ DEĞİL. Cluster'da deploy olup pod'ların yeni image ile çalıştığı doğrulanmadan hiçbir iş "done" sayılamaz.**
+
+**ArgoCD hard refresh**: Eğer ArgoCD otomatik sync etmiyorsa:
+```bash
+KC=infrastructure/environments/dev/kubeconfig
+kubectl --kubeconfig=$KC patch application haven-api -n argocd --type merge \
+  -p '{"metadata":{"annotations":{"argocd.argoproj.io/refresh":"hard"}}}'
+```
+
+---
+
 ## Test Commands
 
 ```bash
