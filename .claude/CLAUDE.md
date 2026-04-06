@@ -242,9 +242,12 @@ Haven API (FastAPI)
 
 ---
 
-## Definition of Done (ZORUNLU)
+## Definition of Done (ZORUNLU — İHLAL EDİLEMEZ)
 
-Bir task "done" sayılması için aşağıdaki TÜM adımlar tamamlanmış olmalı:
+Bir task "done" sayılması için aşağıdaki TÜM adımlar tamamlanmış olmalı.
+Herhangi biri eksikse "done" denilemez.
+
+### Backend Değişiklikleri
 
 1. **Kod yazıldı** — feature/fix implementasyonu tamamlandı
 2. **Yeni testler yazıldı** — test count artmalı, her yeni feature/fix için test olmalı
@@ -252,15 +255,49 @@ Bir task "done" sayılması için aşağıdaki TÜM adımlar tamamlanmış olmal
 4. **Lint + Format geçti** — `ruff check .` + `ruff format --check .` (CI ile aynı)
 5. **PR açıldı** — feature branch'ten main'e PR oluşturuldu
 6. **CI green** — GitHub Actions: Lint ✅, Test ✅, Build & Push ✅, Update Manifest ✅
-7. **Review onaylandı** — Architect + Tester agent'lar approve etti (blocking bug varsa düzeltildi)
-8. **PR merge edildi** — main branch'e merge
-9. **Cluster'a deploy oldu** — ArgoCD sync, pod'lar yeni image ile Running
-10. **API erişilebilir** — `curl https://api.46.225.42.2.sslip.io/api/docs` → 200
-11. **Yeni endpoint'ler doğrulandı** — OpenAPI spec'te yeni endpoint'ler görünüyor
+7. **Architect agent review** — Kod kalitesi, mimari, güvenlik inceledi. Blocking bug varsa düzeltildi, tekrar review.
+8. **Tester agent review** — Testleri çalıştırdı, coverage kontrol etti, approve etti.
+9. **PR merge edildi** — main branch'e merge
+10. **Cluster'a deploy oldu** — ArgoCD sync, pod'lar yeni image ile Running doğrulandı:
+    ```bash
+    KC=infrastructure/environments/dev/kubeconfig
+    kubectl --kubeconfig=$KC get pods -n haven-system -l app=haven-api \
+      -o jsonpath='{.items[0].spec.containers[0].image}'
+    # Image tag merge commit SHA ile eşleşmeli
+    ```
+11. **API erişilebilir** — `curl https://api.46.225.42.2.sslip.io/api/docs` → 200
+12. **Yeni endpoint'ler doğrulandı** — OpenAPI spec'te yeni endpoint'ler görünüyor
 
-**KURAL: CI geçmesi YETERLİ DEĞİL. Cluster'da deploy olup pod'ların yeni image ile çalıştığı doğrulanmadan hiçbir iş "done" sayılamaz.**
+### Frontend (UI) Değişiklikleri
 
-**ArgoCD hard refresh**: Eğer ArgoCD otomatik sync etmiyorsa:
+1-9 aynı (lint: `npm run lint`, build: `npm run build`, test: `npm run test`)
+10. **UI cluster'a deploy oldu** — haven-ui pod yeni image ile Running:
+    ```bash
+    kubectl --kubeconfig=$KC get pods -n haven-system -l app=haven-ui \
+      -o jsonpath='{.items[0].spec.containers[0].image}'
+    ```
+11. **Browser testi** — Gerçek bir kullanıcı gibi browser'dan test et:
+    - Değişen sayfayı aç, tıkla, form doldur, submit et
+    - Network tab'da API çağrılarını kontrol et (CORS hata yok, 401 yok)
+    - Console'da JS error yok
+    - Mobile responsive kontrol et
+12. **Playwright E2E** — Otomatik test yazıldı ve geçti (`npx playwright test`)
+
+### Review Agent Kuralları
+
+- **Her PR'da architect + tester agent çalıştırılacak** — atlama yok
+- Architect: kod review, mimari, güvenlik, blocking bug tespiti
+- Tester: testleri gerçekten çalıştırır, coverage kontrol eder, pass/fail rapor eder
+- **İkisi de approve etmeden merge yasak** (self-approval GitHub'da çalışmıyorsa, her ikisinin de "approve" dediğini doğrula)
+- Blocking bug bulunursa: düzelt → tekrar review → approve → merge
+
+### Kritik Kurallar
+
+- **CI geçmesi YETERLİ DEĞİL** — Cluster deploy + pod running + API/UI doğrulama zorunlu
+- **Unit test geçmesi YETERLİ DEĞİL** — Browser'dan görsel doğrulama (UI) veya curl ile endpoint doğrulama (API) zorunlu
+- **"Yazdım, merge ettim" YETERLİ DEĞİL** — Deploy oldu mu? Pod yeni image mı? Erişilebilir mi?
+
+**ArgoCD otomatik sync etmiyorsa** hard refresh:
 ```bash
 KC=infrastructure/environments/dev/kubeconfig
 kubectl --kubeconfig=$KC patch application haven-api -n argocd --type merge \
