@@ -24,6 +24,7 @@ function GitHubCallbackContent() {
     if (called.current) return;
 
     const code = searchParams.get("code");
+    const state = searchParams.get("state");
     const error = searchParams.get("error");
 
     // Wait for searchParams to actually populate before processing.
@@ -45,8 +46,10 @@ function GitHubCallbackContent() {
       return;
     }
 
-    // Exchange code for access token via backend
-    fetch(`${API_BASE}/api/v1/github/auth/callback?code=${encodeURIComponent(code!)}`)
+    // Exchange code + state for access token via backend
+    const params = new URLSearchParams({ code: code! });
+    if (state) params.set("state", state);
+    fetch(`${API_BASE}/api/v1/github/auth/callback?${params.toString()}`)
       .then((res) => {
         if (!res.ok) return res.text().then((t) => Promise.reject(new Error(t)));
         return res.json() as Promise<{ access_token: string }>;
