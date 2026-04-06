@@ -147,7 +147,9 @@ async def run_pipeline(
 
         logger.info(
             "Build-only pipeline complete: deployment=%s image=%s app=%s",
-            deployment_id, image_name, app_slug,
+            deployment_id,
+            image_name,
+            app_slug,
         )
         return
 

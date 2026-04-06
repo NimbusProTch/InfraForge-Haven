@@ -1,6 +1,5 @@
 """Tests for build-only pipeline mode (deploy=False → BUILT status)."""
 
-
 from app.models.deployment import DeploymentStatus
 
 

@@ -93,7 +93,10 @@ class TestEnqueueBuild:
         redis.lpush = AsyncMock(side_effect=capture_lpush)
 
         job_id, position = await svc.enqueue_build(
-            "tenant-a", "my-app", deployment_id="dep-1", repo_url="https://github.com/test/repo",
+            "tenant-a",
+            "my-app",
+            deployment_id="dep-1",
+            repo_url="https://github.com/test/repo",
         )
 
         assert job_id  # UUID string
@@ -146,7 +149,8 @@ class TestEnqueueBuild:
         svc = BuildQueueService(redis)
 
         job_id, _ = await svc.enqueue_build(
-            "tenant-a", "my-app",
+            "tenant-a",
+            "my-app",
             extra={"dockerfile_path": "backend/Dockerfile"},
         )
 
