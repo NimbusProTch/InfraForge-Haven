@@ -10,7 +10,7 @@ from sqlalchemy.exc import IntegrityError
 from app.config import settings
 from app.deps import CurrentUser, DBSession, GitQueueDep, K8sDep
 from app.models.application import Application
-from app.models.managed_service import ManagedService, ServiceStatus, ServiceType
+from app.models.managed_service import ManagedService, ServiceStatus, ServiceTier, ServiceType
 from app.models.tenant import Tenant
 from app.schemas.application import ApplicationCreate, ApplicationResponse, ApplicationUpdate
 from app.services.audit_service import audit
@@ -18,6 +18,7 @@ from app.services.deploy_service import DeployService
 from app.services.git_queue_service import GitOperation, GitQueueService
 from app.services.gitops_scaffold import gitops_scaffold
 from app.services.helm_values_builder import render_app_values
+from app.services.managed_service import ManagedServiceProvisioner
 
 logger = logging.getLogger(__name__)
 
@@ -128,6 +129,57 @@ async def create_application(
         env_vars=dict(body.env_vars) if body.env_vars else {},
     )
 
+    # Auto-create requested services alongside the app
+    if body.requested_services:
+        pending: list[dict] = []
+        for req in body.requested_services:
+            svc_name = req.name or f"{body.slug}-{req.service_type}"
+            svc_type = ServiceType(req.service_type)
+            svc_tier = ServiceTier(req.tier)
+
+            # Skip if service already exists
+            existing_svc = await db.execute(
+                select(ManagedService).where(
+                    ManagedService.tenant_id == tenant.id,
+                    ManagedService.name == svc_name,
+                )
+            )
+            if existing_svc.scalar_one_or_none() is not None:
+                logger.info("Service %s already exists for tenant %s, skipping", svc_name, tenant_slug)
+                continue
+
+            svc = ManagedService(
+                tenant_id=tenant.id,
+                name=svc_name,
+                service_type=svc_type,
+                tier=svc_tier,
+                status=ServiceStatus.PROVISIONING,
+            )
+            db.add(svc)
+            try:
+                await db.flush()
+            except Exception:
+                logger.exception("Failed to create service %s for app %s", svc_name, body.slug)
+                await db.rollback()
+                continue
+
+            # Provision the service (K8s CRD/Everest)
+            try:
+                provisioner = ManagedServiceProvisioner(k8s)
+                await provisioner.provision(svc, tenant.namespace, tenant_slug=tenant.slug)
+            except Exception:
+                logger.exception("Failed to provision service %s", svc_name)
+
+            await db.commit()
+
+            pending.append({"service_name": svc_name, "service_type": req.service_type})
+            logger.info("Auto-created service %s (%s) for app %s", svc_name, req.service_type, body.slug)
+
+        if pending:
+            app.pending_services = pending
+            await db.commit()
+            await db.refresh(app)
+
     await audit(
         db,
         tenant_id=tenant.id,
@@ -135,6 +187,7 @@ async def create_application(
         user_id=current_user.get("sub", ""),
         resource_type="application",
         resource_id=str(app.id),
+        extra={"requested_services": [s.service_type for s in (body.requested_services or [])]},
     )
 
     return app
@@ -449,6 +502,71 @@ async def connect_service(
         await _enqueue_app_values_update(queue, tenant_slug, app, f"connect service {svc.name}")
 
     return app
+
+
+@router.get("/{app_slug}/services")
+async def get_app_services(
+    tenant_slug: str,
+    app_slug: str,
+    db: DBSession,
+    current_user: CurrentUser,
+) -> list[dict]:
+    """Get all services connected to or pending for this app.
+
+    Returns enriched list with current service status for the app detail page.
+    """
+    tenant = await _get_tenant_or_404(tenant_slug, db, current_user)
+    app = await _get_app_or_404(tenant.id, app_slug, db)
+
+    result: list[dict] = []
+
+    # Connected services (from env_from_secrets)
+    for entry in app.env_from_secrets or []:
+        svc_name = entry.get("service_name", "")
+        svc_result = await db.execute(
+            select(ManagedService).where(
+                ManagedService.tenant_id == tenant.id,
+                ManagedService.name == svc_name,
+            )
+        )
+        svc = svc_result.scalar_one_or_none()
+        result.append({
+            "service_name": svc_name,
+            "service_type": svc.service_type.value if svc else "unknown",
+            "tier": svc.tier.value if svc else "dev",
+            "status": svc.status.value if svc else "unknown",
+            "connection_hint": entry.get("connection_hint", ""),
+            "database_url_key": entry.get("database_url_key"),
+            "connected": True,
+            "pending": False,
+        })
+
+    # Pending services (from pending_services)
+    for entry in app.pending_services or []:
+        svc_name = entry.get("service_name", "")
+        # Skip if already in connected list
+        if any(r["service_name"] == svc_name for r in result):
+            continue
+        svc_result = await db.execute(
+            select(ManagedService).where(
+                ManagedService.tenant_id == tenant.id,
+                ManagedService.name == svc_name,
+            )
+        )
+        svc = svc_result.scalar_one_or_none()
+        result.append({
+            "service_name": svc_name,
+            "service_type": entry.get("service_type", svc.service_type.value if svc else "unknown"),
+            "tier": svc.tier.value if svc else "dev",
+            "status": svc.status.value if svc else "provisioning",
+            "connection_hint": svc.connection_hint if svc else None,
+            "database_url_key": None,
+            "connected": False,
+            "pending": True,
+            "error_message": svc.error_message if svc else None,
+        })
+
+    return result
 
 
 @router.delete("/{app_slug}/connect-service/{service_name}", status_code=status.HTTP_204_NO_CONTENT)

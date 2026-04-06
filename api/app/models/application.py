@@ -80,6 +80,10 @@ class Application(Base, TimestampMixin):
     # Managed service connections: [{service_name, secret_name, namespace}]
     env_from_secrets: Mapped[list | None] = mapped_column(JSON, nullable=True, default=None)
 
+    # Services requested during app creation, awaiting provisioning + auto-connect
+    # [{service_name, service_type}] — cleared as each service reaches READY and is connected
+    pending_services: Mapped[list | None] = mapped_column(JSON, nullable=True, default=None)
+
     tenant: Mapped["Tenant"] = relationship(back_populates="applications")
     deployments: Mapped[list["Deployment"]] = relationship(back_populates="application", cascade="all, delete-orphan")
     environments: Mapped[list["Environment"]] = relationship(back_populates="application", cascade="all, delete-orphan")
