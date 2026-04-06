@@ -18,7 +18,7 @@ spec:
         haven.io/component: api
       annotations:
         # Force pod restart when ConfigMap changes (ArgoCD will update this annotation)
-        kubectl.kubernetes.io/restartedAt: "2026-03-29T05:45:00Z"
+        kubectl.kubernetes.io/restartedAt: "2026-04-06T06:45:00Z"
     spec:
       serviceAccountName: haven-api
       tolerations:
@@ -32,6 +32,22 @@ spec:
                   matchLabels:
                     app: haven-api
                 topologyKey: kubernetes.io/hostname
+      initContainers:
+        - name: db-migrate
+          image: harbor.46.225.42.2.sslip.io/library/haven-api:239a587
+          command: ["python", "-m", "alembic", "upgrade", "head"]
+          envFrom:
+            - configMapRef:
+                name: haven-api-config
+            - secretRef:
+                name: haven-api-secrets
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "256Mi"
       containers:
         - name: haven-api
           image: harbor.46.225.42.2.sslip.io/library/haven-api:239a587
