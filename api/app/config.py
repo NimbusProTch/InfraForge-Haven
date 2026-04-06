@@ -12,13 +12,25 @@ class Settings(BaseSettings):
     @model_validator(mode="after")
     def _validate_critical_settings(self) -> "Settings":
         """Warn about missing critical settings at startup."""
-        missing = []
+        critical = []
         if not self.secret_key:
-            missing.append("SECRET_KEY")
+            critical.append("SECRET_KEY")
         if not self.database_url:
-            missing.append("DATABASE_URL")
-        if missing:
-            logger.warning("SECURITY WARNING: Missing critical settings: %s", ", ".join(missing))
+            critical.append("DATABASE_URL")
+        if critical:
+            logger.warning("SECURITY WARNING: Missing critical settings: %s", ", ".join(critical))
+
+        recommended = []
+        if not self.keycloak_admin_password:
+            recommended.append("KEYCLOAK_ADMIN_PASSWORD")
+        if not self.harbor_admin_password:
+            recommended.append("HARBOR_ADMIN_PASSWORD")
+        if not self.github_client_id:
+            recommended.append("GITHUB_CLIENT_ID")
+        if not self.webhook_secret:
+            recommended.append("WEBHOOK_SECRET")
+        if recommended:
+            logger.info("Optional settings not configured: %s", ", ".join(recommended))
         return self
 
     # Database
