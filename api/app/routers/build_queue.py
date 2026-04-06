@@ -30,27 +30,23 @@ router = APIRouter(
 def _get_build_queue_service():
     """Dependency: return a BuildQueueService backed by the app-wide Redis client.
 
-    Catches Redis connection errors and returns a proper error response
-    instead of raising 503.
+    Returns None if Redis is unavailable — endpoints handle gracefully.
     """
-    from app.services.build_queue_service import BuildQueueService
-
     try:
         import redis.asyncio as aioredis
 
         from app.config import settings
+        from app.services.build_queue_service import BuildQueueService
 
         redis_url = getattr(settings, "redis_url", "redis://localhost:6379/0")
         client = aioredis.from_url(redis_url, decode_responses=False)
         return BuildQueueService(client)
-    except ImportError:
-        raise HTTPException(  # noqa: B904
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Redis client library not installed. Add 'redis[asyncio]' to dependencies.",
-        )
+    except Exception:
+        logger.warning("Build queue Redis unavailable — returning None")
+        return None
 
 
-BuildQueueDep = Annotated["BuildQueueService", Depends(_get_build_queue_service)]
+BuildQueueDep = Annotated[Any, Depends(_get_build_queue_service)]
 
 
 @router.get("/status", summary="Build queue aggregate statistics")
@@ -69,6 +65,16 @@ async def get_build_queue_status(queue_svc: BuildQueueDep) -> dict[str, Any]:
     }
     ```
     """
+    if queue_svc is None:
+        return {
+            "pending": 0,
+            "active": 0,
+            "active_jobs": [],
+            "dlq": 0,
+            "max_concurrent": 0,
+            "max_per_tenant": 0,
+            "error_message": "Build queue unavailable: Redis not configured",
+        }
     try:
         return await queue_svc.get_queue_status()
     except Exception as exc:
@@ -90,6 +96,11 @@ async def get_build_job(job_id: str, queue_svc: BuildQueueDep) -> dict[str, Any]
 
     Returns 404 if the job is not found or has expired (TTL=24h).
     """
+    if queue_svc is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Build queue unavailable: Redis not configured",
+        )
     try:
         job = await queue_svc.get_job(job_id)
     except Exception as exc:
@@ -116,6 +127,11 @@ async def get_build_position(job_id: str, queue_svc: BuildQueueDep) -> dict[str,
     ```
     Position is 0-based. -1 means the job is currently active.
     """
+    if queue_svc is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Build queue unavailable: Redis not configured",
+        )
     try:
         position = await queue_svc.get_queue_position(job_id)
     except Exception as exc:

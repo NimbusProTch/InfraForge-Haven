@@ -43,6 +43,9 @@ import {
   FileText,
   Shield,
   Settings,
+  Hammer,
+  Terminal,
+  Globe,
 } from "lucide-react";
 
 const LB_IP = process.env.NEXT_PUBLIC_LB_IP ?? "";
@@ -95,13 +98,27 @@ function AppCard({
   app,
   tenantSlug,
   latestDeployment,
+  recentDeployments,
 }: {
   app: Application;
   tenantSlug: string;
   latestDeployment?: Deployment;
+  recentDeployments?: Deployment[];
 }) {
   const url = appUrl(tenantSlug, app.slug);
   const deployStatus = latestDeployment?.status;
+
+  // Last 3 deployment status dots
+  const statusDots = (recentDeployments ?? []).slice(0, 3);
+
+  const STATUS_DOT_COLOR: Record<string, string> = {
+    running: "bg-emerald-500",
+    failed: "bg-red-500",
+    building: "bg-blue-500",
+    built: "bg-purple-500",
+    deploying: "bg-blue-400",
+    pending: "bg-zinc-400",
+  };
 
   return (
     <div className="bg-white dark:bg-zinc-900/50 border border-gray-200 dark:border-zinc-800 rounded-xl p-4 hover:border-gray-300 dark:hover:border-zinc-700 transition-colors group shadow-sm">
@@ -126,11 +143,37 @@ function AppCard({
             </p>
           </div>
         </Link>
-        {deployStatus && (
-          <Badge variant={DEPLOY_STATUS_VARIANT[deployStatus] ?? "secondary"}>
-            {deployStatus}
-          </Badge>
-        )}
+        <div className="flex items-center gap-2">
+          {/* Quick action icons on hover */}
+          <div className="hidden group-hover:flex items-center gap-1">
+            <Link
+              href={`/tenants/${tenantSlug}/apps/${app.slug}?tab=build`}
+              className="p-1 rounded-md hover:bg-gray-100 dark:hover:bg-zinc-800 text-gray-400 dark:text-zinc-600 hover:text-gray-700 dark:hover:text-zinc-300 transition-colors"
+              title="Build"
+            >
+              <Hammer className="w-3.5 h-3.5" />
+            </Link>
+            <Link
+              href={`/tenants/${tenantSlug}/apps/${app.slug}?tab=logs`}
+              className="p-1 rounded-md hover:bg-gray-100 dark:hover:bg-zinc-800 text-gray-400 dark:text-zinc-600 hover:text-gray-700 dark:hover:text-zinc-300 transition-colors"
+              title="Logs"
+            >
+              <Terminal className="w-3.5 h-3.5" />
+            </Link>
+            <Link
+              href={`/tenants/${tenantSlug}/apps/${app.slug}?tab=settings`}
+              className="p-1 rounded-md hover:bg-gray-100 dark:hover:bg-zinc-800 text-gray-400 dark:text-zinc-600 hover:text-gray-700 dark:hover:text-zinc-300 transition-colors"
+              title="Settings"
+            >
+              <Settings className="w-3.5 h-3.5" />
+            </Link>
+          </div>
+          {deployStatus && (
+            <Badge variant={DEPLOY_STATUS_VARIANT[deployStatus] ?? "secondary"}>
+              {deployStatus}
+            </Badge>
+          )}
+        </div>
       </div>
 
       <div className="flex items-center gap-3 text-xs text-gray-400 dark:text-zinc-600">
@@ -142,6 +185,12 @@ function AppCard({
           <Activity className="w-3 h-3" />
           {app.replicas} replica{app.replicas !== 1 ? "s" : ""}
         </span>
+        {app.port && (
+          <span className="flex items-center gap-1">
+            <Server className="w-3 h-3" />
+            Port {app.port}
+          </span>
+        )}
         {latestDeployment && (
           <span className="flex items-center gap-1 ml-auto">
             <Clock className="w-3 h-3" />
@@ -150,17 +199,39 @@ function AppCard({
         )}
       </div>
 
+      {/* Custom domain */}
+      {app.custom_domain && (
+        <div className="mt-2 flex items-center gap-1 text-xs text-blue-500 dark:text-blue-400 font-mono truncate">
+          <Globe className="w-3 h-3 shrink-0" />
+          {app.custom_domain}
+        </div>
+      )}
+
       {url && deployStatus === "running" && (
         <a
           href={url}
           target="_blank"
           rel="noopener noreferrer"
-          className="mt-3 flex items-center gap-1 text-xs text-emerald-500 hover:text-emerald-400 transition-colors font-mono truncate"
+          className="mt-2 flex items-center gap-1 text-xs text-emerald-500 hover:text-emerald-400 transition-colors font-mono truncate"
           onClick={(e) => e.stopPropagation()}
         >
           <ExternalLink className="w-3 h-3 shrink-0" />
           {url.replace("https://", "")}
         </a>
+      )}
+
+      {/* Recent deployment status dots */}
+      {statusDots.length > 0 && (
+        <div className="mt-2.5 flex items-center gap-1.5 border-t border-gray-100 dark:border-zinc-800/50 pt-2.5">
+          <span className="text-[10px] text-gray-400 dark:text-zinc-600 mr-1">Recent</span>
+          {statusDots.map((dep, i) => (
+            <span
+              key={dep.id ?? i}
+              className={`w-2 h-2 rounded-full ${STATUS_DOT_COLOR[dep.status] ?? "bg-zinc-400"}`}
+              title={`${dep.status} - ${new Date(dep.created_at).toLocaleString()}`}
+            />
+          ))}
+        </div>
       )}
     </div>
   );
@@ -176,6 +247,7 @@ export default function TenantDetailPage() {
   const [tenant, setTenant] = useState<Tenant | null>(null);
   const [apps, setApps] = useState<Application[]>([]);
   const [latestDeployments, setLatestDeployments] = useState<Record<string, Deployment>>({});
+  const [recentDeployments, setRecentDeployments] = useState<Record<string, Deployment[]>>({});
   const [services, setServices] = useState<ManagedService[]>([]);
   const [loading, setLoading] = useState(true);
   const [deletingService, setDeletingService] = useState<string | null>(null);
@@ -211,12 +283,15 @@ export default function TenantDetailPage() {
         a.map((app) => api.deployments.list(slug, app.slug, accessToken))
       );
       const depMap: Record<string, Deployment> = {};
+      const recentMap: Record<string, Deployment[]> = {};
       depResults.forEach((result, i) => {
         if (result.status === "fulfilled" && result.value.length > 0) {
           depMap[a[i].slug] = result.value[0];
+          recentMap[a[i].slug] = result.value.slice(0, 3);
         }
       });
       setLatestDeployments(depMap);
+      setRecentDeployments(recentMap);
     } catch {
       router.push("/tenants");
     } finally {
@@ -397,40 +472,40 @@ export default function TenantDetailPage() {
         {/* Stats bar */}
         <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-6">
           {[
-            { label: "Namespace", value: tenant.slug, mono: true },
-            { label: "CPU Limit", value: tenant.cpu_limit, mono: true },
-            { label: "Memory", value: tenant.memory_limit, mono: true },
-            { label: "Storage", value: tenant.storage_limit, mono: true },
-          ].map(({ label, value, mono }) => (
+            { label: "Namespace", value: tenant.slug, mono: true, gradient: "from-blue-50 to-blue-100 dark:from-blue-950/30 dark:to-blue-900/20", borderColor: "border-blue-200/60 dark:border-blue-800/30" },
+            { label: "CPU Limit", value: tenant.cpu_limit, mono: true, gradient: "from-purple-50 to-purple-100 dark:from-purple-950/30 dark:to-purple-900/20", borderColor: "border-purple-200/60 dark:border-purple-800/30" },
+            { label: "Memory", value: tenant.memory_limit, mono: true, gradient: "from-green-50 to-green-100 dark:from-green-950/30 dark:to-green-900/20", borderColor: "border-green-200/60 dark:border-green-800/30" },
+            { label: "Storage", value: tenant.storage_limit, mono: true, gradient: "from-orange-50 to-orange-100 dark:from-orange-950/30 dark:to-orange-900/20", borderColor: "border-orange-200/60 dark:border-orange-800/30" },
+          ].map(({ label, value, mono, gradient, borderColor }) => (
             <div
               key={label}
-              className="bg-white dark:bg-zinc-900/50 border border-gray-200 dark:border-zinc-800 rounded-xl px-3 py-3 shadow-sm"
+              className={`bg-gradient-to-br ${gradient} border ${borderColor} rounded-xl px-3 py-3 shadow-sm`}
             >
-              <p className="text-xs text-gray-400 dark:text-zinc-600 mb-1">{label}</p>
+              <p className="text-xs text-gray-500 dark:text-zinc-500 mb-1">{label}</p>
               <p className={`text-sm font-medium text-gray-800 dark:text-zinc-200 ${mono ? "font-mono" : ""}`}>
                 {value}
               </p>
             </div>
           ))}
-          <div className="bg-white dark:bg-zinc-900/50 border border-gray-200 dark:border-zinc-800 rounded-xl px-3 py-3 shadow-sm">
-            <p className="text-xs text-gray-400 dark:text-zinc-600 mb-1">App Health</p>
-            <div className="flex items-center gap-2">
-              {runningApps > 0 && (
-                <span className="flex items-center gap-1 text-xs text-emerald-500 font-medium">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                  {runningApps} up
-                </span>
-              )}
-              {failedApps > 0 && (
-                <span className="flex items-center gap-1 text-xs text-red-500 font-medium">
-                  <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
-                  {failedApps} down
-                </span>
-              )}
-              {apps.length === 0 && (
-                <span className="text-xs text-gray-400 dark:text-zinc-600">—</span>
-              )}
-            </div>
+          <div className="bg-gradient-to-br from-emerald-50 to-emerald-100 dark:from-emerald-950/30 dark:to-emerald-900/20 border border-emerald-200/60 dark:border-emerald-800/30 rounded-xl px-3 py-3 shadow-sm">
+            <p className="text-xs text-gray-500 dark:text-zinc-500 mb-1">App Health</p>
+            {apps.length === 0 ? (
+              <span className="text-xs text-gray-400 dark:text-zinc-600">--</span>
+            ) : (
+              <div className="flex items-center gap-1.5 flex-wrap">
+                {apps.map((a) => {
+                  const st = latestDeployments[a.slug]?.status;
+                  const dotColor = st === "running" ? "bg-emerald-500" : st === "failed" ? "bg-red-500" : "bg-zinc-400";
+                  return (
+                    <span
+                      key={a.id}
+                      className={`w-2.5 h-2.5 rounded-full ${dotColor}`}
+                      title={`${a.name}: ${st ?? "no deployment"}`}
+                    />
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
 
@@ -495,6 +570,7 @@ export default function TenantDetailPage() {
                     app={app}
                     tenantSlug={slug}
                     latestDeployment={latestDeployments[app.slug]}
+                    recentDeployments={recentDeployments[app.slug]}
                   />
                 ))}
               </div>
@@ -521,15 +597,15 @@ export default function TenantDetailPage() {
                 <p className="text-xs text-gray-400 dark:text-zinc-600 mt-1">Add a PostgreSQL, Redis, or RabbitMQ instance to get started.</p>
               </div>
             ) : (
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              <div className="grid gap-3 sm:grid-cols-2">
                 {services.map((svc) => (
                   <div
                     key={svc.id}
                     className="bg-white dark:bg-zinc-900/50 border border-gray-200 dark:border-zinc-800 rounded-xl p-4 hover:border-gray-300 dark:hover:border-zinc-700 transition-colors shadow-sm"
                   >
                     <div className="flex items-start justify-between">
-                      <div className="flex items-center gap-2">
-                        <ServiceIcon type={svc.service_type} size={24} />
+                      <div className="flex items-center gap-3">
+                        <ServiceIcon type={svc.service_type} size={40} />
                         <div>
                           <p className="text-sm font-medium text-gray-800 dark:text-zinc-200">{svc.name}</p>
                           <p className="text-xs text-gray-400 dark:text-zinc-600">
