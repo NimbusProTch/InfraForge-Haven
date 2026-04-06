@@ -739,12 +739,15 @@ export default function AppDetailPage() {
       deployPollRef.current = setInterval(() => {
         loadDeployments();
         loadBuildStatus();
+        loadApp();
       }, 5000);
       // Initial load
       loadBuildStatus();
     } else {
       setBuildStatus(null);
       setActiveLogStep(null);
+      // Refresh app data one more time to get final image_tag
+      loadApp();
     }
     return () => {
       if (deployPollRef.current) {
@@ -752,7 +755,7 @@ export default function AppDetailPage() {
         deployPollRef.current = null;
       }
     };
-  }, [isActiveBuild, loadDeployments, loadBuildStatus]);
+  }, [isActiveBuild, loadDeployments, loadBuildStatus, loadApp]);
 
   useEffect(() => {
     const shouldStream =

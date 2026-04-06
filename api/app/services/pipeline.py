@@ -28,7 +28,7 @@ from app.services.gitops_service import GitOpsService
 from app.services.helm_values_builder import build_app_values
 
 # Maximum time (seconds) to wait for a deployment to become ready
-WAIT_FOR_READY_TIMEOUT = 120
+WAIT_FOR_READY_TIMEOUT = 60
 
 logger = logging.getLogger(__name__)
 
@@ -239,11 +239,11 @@ async def run_pipeline(
                 logger.warning("ArgoCD wait failed (%s) — falling back to K8s check", msg)
                 try:
                     ready, msg = await asyncio.wait_for(
-                        deploy_svc.wait_for_ready(namespace, app_slug, timeout=60),
-                        timeout=WAIT_FOR_READY_TIMEOUT,
+                        deploy_svc.wait_for_ready(namespace, app_slug, timeout=30),
+                        timeout=30,
                     )
                 except TimeoutError:
-                    ready, msg = False, f"K8s readiness check timed out after {WAIT_FOR_READY_TIMEOUT}s"
+                    ready, msg = False, "K8s readiness check timed out after 30s"
         else:
             # Direct K8s mode: wait for deployment ready replicas
             try:

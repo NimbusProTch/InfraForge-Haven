@@ -79,7 +79,7 @@ class DeployService:
 
         logger.info("Deploy complete: namespace=%s app=%s", namespace, app_slug)
 
-    async def wait_for_ready(self, namespace: str, app_slug: str, timeout: int = 120) -> tuple[bool, str]:
+    async def wait_for_ready(self, namespace: str, app_slug: str, timeout: int = 60) -> tuple[bool, str]:
         """Wait for deployment to have at least 1 ready replica. Returns (success, message)."""
         for _ in range(timeout // 5):
             try:

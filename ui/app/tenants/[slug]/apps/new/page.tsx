@@ -896,7 +896,6 @@ export default function NewAppPage() {
                     branch={branch}
                     token={effectiveToken}
                     mode="file"
-                    filter="Dockerfile"
                     placeholder="Select a Dockerfile..."
                     value={dockerfilePath}
                     onSelect={setDockerfilePath}
