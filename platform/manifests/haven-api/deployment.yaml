@@ -35,7 +35,7 @@ spec:
       initContainers:
         - name: db-migrate
           image: harbor.46.225.42.2.sslip.io/library/haven-api:239a587
-          command: ["python", "-m", "alembic", "upgrade", "head"]
+          command: ["python", "-m", "alembic", "-c", "alembic/alembic.ini", "upgrade", "head"]
           envFrom:
             - configMapRef:
                 name: haven-api-config
