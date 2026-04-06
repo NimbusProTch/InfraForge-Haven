@@ -17,7 +17,6 @@ import pytest
 
 from app.services.deploy_service import DeployService
 
-
 # ---------------------------------------------------------------------------
 # Helpers — build mock K8s objects
 # ---------------------------------------------------------------------------

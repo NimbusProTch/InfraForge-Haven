@@ -10,15 +10,16 @@ Covers:
 from __future__ import annotations
 
 import uuid
+from typing import TYPE_CHECKING
 
 import pytest
-import pytest_asyncio
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.application import Application
 from app.models.deployment import Deployment, DeploymentStatus
 from app.models.tenant import Tenant
 
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
 
 # ---------------------------------------------------------------------------
 # Fixtures

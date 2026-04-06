@@ -93,7 +93,7 @@ async def get_tenant_or_404(
     tenant_slug: str,
     db: AsyncSession,
     current_user: dict[str, Any] | None = None,
-) -> "Tenant":
+) -> Any:
     """Fetch a tenant by slug or raise 404.
 
     If *current_user* is provided, also verifies the user is a member of the tenant
