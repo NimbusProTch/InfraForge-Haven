@@ -37,7 +37,7 @@ export function ConnectedServicesPanel({
   const [showCredentials, setShowCredentials] = useState<string | null>(null);
   const [credentials, setCredentials] = useState<Record<string, string> | null>(null);
   const [credentialsLoading, setCredentialsLoading] = useState(false);
-  const [copied, setCopied] = useState(false);
+  const [copiedService, setCopiedService] = useState<string | null>(null);
   const [disconnectTarget, setDisconnectTarget] = useState<AppServiceEntry | null>(null);
 
   const connected = services.filter((s) => s.connected);
@@ -67,10 +67,10 @@ export function ConnectedServicesPanel({
     }
   }
 
-  function handleCopyConnection(hint: string) {
+  function handleCopyConnection(serviceName: string, hint: string) {
     navigator.clipboard.writeText(hint);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    setCopiedService(serviceName);
+    setTimeout(() => setCopiedService(null), 2000);
   }
 
   if (services.length === 0) return null;
@@ -157,8 +157,8 @@ export function ConnectedServicesPanel({
                   {showCredentials === svc.service_name ? "Hide Credentials" : "View Credentials"}
                 </DropdownItem>
                 {svc.connection_hint && (
-                  <DropdownItem onClick={() => handleCopyConnection(svc.connection_hint!)}>
-                    {copied ? <Check className="w-4 h-4 text-emerald-500" /> : <Copy className="w-4 h-4" />}
+                  <DropdownItem onClick={() => handleCopyConnection(svc.service_name, svc.connection_hint!)}>
+                    {copiedService === svc.service_name ? <Check className="w-4 h-4 text-emerald-500" /> : <Copy className="w-4 h-4" />}
                     Copy Connection String
                   </DropdownItem>
                 )}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { AlertTriangle, Loader2 } from "lucide-react";
 
 interface DisconnectConfirmDialogProps {
@@ -20,6 +20,10 @@ export function DisconnectConfirmDialog({
 }: DisconnectConfirmDialogProps) {
   const [confirmText, setConfirmText] = useState("");
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (open) setConfirmText("");
+  }, [open]);
 
   if (!open) return null;
 
