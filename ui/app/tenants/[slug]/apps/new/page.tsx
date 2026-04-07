@@ -200,8 +200,11 @@ export default function NewAppPage() {
   const [healthCheckPath, setHealthCheckPath] = useState("/health");
   const [resourceTierId, setResourceTierId] = useState<"starter" | "standard" | "performance">("standard");
 
-  // Step 5 — Services
+  // Step 5 — Connect existing services
   const [selectedServices, setSelectedServices] = useState<SelectedService[]>([]);
+  const [tenantServices, setTenantServices] = useState<Array<{ name: string; service_type: string; tier: string; status: string }>>([]);
+  const [tenantServicesLoading, setTenantServicesLoading] = useState(false);
+  const [selectedServiceNames, setSelectedServiceNames] = useState<string[]>([]);
 
   // Submit state
   const [loading, setLoading] = useState(false);
@@ -408,7 +411,16 @@ export default function NewAppPage() {
       setShowReview(true);
       return;
     }
-    setCurrentStep((p) => Math.min(p + 1, 5));
+    const nextStep = Math.min(currentStep + 1, 5);
+    // Load tenant services when entering Step 5
+    if (nextStep === 5 && tenantServices.length === 0) {
+      setTenantServicesLoading(true);
+      api.services.list(tenantSlug, accessToken)
+        .then((svcs) => setTenantServices(svcs as unknown as typeof tenantServices))
+        .catch(() => {})
+        .finally(() => setTenantServicesLoading(false));
+    }
+    setCurrentStep(nextStep);
   }
 
   function goPrev() {
@@ -445,14 +457,8 @@ export default function NewAppPage() {
         resource_memory_limit: selectedResourceTier.memLimit,
         ...(dockerfilePath ? { dockerfile_path: dockerfilePath, use_dockerfile: true } : {}),
         ...(buildContext ? { build_context: buildContext } : {}),
-        ...(selectedServices.length > 0
-          ? {
-              requested_services: selectedServices.map((s) => ({
-                service_type: s.service_type,
-                name: s.name,
-                tier: s.tier,
-              })),
-            }
+        ...(selectedServiceNames.length > 0
+          ? { connect_services: selectedServiceNames }
           : {}),
       };
 
@@ -475,9 +481,9 @@ export default function NewAppPage() {
   // ── Shared Styles ──
 
   const inputClass =
-    "w-full px-3 py-2.5 rounded-lg border border-gray-200 dark:border-[#2e2e2e] bg-white dark:bg-[#0f0f0f] text-gray-900 dark:text-white text-sm placeholder-gray-400 dark:placeholder-[#444] focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500 transition-colors";
-  const labelClass = "block text-sm font-medium text-gray-700 dark:text-[#ccc] mb-1.5";
-  const errorClass = "text-xs text-red-500 mt-1";
+    "w-full px-3.5 py-2.5 rounded-lg border border-gray-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 text-gray-900 dark:text-white text-sm placeholder-gray-400 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500 transition-colors shadow-sm";
+  const labelClass = "block text-sm font-semibold text-gray-800 dark:text-zinc-200 mb-1.5";
+  const errorClass = "text-xs text-red-500 mt-1.5 font-medium";
   const cardBase =
     "bg-white dark:bg-[#141414] border border-gray-200 dark:border-[#222] rounded-xl p-6 shadow-sm";
 
@@ -568,7 +574,7 @@ export default function NewAppPage() {
               App Identity
             </h2>
             <p className="text-sm text-gray-500 dark:text-[#888] mb-6">
-              Name your application and choose its type.
+              Give your application a name. A URL-safe slug will be auto-generated.
             </p>
 
             <div className="space-y-5">
@@ -608,53 +614,7 @@ export default function NewAppPage() {
                 )}
               </div>
 
-              {/* App Type */}
-              <div>
-                <label className={labelClass}>Application Type</label>
-                <div className="grid grid-cols-3 gap-3 mt-2">
-                  {APP_TYPES.map((type) => {
-                    const Icon = type.icon;
-                    const isSelected = appType === type.value;
-                    return (
-                      <button
-                        key={type.value}
-                        type="button"
-                        onClick={() => setAppType(type.value)}
-                        className={`relative flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all duration-200 text-center ${
-                          isSelected
-                            ? "border-blue-500 bg-blue-50 dark:bg-blue-500/10 shadow-sm"
-                            : "border-gray-200 dark:border-[#2e2e2e] bg-white dark:bg-[#0f0f0f] hover:border-gray-300 dark:hover:border-[#444]"
-                        }`}
-                      >
-                        {isSelected && (
-                          <div className="absolute top-2 right-2">
-                            <Check className="w-3.5 h-3.5 text-blue-500" />
-                          </div>
-                        )}
-                        <div
-                          className={`w-10 h-10 rounded-lg flex items-center justify-center ${
-                            isSelected
-                              ? "bg-blue-500 text-white"
-                              : "bg-gray-100 dark:bg-[#1a1a1a] text-gray-500 dark:text-[#888]"
-                          }`}
-                        >
-                          <Icon className="w-5 h-5" />
-                        </div>
-                        <span
-                          className={`text-sm font-semibold ${
-                            isSelected ? "text-blue-700 dark:text-blue-400" : "text-gray-900 dark:text-white"
-                          }`}
-                        >
-                          {type.label}
-                        </span>
-                        <span className="text-[11px] leading-tight text-gray-500 dark:text-[#777]">
-                          {type.description}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
+              {/* App Type removed — defaults to "web". Worker/cron can be set later from app settings. */}
             </div>
           </div>
         )}
@@ -681,28 +641,38 @@ export default function NewAppPage() {
                 <>
                   {/* GitHub connection */}
                   {isConnected ? (
-                    <div className="flex items-center justify-between gap-2 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg px-4 py-3">
-                      <div className="flex items-center gap-2 text-sm text-green-700 dark:text-green-400">
-                        <CheckCircle className="w-4 h-4 flex-shrink-0" />
-                        {connectedViaSession ? "Connected via GitHub Sign-In" : "GitHub connected"}
+                    <div className="flex items-center justify-between gap-3 rounded-xl border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-800/50 px-4 py-3 shadow-sm">
+                      <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 rounded-lg bg-gray-900 dark:bg-white flex items-center justify-center">
+                          <Github className="w-5 h-5 text-white dark:text-gray-900" />
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium text-gray-900 dark:text-zinc-100">
+                            {connectedViaSession ? "GitHub Sign-In" : "GitHub Connected"}
+                          </p>
+                          <p className="text-xs text-gray-400 dark:text-zinc-500">
+                            Repository access granted
+                          </p>
+                        </div>
                       </div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-1.5">
                         <button
                           type="button"
                           onClick={() => effectiveToken && loadRepos(effectiveToken)}
                           disabled={reposLoading}
-                          title="Reload repos"
-                          className="p-1.5 rounded-md hover:bg-green-100 dark:hover:bg-green-900/40 text-green-600 dark:text-green-400 transition-colors disabled:opacity-50"
+                          title="Refresh repositories"
+                          className="p-2 rounded-lg text-gray-400 hover:text-gray-600 dark:text-zinc-500 dark:hover:text-zinc-300 hover:bg-gray-100 dark:hover:bg-zinc-700 transition-colors disabled:opacity-50"
                         >
-                          <RefreshCw className={`w-3.5 h-3.5 ${reposLoading ? "animate-spin" : ""}`} />
+                          <RefreshCw className={`w-4 h-4 ${reposLoading ? "animate-spin" : ""}`} />
                         </button>
                         {!connectedViaSession && (
                           <button
                             type="button"
                             onClick={disconnectGitHub}
-                            className="text-xs text-red-500 hover:text-red-600 transition-colors font-medium"
+                            title="Disconnect GitHub"
+                            className="p-2 rounded-lg text-gray-400 hover:text-red-500 dark:text-zinc-500 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors"
                           >
-                            Disconnect
+                            <X className="w-4 h-4" />
                           </button>
                         )}
                       </div>
@@ -1141,120 +1111,110 @@ export default function NewAppPage() {
           </div>
         )}
 
-        {/* ── Step 5: Services ── */}
+        {/* ── Step 5: Connect Services ── */}
         {currentStep === 5 && !showReview && (
           <div className={cardBase}>
             <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-1">
-              Services
+              Connect Services
             </h2>
-            <p className="text-sm text-gray-500 dark:text-[#888] mb-6">
-              Does your app need a database, cache, or message broker?
-              Select services to provision alongside your application.
+            <p className="text-sm text-gray-500 dark:text-zinc-400 mb-6">
+              Select existing managed services to connect to your application.
+              Connection details will be injected as environment variables.
             </p>
 
-            {/* Service type grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mb-6">
-              {SERVICE_TYPES.map((svc) => {
-                const isSelected = selectedServices.some((s) => s.service_type === svc.type);
-                return (
-                  <button
-                    key={svc.type}
-                    type="button"
-                    onClick={() => {
-                      if (isSelected) {
-                        setSelectedServices((prev) => prev.filter((s) => s.service_type !== svc.type));
-                      } else {
-                        setSelectedServices((prev) => [
-                          ...prev,
-                          {
-                            service_type: svc.type,
-                            name: `${slug}-${svc.type}`,
-                            tier: "dev" as const,
-                          },
-                        ]);
-                      }
-                    }}
-                    className={`flex items-center gap-3 p-4 rounded-xl border-2 text-left transition-all ${
-                      isSelected
-                        ? "border-blue-500 bg-blue-50/50 dark:bg-blue-500/10 ring-1 ring-blue-500/30"
-                        : "border-gray-200 dark:border-[#2e2e2e] hover:border-gray-300 dark:hover:border-[#444]"
-                    }`}
-                  >
-                    <ServiceIcon type={svc.type} size={32} />
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="font-medium text-sm text-gray-900 dark:text-white">{svc.label}</span>
-                        {isSelected && <Check className="w-4 h-4 text-blue-500" />}
-                      </div>
-                      <span className="text-xs text-gray-500 dark:text-[#888]">{svc.description}</span>
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-
-            {/* Selected services config */}
-            {selectedServices.length > 0 && (
-              <div className="space-y-3">
-                <h3 className="text-sm font-medium text-gray-700 dark:text-[#ccc]">
-                  Selected Services ({selectedServices.length})
-                </h3>
-                {selectedServices.map((svc, idx) => (
-                  <div
-                    key={svc.service_type}
-                    className="flex items-center gap-3 p-3 rounded-lg border border-gray-200 dark:border-[#2e2e2e] bg-gray-50/50 dark:bg-[#0a0a0a]"
-                  >
-                    <ServiceIcon type={svc.service_type} size={24} />
-                    <div className="flex-1 min-w-0">
-                      <input
-                        type="text"
-                        value={svc.name}
-                        onChange={(e) => {
-                          const updated = [...selectedServices];
-                          updated[idx] = { ...updated[idx], name: e.target.value };
-                          setSelectedServices(updated);
-                        }}
-                        className="text-sm font-mono bg-transparent border-0 border-b border-gray-300 dark:border-[#444] text-gray-900 dark:text-white focus:outline-none focus:border-blue-500 w-full"
-                      />
-                    </div>
-                    <div className="flex items-center gap-1">
-                      {(["dev", "prod"] as const).map((tier) => (
-                        <button
-                          key={tier}
-                          type="button"
-                          onClick={() => {
-                            const updated = [...selectedServices];
-                            updated[idx] = { ...updated[idx], tier };
-                            setSelectedServices(updated);
-                          }}
-                          className={`px-2.5 py-1 text-xs rounded-md font-medium transition-colors ${
-                            svc.tier === tier
-                              ? tier === "prod"
-                                ? "bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-400"
-                                : "bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-400"
-                              : "bg-gray-100 text-gray-500 dark:bg-[#1a1a1a] dark:text-[#666] hover:bg-gray-200 dark:hover:bg-[#222]"
-                          }`}
-                        >
-                          {tier}
-                        </button>
-                      ))}
-                    </div>
+            {tenantServicesLoading ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="w-5 h-5 animate-spin text-gray-400" />
+              </div>
+            ) : tenantServices.length === 0 ? (
+              <div className="text-center py-10 border border-dashed border-gray-200 dark:border-zinc-700 rounded-xl bg-gray-50/50 dark:bg-zinc-800/30">
+                <Database className="w-8 h-8 mx-auto mb-3 text-gray-300 dark:text-zinc-600" />
+                <p className="text-sm font-medium text-gray-600 dark:text-zinc-400 mb-1">
+                  No managed services yet
+                </p>
+                <p className="text-xs text-gray-400 dark:text-zinc-500 mb-4 max-w-sm mx-auto">
+                  Create databases, caches, or message brokers from the project&apos;s Services tab first, then connect them here.
+                </p>
+                <Link
+                  href={`/tenants/${tenantSlug}`}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium transition-colors"
+                >
+                  <Database className="w-3.5 h-3.5" />
+                  Go to Project Services
+                </Link>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {tenantServices.map((svc) => {
+                  const isSelected = selectedServiceNames.includes(svc.name);
+                  const statusColor = svc.status === "ready"
+                    ? "bg-emerald-500"
+                    : svc.status === "provisioning"
+                      ? "bg-amber-500 animate-pulse"
+                      : "bg-red-500";
+                  return (
                     <button
+                      key={svc.name}
                       type="button"
-                      onClick={() => setSelectedServices((prev) => prev.filter((s) => s.service_type !== svc.service_type))}
-                      className="p-1 text-gray-400 hover:text-red-500 transition-colors"
+                      onClick={() => {
+                        if (isSelected) {
+                          setSelectedServiceNames((prev) => prev.filter((n) => n !== svc.name));
+                        } else {
+                          setSelectedServiceNames((prev) => [...prev, svc.name]);
+                        }
+                      }}
+                      className={`w-full flex items-center gap-4 p-4 rounded-xl border-2 text-left transition-all ${
+                        isSelected
+                          ? "border-blue-500 bg-blue-50/50 dark:bg-blue-500/10 shadow-sm"
+                          : "border-gray-200 dark:border-zinc-700 hover:border-gray-300 dark:hover:border-zinc-600"
+                      }`}
                     >
-                      <X className="w-4 h-4" />
+                      <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
+                        isSelected ? "bg-blue-100 dark:bg-blue-500/20" : "bg-gray-100 dark:bg-zinc-800"
+                      }`}>
+                        <ServiceIcon type={svc.service_type} size={24} />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="font-semibold text-sm text-gray-900 dark:text-white">{svc.name}</span>
+                          <span className={`w-2 h-2 rounded-full ${statusColor}`} />
+                          <span className="text-xs text-gray-400 dark:text-zinc-500 capitalize">{svc.status}</span>
+                        </div>
+                        <div className="flex items-center gap-2 mt-0.5 text-xs text-gray-500 dark:text-zinc-500">
+                          <span className="capitalize">{svc.service_type}</span>
+                          <span className="text-gray-300 dark:text-zinc-700">·</span>
+                          <span>{svc.tier}</span>
+                        </div>
+                      </div>
+                      <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center transition-colors ${
+                        isSelected
+                          ? "border-blue-500 bg-blue-500"
+                          : "border-gray-300 dark:border-zinc-600"
+                      }`}>
+                        {isSelected && <Check className="w-3 h-3 text-white" />}
+                      </div>
                     </button>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
 
-            {selectedServices.length === 0 && (
-              <p className="text-center text-sm text-gray-400 dark:text-[#666] py-4">
-                No services selected — your app will be created without managed services.
-                You can always add them later from the app detail page.
+            {selectedServiceNames.length > 0 && (
+              <div className="mt-4 p-3 rounded-lg bg-blue-50 dark:bg-blue-500/10 border border-blue-200 dark:border-blue-500/20">
+                <p className="text-xs text-blue-700 dark:text-blue-400 font-medium">
+                  {selectedServiceNames.length} service{selectedServiceNames.length > 1 ? "s" : ""} will be connected after app creation.
+                  {tenantServices.some((s) => selectedServiceNames.includes(s.name) && s.status === "provisioning") && (
+                    <span className="block mt-1 text-amber-600 dark:text-amber-400">
+                      Services still provisioning will be auto-connected when ready.
+                    </span>
+                  )}
+                </p>
+              </div>
+            )}
+
+            {tenantServices.length > 0 && selectedServiceNames.length === 0 && (
+              <p className="text-center text-sm text-gray-400 dark:text-zinc-600 py-3 mt-2">
+                No services selected — you can connect them later from the app detail page.
               </p>
             )}
           </div>
@@ -1384,24 +1344,24 @@ export default function NewAppPage() {
               </div>
             </div>
 
-            {/* Services review */}
-            {selectedServices.length > 0 && (
+            {/* Connected services review */}
+            {selectedServiceNames.length > 0 && (
               <div className="border border-gray-100 dark:border-[#1e1e1e] rounded-xl p-5">
                 <h3 className="text-sm font-semibold text-gray-500 dark:text-[#999] uppercase tracking-wider mb-3 flex items-center gap-2">
-                  <Database className="w-4 h-4" /> Services
+                  <Database className="w-4 h-4" /> Connected Services
                 </h3>
                 <div className="space-y-2">
-                  {selectedServices.map((svc) => (
-                    <div key={svc.service_type} className="flex items-center gap-3">
-                      <ServiceIcon type={svc.service_type} size={20} />
-                      <span className="font-mono text-sm text-gray-900 dark:text-white">{svc.name}</span>
-                      <span className={`text-xs px-2 py-0.5 rounded-md font-medium ${
-                        svc.tier === "prod"
-                          ? "bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-400"
-                          : "bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-400"
-                      }`}>{svc.tier}</span>
-                    </div>
-                  ))}
+                  {selectedServiceNames.map((svcName) => {
+                    const svc = tenantServices.find((s) => s.name === svcName);
+                    return (
+                      <div key={svcName} className="flex items-center gap-3">
+                        <ServiceIcon type={svc?.service_type ?? "postgres"} size={20} />
+                        <span className="font-mono text-sm text-gray-900 dark:text-white">{svcName}</span>
+                        <span className="text-xs text-gray-400 dark:text-zinc-500 capitalize">{svc?.service_type}</span>
+                        <span className={`w-2 h-2 rounded-full ${svc?.status === "ready" ? "bg-emerald-500" : "bg-amber-500"}`} />
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             )}

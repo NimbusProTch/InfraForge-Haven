@@ -65,8 +65,11 @@ class ApplicationCreate(BaseModel):
     canary_weight: int = Field(default=10, ge=0, le=100)
     volumes: list[dict] | None = Field(default=None)
 
-    # Service dependencies — provisioned alongside the app during creation
+    # Service dependencies — provisioned alongside the app during creation (deprecated)
     requested_services: list[RequestedServiceSpec] | None = Field(default=None)
+
+    # Connect existing tenant services by name (preferred over requested_services)
+    connect_services: list[str] | None = Field(default=None)
 
 
 class ApplicationUpdate(BaseModel):
