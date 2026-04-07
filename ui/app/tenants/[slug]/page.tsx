@@ -570,42 +570,53 @@ export default function TenantDetailPage() {
                 label: "Applications",
                 value: `${apps.length}`,
                 sub: apps.length === 0 ? "No apps yet" : failedApps > 0 ? `${failedApps} failed` : `${runningApps} running`,
-                color: failedApps > 0 ? "text-red-500" : "text-emerald-500",
-                gradient: "from-blue-50 to-blue-100 dark:from-blue-950/30 dark:to-blue-900/20",
-                border: "border-blue-200/60 dark:border-blue-800/30",
+                color: failedApps > 0 ? "text-red-600" : "text-blue-700 dark:text-blue-400",
+                iconBg: "bg-blue-500/10",
+                icon: <Box className="w-5 h-5 text-blue-500" />,
+                gradient: "from-blue-50 to-blue-100/80 dark:from-blue-950/40 dark:to-blue-900/20",
+                border: "border-blue-200 dark:border-blue-800/40",
               },
               {
                 label: "Services",
                 value: `${services.length}`,
                 sub: services.length === 0 ? "No services yet" : provisioningServices > 0 ? `${provisioningServices} provisioning` : `${readyServices} ready`,
-                color: provisioningServices > 0 ? "text-amber-500" : "text-emerald-500",
-                gradient: "from-violet-50 to-violet-100 dark:from-violet-950/30 dark:to-violet-900/20",
-                border: "border-violet-200/60 dark:border-violet-800/30",
+                color: provisioningServices > 0 ? "text-amber-600" : "text-violet-700 dark:text-violet-400",
+                iconBg: "bg-violet-500/10",
+                icon: <Database className="w-5 h-5 text-violet-500" />,
+                gradient: "from-violet-50 to-violet-100/80 dark:from-violet-950/40 dark:to-violet-900/20",
+                border: "border-violet-200 dark:border-violet-800/40",
               },
               {
                 label: "Resources",
-                value: tenant.cpu_limit,
-                sub: `${tenant.memory_limit} RAM · ${tenant.storage_limit}`,
-                color: "text-gray-500 dark:text-zinc-500",
-                gradient: "from-gray-50 to-gray-100 dark:from-zinc-950/30 dark:to-zinc-900/20",
-                border: "border-gray-200/60 dark:border-zinc-800/30",
+                value: `${tenant.cpu_limit} CPU`,
+                sub: `${tenant.memory_limit} RAM · ${tenant.storage_limit} Storage`,
+                color: "text-gray-800 dark:text-zinc-200",
+                iconBg: "bg-gray-500/10",
+                icon: <Server className="w-5 h-5 text-gray-500" />,
+                gradient: "from-gray-50 to-gray-100/80 dark:from-zinc-950/40 dark:to-zinc-900/20",
+                border: "border-gray-200 dark:border-zinc-700/40",
               },
               {
                 label: "Health",
-                value: failedApps > 0 ? "Degraded" : apps.length === 0 ? "No data" : "Healthy",
+                value: failedApps > 0 ? "Degraded" : apps.length === 0 ? "—" : "Healthy",
                 sub: `${apps.length} apps · ${services.length} services`,
-                color: failedApps > 0 ? "text-red-500" : apps.length === 0 ? "text-gray-400" : "text-emerald-500",
+                color: failedApps > 0 ? "text-red-600" : apps.length === 0 ? "text-gray-400" : "text-emerald-600 dark:text-emerald-400",
+                iconBg: failedApps > 0 ? "bg-red-500/10" : "bg-emerald-500/10",
+                icon: <Activity className="w-5 h-5" style={{ color: failedApps > 0 ? "#dc2626" : "#10b981" }} />,
                 gradient: failedApps > 0
-                  ? "from-red-50 to-red-100 dark:from-red-950/30 dark:to-red-900/20"
-                  : "from-emerald-50 to-emerald-100 dark:from-emerald-950/30 dark:to-emerald-900/20",
-                border: failedApps > 0 ? "border-red-200/60 dark:border-red-800/30" : "border-emerald-200/60 dark:border-emerald-800/30",
+                  ? "from-red-50 to-red-100/80 dark:from-red-950/40 dark:to-red-900/20"
+                  : "from-emerald-50 to-emerald-100/80 dark:from-emerald-950/40 dark:to-emerald-900/20",
+                border: failedApps > 0 ? "border-red-200 dark:border-red-800/40" : "border-emerald-200 dark:border-emerald-800/40",
               },
             ];
-          })().map(({ label, value, sub, color, gradient, border }) => (
-            <div key={label} className={`bg-gradient-to-br ${gradient} border ${border} rounded-xl px-4 py-3 shadow-sm`}>
-              <p className="text-xs text-gray-500 dark:text-zinc-500 mb-1">{label}</p>
-              <p className={`text-lg font-bold ${color}`}>{value}</p>
-              <p className="text-[11px] text-gray-400 dark:text-zinc-600 mt-0.5">{sub}</p>
+          })().map(({ label, value, sub, color, gradient, border, icon, iconBg }) => (
+            <div key={label} className={`bg-gradient-to-br ${gradient} border ${border} rounded-2xl px-5 py-4 shadow-md`}>
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-xs font-semibold text-gray-600 dark:text-zinc-400 uppercase tracking-wider">{label}</p>
+                <div className={`w-8 h-8 rounded-lg ${iconBg} flex items-center justify-center`}>{icon}</div>
+              </div>
+              <p className={`text-2xl font-extrabold ${color}`}>{value}</p>
+              <p className="text-xs text-gray-500 dark:text-zinc-500 mt-1">{sub}</p>
             </div>
           ))}
         </div>
@@ -614,18 +625,21 @@ export default function TenantDetailPage() {
         <Tabs defaultValue="overview">
           <TabsList>
             <TabsTrigger value="overview">
+              <Activity className="w-3.5 h-3.5 mr-1.5" />
               Overview
             </TabsTrigger>
             <TabsTrigger value="apps">
+              <Box className="w-3.5 h-3.5 mr-1.5" />
               Applications
-              <span className="ml-1.5 text-xs text-gray-400 dark:text-zinc-600">{apps.length}</span>
+              <span className="ml-1.5 text-[10px] font-bold text-gray-400 dark:text-zinc-600 bg-gray-100 dark:bg-zinc-800 px-1.5 py-0.5 rounded-full">{apps.length}</span>
             </TabsTrigger>
             <TabsTrigger value="services">
+              <Database className="w-3.5 h-3.5 mr-1.5" />
               Services
-              <span className="ml-1.5 text-xs text-gray-400 dark:text-zinc-600">{services.length}</span>
+              <span className="ml-1.5 text-[10px] font-bold text-gray-400 dark:text-zinc-600 bg-gray-100 dark:bg-zinc-800 px-1.5 py-0.5 rounded-full">{services.length}</span>
             </TabsTrigger>
             <TabsTrigger value="settings">
-              <Settings className="w-3.5 h-3.5 mr-1" />
+              <Settings className="w-3.5 h-3.5 mr-1.5" />
               Settings
             </TabsTrigger>
           </TabsList>
@@ -633,13 +647,13 @@ export default function TenantDetailPage() {
           {/* Overview tab — unified resource view */}
           <TabsContent value="overview" className="pt-5">
             <div className="flex items-center justify-between mb-4">
-              <p className="text-sm font-medium text-gray-700 dark:text-zinc-300">All Resources</p>
-              <div className="flex items-center gap-2">
+              <p className="text-sm font-semibold text-gray-800 dark:text-zinc-200">All Resources</p>
+              <div className="flex items-center gap-2.5">
                 <Link
                   href={`/tenants/${slug}/apps/new`}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-medium transition-colors"
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 text-white text-xs font-semibold transition-all shadow-md shadow-emerald-500/20 hover:shadow-lg hover:shadow-emerald-500/30 hover:scale-[1.02]"
                 >
-                  <Plus className="w-3 h-3" /> New App
+                  <Plus className="w-3.5 h-3.5" /> New App
                 </Link>
                 <AddServiceModal tenantSlug={slug} accessToken={accessToken} onCreated={load} />
               </div>
@@ -664,19 +678,19 @@ export default function TenantDetailPage() {
                   const statusColor = deployStatus === "running" ? "bg-emerald-500" : deployStatus === "failed" ? "bg-red-500" : deployStatus === "building" ? "bg-blue-500 animate-pulse" : "bg-gray-400";
                   const statusLabel = deployStatus ?? "not deployed";
                   return (
-                    <div key={app.id} className="border border-gray-200 dark:border-zinc-800 rounded-xl bg-white dark:bg-zinc-900/50 overflow-hidden hover:border-gray-300 dark:hover:border-zinc-700 transition-colors shadow-sm">
+                    <div key={app.id} className="group border border-gray-200 dark:border-zinc-700 rounded-2xl bg-white dark:bg-zinc-900/60 overflow-hidden hover:border-blue-300 dark:hover:border-blue-700 transition-all shadow-md hover:shadow-lg">
                       {/* App header */}
-                      <Link href={`/tenants/${slug}/apps/${app.slug}`} className="flex items-center justify-between p-4">
-                        <div className="flex items-center gap-3">
-                          <div className="w-9 h-9 rounded-lg bg-blue-100 dark:bg-blue-500/20 flex items-center justify-center">
-                            <Globe className="w-4.5 h-4.5 text-blue-600 dark:text-blue-400" />
+                      <Link href={`/tenants/${slug}/apps/${app.slug}`} className="flex items-center justify-between p-5">
+                        <div className="flex items-center gap-4">
+                          <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center shadow-sm">
+                            <Globe className="w-5 h-5 text-white" />
                           </div>
                           <div>
-                            <div className="flex items-center gap-2">
-                              <span className="font-semibold text-sm text-gray-900 dark:text-zinc-100">{app.name}</span>
-                              <span className={`w-2 h-2 rounded-full ${statusColor}`} />
-                              <span className="text-xs text-gray-400 dark:text-zinc-500 capitalize">{statusLabel}</span>
-                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-500/20 text-blue-600 dark:text-blue-400 font-medium">APP</span>
+                            <div className="flex items-center gap-2.5">
+                              <span className="font-bold text-base text-gray-900 dark:text-zinc-100">{app.name}</span>
+                              <span className={`w-2.5 h-2.5 rounded-full ${statusColor} ring-2 ring-white dark:ring-zinc-900`} />
+                              <span className="text-xs font-medium text-gray-500 dark:text-zinc-400 capitalize">{statusLabel}</span>
+                              <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-500/20 text-blue-700 dark:text-blue-400 font-bold uppercase tracking-wide">App</span>
                             </div>
                             <div className="flex items-center gap-2 mt-0.5 text-xs text-gray-400 dark:text-zinc-600">
                               <span className="flex items-center gap-1"><GitBranch className="w-3 h-3" />{app.branch}</span>
@@ -686,23 +700,22 @@ export default function TenantDetailPage() {
                             </div>
                           </div>
                         </div>
-                        <ArrowRight className="w-4 h-4 text-gray-300 dark:text-zinc-700" />
+                        <ArrowRight className="w-4 h-4 text-gray-300 dark:text-zinc-600 group-hover:text-blue-500 group-hover:translate-x-1 transition-all" />
                       </Link>
 
                       {/* Connected services inline */}
                       {connectedSvcs.length > 0 && (
-                        <div className="border-t border-gray-100 dark:border-zinc-800 bg-gray-50/50 dark:bg-zinc-800/30 px-4 py-2.5">
-                          <div className="flex items-center gap-4 flex-wrap">
+                        <div className="border-t border-gray-100 dark:border-zinc-800 bg-gradient-to-r from-blue-50/40 to-transparent dark:from-blue-950/20 dark:to-transparent px-5 py-3">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-[10px] font-semibold text-gray-400 dark:text-zinc-600 uppercase tracking-wider mr-1">Connected</span>
                             {connectedSvcs.map((svc) => {
                               const svcStatusColor = svc.status === "ready" ? "bg-emerald-500" : svc.status === "provisioning" ? "bg-amber-500 animate-pulse" : "bg-red-500";
                               return (
-                                <div key={svc.name} className="flex items-center gap-2 text-xs">
-                                  <span className="text-gray-300 dark:text-zinc-700">└──</span>
-                                  <ServiceIcon type={svc.service_type} size={16} />
+                                <span key={svc.name} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700 shadow-sm text-xs">
+                                  <ServiceIcon type={svc.service_type} size={14} />
                                   <span className="font-medium text-gray-700 dark:text-zinc-300">{svc.name}</span>
                                   <span className={`w-1.5 h-1.5 rounded-full ${svcStatusColor}`} />
-                                  <span className="text-gray-400 dark:text-zinc-600 capitalize">{svc.status}</span>
-                                </div>
+                                </span>
                               );
                             })}
                           </div>
@@ -718,22 +731,22 @@ export default function TenantDetailPage() {
                   .map((svc) => {
                     const svcStatusColor = svc.status === "ready" ? "bg-emerald-500" : svc.status === "provisioning" ? "bg-amber-500 animate-pulse" : "bg-red-500";
                     return (
-                      <div key={svc.name} className="flex items-center justify-between p-4 border border-gray-200 dark:border-zinc-800 rounded-xl bg-white dark:bg-zinc-900/50 hover:border-gray-300 dark:hover:border-zinc-700 transition-colors shadow-sm">
-                        <div className="flex items-center gap-3">
-                          <div className="w-9 h-9 rounded-lg bg-violet-100 dark:bg-violet-500/20 flex items-center justify-center">
-                            <ServiceIcon type={svc.service_type} size={20} />
+                      <div key={svc.name} className="flex items-center justify-between p-5 border border-gray-200 dark:border-zinc-700 rounded-2xl bg-white dark:bg-zinc-900/60 hover:border-violet-300 dark:hover:border-violet-700 transition-all shadow-md hover:shadow-lg">
+                        <div className="flex items-center gap-4">
+                          <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-violet-500 to-violet-600 flex items-center justify-center shadow-sm">
+                            <ServiceIcon type={svc.service_type} size={22} className="brightness-0 invert" />
                           </div>
                           <div>
-                            <div className="flex items-center gap-2">
-                              <span className="font-semibold text-sm text-gray-900 dark:text-zinc-100">{svc.name}</span>
-                              <span className={`w-2 h-2 rounded-full ${svcStatusColor}`} />
-                              <span className="text-xs text-gray-400 dark:text-zinc-500 capitalize">{svc.status}</span>
-                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-violet-100 dark:bg-violet-500/20 text-violet-600 dark:text-violet-400 font-medium capitalize">{svc.service_type}</span>
+                            <div className="flex items-center gap-2.5">
+                              <span className="font-bold text-base text-gray-900 dark:text-zinc-100">{svc.name}</span>
+                              <span className={`w-2.5 h-2.5 rounded-full ${svcStatusColor} ring-2 ring-white dark:ring-zinc-900`} />
+                              <span className="text-xs font-medium text-gray-500 dark:text-zinc-400 capitalize">{svc.status}</span>
+                              <span className="text-[10px] px-2 py-0.5 rounded-full bg-violet-100 dark:bg-violet-500/20 text-violet-700 dark:text-violet-400 font-bold uppercase tracking-wide">{svc.service_type}</span>
                             </div>
-                            <div className="flex items-center gap-2 mt-0.5 text-xs text-gray-400 dark:text-zinc-600">
-                              <span>{svc.tier} tier</span>
-                              <span>·</span>
-                              <span className="text-amber-500">Not connected to any app</span>
+                            <div className="flex items-center gap-2 mt-1 text-xs text-gray-500 dark:text-zinc-500">
+                              <span className="capitalize">{svc.tier} tier</span>
+                              <span className="text-gray-300 dark:text-zinc-700">·</span>
+                              <span className="text-amber-600 dark:text-amber-400 font-medium">Not connected</span>
                             </div>
                           </div>
                         </div>
