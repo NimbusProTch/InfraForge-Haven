@@ -40,7 +40,6 @@ import {
   ChevronUp,
   Settings,
   Layers,
-  Globe,
   Check,
   X,
   Circle,
@@ -1354,8 +1353,6 @@ export default function AppDetailPage() {
         appName={app.name}
         imageTag={app.image_tag}
         replicas={app.replicas}
-        cpuLimit={app.resource_cpu_limit || "500m"}
-        memoryLimit={app.resource_memory_limit || "512Mi"}
       />
 
       <ScaleModal

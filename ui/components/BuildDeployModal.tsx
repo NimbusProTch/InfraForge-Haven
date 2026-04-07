@@ -196,8 +196,6 @@ interface DeployModalProps {
   appName: string;
   imageTag: string | null;
   replicas?: number;
-  cpuLimit?: string;
-  memoryLimit?: string;
 }
 
 export function DeployModal({

@@ -256,12 +256,22 @@ export default function AppSettings({ tenantSlug, app, accessToken, onSaved }: A
           dockerfile_path: dockerfilePath || null,
           build_context: buildContext || null,
           use_dockerfile: useDockerfile,
+          custom_domain: domainValues.custom_domain || null,
+          health_check_path: domainValues.health_check_path || null,
+          auto_deploy: domainValues.auto_deploy,
+          resource_cpu_request: resources.cpu_request,
+          resource_cpu_limit: resources.cpu_limit,
+          resource_memory_request: resources.memory_request,
+          resource_memory_limit: resources.memory_limit,
+          min_replicas: resources.min_replicas,
+          max_replicas: resources.max_replicas,
+          cpu_threshold: resources.cpu_threshold,
         },
         accessToken
       );
       onSaved(updated);
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Update failed");
+      console.error("Settings save failed:", err);
     } finally {
       setSaving(false);
     }
