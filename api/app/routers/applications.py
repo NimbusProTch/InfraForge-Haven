@@ -180,6 +180,60 @@ async def create_application(
             await db.commit()
             await db.refresh(app)
 
+    # Connect existing tenant services by name
+    if body.connect_services:
+        pending_connect: list[dict] = []
+        env_from: list[dict] = list(app.env_from_secrets or [])
+        app_env = dict(app.env_vars or {})
+
+        for svc_name in body.connect_services:
+            svc_result = await db.execute(
+                select(ManagedService).where(
+                    ManagedService.tenant_id == tenant.id,
+                    ManagedService.name == svc_name,
+                )
+            )
+            svc = svc_result.scalar_one_or_none()
+            if svc is None:
+                logger.warning("connect_services: service '%s' not found in tenant '%s'", svc_name, tenant_slug)
+                continue
+
+            if (
+                svc.status == ServiceStatus.ready
+                and svc.credentials_provisioned
+                and svc.secret_name
+                and svc.service_namespace
+            ):
+                # Immediate connect
+                if not any(e.get("service_name") == svc_name for e in env_from):
+                    env_from.append(
+                        {
+                            "service_name": svc_name,
+                            "secret_name": svc.secret_name,
+                            "namespace": svc.service_namespace,
+                        }
+                    )
+                    if svc.connection_hint:
+                        url_key = {
+                            "postgres": "DATABASE_URL",
+                            "mysql": "MYSQL_URL",
+                            "mongodb": "MONGODB_URL",
+                        }.get(svc.service_type.value)
+                        if url_key:
+                            app_env[url_key] = svc.connection_hint
+                logger.info("Connected service '%s' to app '%s'", svc_name, body.slug)
+            else:
+                # Service not ready yet → add to pending for auto-connect
+                pending_connect.append({"service_name": svc_name, "service_type": svc.service_type.value})
+                logger.info("Service '%s' pending → will auto-connect when ready", svc_name)
+
+        app.env_from_secrets = env_from
+        app.env_vars = app_env
+        if pending_connect:
+            app.pending_services = list(app.pending_services or []) + pending_connect
+        await db.commit()
+        await db.refresh(app)
+
     await audit(
         db,
         tenant_id=tenant.id,
@@ -187,7 +241,10 @@ async def create_application(
         user_id=current_user.get("sub", ""),
         resource_type="application",
         resource_id=str(app.id),
-        extra={"requested_services": [s.service_type for s in (body.requested_services or [])]},
+        extra={
+            "requested_services": [s.service_type for s in (body.requested_services or [])],
+            "connect_services": body.connect_services or [],
+        },
     )
 
     return app
