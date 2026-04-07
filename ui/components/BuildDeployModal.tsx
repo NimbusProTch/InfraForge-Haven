@@ -188,6 +188,13 @@ export function BuildModal({
 
 // ---- Deploy Modal ----
 
+interface ImageEntry {
+  tag: string;
+  date: string;
+  commitSha?: string;
+  status?: string;
+}
+
 interface DeployModalProps {
   open: boolean;
   onClose: () => void;
@@ -196,6 +203,8 @@ interface DeployModalProps {
   appName: string;
   imageTag: string | null;
   replicas?: number;
+  /** Available images from deployment history */
+  availableImages?: ImageEntry[];
 }
 
 export function DeployModal({
@@ -206,13 +215,16 @@ export function DeployModal({
   appName,
   imageTag,
   replicas = 1,
+  availableImages = [],
 }: DeployModalProps) {
   const [selectedReplicas, setSelectedReplicas] = useState(replicas);
+  const [selectedImage, setSelectedImage] = useState(imageTag);
 
   if (!open) return null;
 
-  const imageShort = imageTag?.split(":").pop() ?? "latest";
-  const imageRepo = imageTag?.split(":")[0]?.split("/").pop() ?? "";
+  const currentTag = selectedImage ?? imageTag;
+  const imageShort = currentTag?.split(":").pop() ?? "latest";
+  const imageRepo = currentTag?.split(":")[0]?.split("/").pop() ?? "";
 
   const handleConfirm = () => {
     onConfirm({
@@ -222,7 +234,7 @@ export function DeployModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={onClose}>
-      <div role="dialog" aria-modal="true" className="bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-2xl shadow-2xl w-full max-w-md mx-4" onClick={(e) => e.stopPropagation()}>
+      <div role="dialog" aria-modal="true" className="bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-2xl shadow-2xl w-full max-w-lg mx-4" onClick={(e) => e.stopPropagation()}>
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-zinc-800">
           <div className="flex items-center gap-2.5">
@@ -241,12 +253,48 @@ export function DeployModal({
 
         {/* Body */}
         <div className="px-5 py-4 space-y-4">
-          {/* Image info */}
+          {/* Image selector */}
           <div>
             <p className="text-xs font-medium text-gray-500 dark:text-zinc-500 mb-1.5">Container Image</p>
-            <div className="bg-gray-50 dark:bg-zinc-800 rounded-lg px-3 py-2.5 border border-gray-200 dark:border-zinc-700">
-              <p className="text-sm text-gray-800 dark:text-zinc-200 font-mono">{imageRepo}:<span className="text-emerald-500 font-semibold">{imageShort}</span></p>
-            </div>
+            {availableImages.length > 1 ? (
+              <div className="space-y-1.5 max-h-[200px] overflow-y-auto">
+                {availableImages.map((img) => {
+                  const short = img.tag.split(":").pop() ?? "";
+                  const isSelected = img.tag === selectedImage;
+                  const isCurrent = img.tag === imageTag;
+                  return (
+                    <button
+                      key={img.tag}
+                      onClick={() => setSelectedImage(img.tag)}
+                      className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg border text-left transition-colors ${
+                        isSelected
+                          ? "border-emerald-500 bg-emerald-50 dark:bg-emerald-500/10"
+                          : "border-gray-200 dark:border-zinc-700 hover:bg-gray-50 dark:hover:bg-zinc-800"
+                      }`}
+                    >
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-mono text-gray-800 dark:text-zinc-200 truncate">{short}</span>
+                          {isCurrent && (
+                            <span className="text-[10px] font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-100 dark:bg-emerald-500/20 px-1.5 py-0.5 rounded">current</span>
+                          )}
+                        </div>
+                        {img.commitSha && (
+                          <span className="text-xs text-gray-400 dark:text-zinc-500 font-mono">{img.commitSha.slice(0, 7)}</span>
+                        )}
+                      </div>
+                      <span className="text-xs text-gray-400 dark:text-zinc-500 shrink-0 ml-2">
+                        {new Date(img.date).toLocaleDateString()} {new Date(img.date).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="bg-gray-50 dark:bg-zinc-800 rounded-lg px-3 py-2.5 border border-gray-200 dark:border-zinc-700">
+                <p className="text-sm text-gray-800 dark:text-zinc-200 font-mono">{imageRepo}:<span className="text-emerald-500 font-semibold">{imageShort}</span></p>
+              </div>
+            )}
           </div>
 
           {/* Replicas */}

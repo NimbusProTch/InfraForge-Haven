@@ -577,6 +577,7 @@ export default function AppDetailPage() {
   const [envVars, setEnvVars] = useState<Record<string, string>>({});
   const [envSaving, setEnvSaving] = useState(false);
   const [logSearch, setLogSearch] = useState("");
+  const [activeTab, setActiveTab] = useState("overview");
   const [lastStatusRefresh, setLastStatusRefresh] = useState<Date>(new Date());
   const [refreshingStatus, setRefreshingStatus] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
@@ -1111,7 +1112,13 @@ export default function AppDetailPage() {
         )}
 
         {/* 6 tabs — enterprise PaaS convention */}
-        <Tabs defaultValue="overview">
+        <Tabs value={activeTab} onValueChange={(v) => {
+          setActiveTab(v);
+          // Auto-start log streaming when Logs tab is opened
+          if (v === "logs" && !streaming && !logs) {
+            startLogs();
+          }
+        }}>
           <TabsList>
             <TabsTrigger value="overview">
               <Activity className="w-3.5 h-3.5 mr-1" />
@@ -1227,7 +1234,7 @@ export default function AppDetailPage() {
             </div>
           </TabsContent>
 
-          {/* Logs — auto-start, search, live toggle */}
+          {/* Logs — auto-stream on tab open, no manual start button */}
           <TabsContent value="logs" className="pt-5 space-y-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
@@ -1236,14 +1243,15 @@ export default function AppDetailPage() {
                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
                     Live
                   </span>
+                ) : logs ? (
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-gray-100 dark:bg-zinc-800 text-xs font-medium text-gray-500 dark:text-zinc-400">
+                    Paused
+                  </span>
                 ) : (
-                  <button
-                    onClick={startLogs}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-medium transition-colors"
-                  >
-                    <Terminal className="w-3.5 h-3.5" />
-                    Start Streaming
-                  </button>
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-gray-100 dark:bg-zinc-800 text-xs font-medium text-gray-500 dark:text-zinc-400">
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                    Connecting...
+                  </span>
                 )}
                 {streaming && (
                   <button
@@ -1253,13 +1261,21 @@ export default function AppDetailPage() {
                     Pause
                   </button>
                 )}
-                {logs && !streaming && (
-                  <button
-                    onClick={() => setLogs("")}
-                    className="text-xs text-gray-400 dark:text-zinc-600 hover:text-gray-500 dark:hover:text-zinc-400 transition-colors"
-                  >
-                    Clear
-                  </button>
+                {!streaming && logs && (
+                  <>
+                    <button
+                      onClick={startLogs}
+                      className="text-xs text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 dark:hover:text-emerald-300 transition-colors font-medium"
+                    >
+                      Resume
+                    </button>
+                    <button
+                      onClick={() => setLogs("")}
+                      className="text-xs text-gray-400 dark:text-zinc-600 hover:text-gray-500 dark:hover:text-zinc-400 transition-colors"
+                    >
+                      Clear
+                    </button>
+                  </>
                 )}
               </div>
               {/* Search */}
@@ -1294,7 +1310,7 @@ export default function AppDetailPage() {
                     ? logSearch
                       ? logs.split("\n").filter(line => line.toLowerCase().includes(logSearch.toLowerCase())).join("\n") || "# No matching lines\n"
                       : logs
-                    : "# Waiting for log data...\n# Click 'Start Streaming' to connect.\n"
+                    : "# Connecting to log stream...\n"
                 }
                 className="p-4 min-h-[300px] max-h-[600px]"
                 endRef={logsEndRef}
@@ -1353,6 +1369,16 @@ export default function AppDetailPage() {
         appName={app.name}
         imageTag={app.image_tag}
         replicas={app.replicas}
+        availableImages={
+          deployments
+            .filter((d) => d.image_tag)
+            .reduce<Array<{ tag: string; date: string; commitSha?: string; status?: string }>>((acc, d) => {
+              if (!acc.find((i) => i.tag === d.image_tag)) {
+                acc.push({ tag: d.image_tag!, date: d.created_at, commitSha: d.commit_sha, status: d.status });
+              }
+              return acc;
+            }, [])
+        }
       />
 
       <ScaleModal

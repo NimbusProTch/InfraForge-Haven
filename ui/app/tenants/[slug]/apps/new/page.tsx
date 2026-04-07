@@ -450,12 +450,13 @@ export default function NewAppPage() {
         app_type: appType,
         env_vars: envVars,
         ...(customDomain ? { custom_domain: customDomain } : {}),
-        ...(healthCheckPath ? { health_check_path: healthCheckPath } : {}),
+        health_check_path: healthCheckPath || "/health",
         resource_cpu_request: selectedResourceTier.cpuRequest,
         resource_cpu_limit: selectedResourceTier.cpuLimit,
         resource_memory_request: selectedResourceTier.memRequest,
         resource_memory_limit: selectedResourceTier.memLimit,
-        ...(dockerfilePath ? { dockerfile_path: dockerfilePath, use_dockerfile: true } : {}),
+        ...(useDockerfile ? { use_dockerfile: true } : {}),
+        ...(dockerfilePath ? { dockerfile_path: dockerfilePath } : {}),
         ...(buildContext ? { build_context: buildContext } : {}),
         ...(selectedServiceNames.length > 0
           ? { connect_services: selectedServiceNames }
