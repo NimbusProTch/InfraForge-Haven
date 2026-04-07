@@ -199,7 +199,7 @@ async def create_application(
                 continue
 
             if (
-                svc.status == ServiceStatus.ready
+                svc.status == ServiceStatus.READY
                 and svc.credentials_provisioned
                 and svc.secret_name
                 and svc.service_namespace
