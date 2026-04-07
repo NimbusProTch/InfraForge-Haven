@@ -11,8 +11,7 @@ import { useToast } from "@/components/Toast";
 import { api, type Application, type Deployment, type BuildStatus, type ContainerStatus, getLogsUrl } from "@/lib/api";
 import AppSettings from "@/components/AppSettings";
 import ObservabilityTab from "@/components/ObservabilityTab";
-import DomainsTab from "@/components/DomainsTab";
-import CronJobsTab from "@/components/CronJobsTab";
+import EnvVarEditor from "@/components/EnvVarEditor";
 import { AnsiTerminal } from "@/components/ui/ansi-terminal";
 import { BuildModal, DeployModal } from "@/components/BuildDeployModal";
 import { ScaleModal } from "@/components/ScaleModal";
@@ -41,8 +40,6 @@ import {
   ChevronUp,
   Settings,
   Layers,
-  Globe,
-  Timer,
   Check,
   X,
   Circle,
@@ -577,6 +574,9 @@ export default function AppDetailPage() {
   const [showScaleModal, setShowScaleModal] = useState(false);
   const [showRestartModal, setShowRestartModal] = useState(false);
   const [appServices, setAppServices] = useState<AppServiceEntry[]>([]);
+  const [envVars, setEnvVars] = useState<Record<string, string>>({});
+  const [envSaving, setEnvSaving] = useState(false);
+  const [logSearch, setLogSearch] = useState("");
   const [lastStatusRefresh, setLastStatusRefresh] = useState<Date>(new Date());
   const [refreshingStatus, setRefreshingStatus] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
@@ -606,6 +606,7 @@ export default function AppDetailPage() {
           api.deployments.list(tenantSlug, appSlug, accessToken).catch(() => []),
         ]);
         setApp(a);
+        setEnvVars(a.env_vars ?? {});
         setDeployments(d as Deployment[]);
         api.apps.getServices(tenantSlug, appSlug, accessToken).then(setAppServices).catch(() => {});
       } catch {
@@ -809,6 +810,19 @@ export default function AppDetailPage() {
     }
   }
 
+  async function handleSaveEnvVars() {
+    setEnvSaving(true);
+    try {
+      const updated = await api.apps.update(tenantSlug, appSlug, { env_vars: envVars }, accessToken);
+      setApp(updated);
+      toastSuccess("Variables saved");
+    } catch (err) {
+      toastError(err instanceof Error ? err.message : "Failed to save variables");
+    } finally {
+      setEnvSaving(false);
+    }
+  }
+
   if (status === "loading" || loading) {
     return (
       <AppShell userEmail={session?.user?.email}>
@@ -869,12 +883,12 @@ export default function AppDetailPage() {
               </span>
             </div>
             <div className="flex items-center gap-3 mt-1.5 pl-12">
-              <p className="text-sm text-gray-600 dark:text-zinc-400 font-mono font-medium">
+              <p className="text-sm text-gray-600 dark:text-zinc-400 font-medium">
                 <span
                   className="hover:text-blue-500 cursor-pointer transition-colors underline-offset-2 hover:underline"
                   onClick={() => window.open(app.repo_url, "_blank")}
                 >
-                  {app.repo_url.replace("https://github.com/", "")}
+                  {app.repo_url.replace("https://github.com/", "").replace(/\.git$/, "")}
                 </span>
                 <ChevronRight className="inline w-3.5 h-3.5 mx-1 text-gray-400 dark:text-zinc-600" />
                 <span className="inline-flex items-center gap-1 text-gray-700 dark:text-zinc-300">
@@ -1096,66 +1110,61 @@ export default function AppDetailPage() {
           </div>
         )}
 
-        {/* Tabs — reduced from 9 to 4-5 */}
+        {/* 6 tabs — enterprise PaaS convention */}
         <Tabs defaultValue="overview">
           <TabsList>
             <TabsTrigger value="overview">
               <Activity className="w-3.5 h-3.5 mr-1" />
               Overview
             </TabsTrigger>
+            <TabsTrigger value="deployments">
+              <Package className="w-3.5 h-3.5 mr-1" />
+              Deployments
+              {deployments.length > 0 && (
+                <span className="ml-1.5 text-xs text-gray-400 dark:text-zinc-600">{deployments.length}</span>
+              )}
+            </TabsTrigger>
+            <TabsTrigger value="variables">
+              <Layers className="w-3.5 h-3.5 mr-1" />
+              Variables
+            </TabsTrigger>
             <TabsTrigger value="logs">
               <Terminal className="w-3.5 h-3.5 mr-1" />
-              Logs &amp; Monitoring
+              Logs
             </TabsTrigger>
-            <TabsTrigger value="domains">
-              <Globe className="w-3.5 h-3.5 mr-1" />
-              Domains
+            <TabsTrigger value="metrics">
+              <Activity className="w-3.5 h-3.5 mr-1" />
+              Metrics
             </TabsTrigger>
-            {app.app_type === "cronjob" && (
-              <TabsTrigger value="cronjobs">
-                <Timer className="w-3.5 h-3.5 mr-1" />
-                Scheduled Jobs
-              </TabsTrigger>
-            )}
             <TabsTrigger value="settings">
               <Settings className="w-3.5 h-3.5 mr-1" />
               Settings
             </TabsTrigger>
           </TabsList>
 
-          {/* Overview tab — deployments + connected services */}
+          {/* Overview — status, connected services, last deployment */}
           <TabsContent value="overview" className="pt-5 space-y-6">
-            {/* Recent Deployments */}
-            <div>
-              <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
-                <Package className="w-4 h-4 text-gray-500 dark:text-zinc-500" />
-                Recent Deployments
-              </h3>
-              {deployments.length === 0 ? (
-                <div className="text-center py-12 border border-dashed border-gray-200 dark:border-zinc-800 rounded-xl">
-                  <Package className="w-8 h-8 mx-auto mb-2 text-gray-400 dark:text-zinc-700" />
-                  <p className="text-sm text-gray-500 dark:text-zinc-500">No deployments yet.</p>
-                  <p className="text-xs mt-1 text-gray-400 dark:text-zinc-600">Click &quot;Build &amp; Deploy&quot; to get started.</p>
+            {/* Latest deployment summary */}
+            {latestDeployment && (
+              <div className="bg-white dark:bg-zinc-900 border border-gray-100 dark:border-zinc-800 rounded-xl p-4 shadow-sm">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className={`w-2.5 h-2.5 rounded-full ${STATUS_DOT_COLORS[latestDeployment.status] ?? "bg-gray-400"}`} />
+                    <div>
+                      <span className="text-sm font-semibold text-gray-900 dark:text-white">
+                        Latest: {latestDeployment.commit_sha ? latestDeployment.commit_sha.slice(0, 7) : "manual"}
+                      </span>
+                      <span className="ml-2">
+                        <Badge variant={DEPLOY_STATUS_VARIANT[latestDeployment.status] ?? "secondary"}>
+                          {latestDeployment.status}
+                        </Badge>
+                      </span>
+                    </div>
+                  </div>
+                  <span className="text-xs text-gray-500 dark:text-zinc-500">{relativeTime(latestDeployment.created_at)}</span>
                 </div>
-              ) : (
-                <div className="bg-white dark:bg-zinc-900 border border-gray-100 dark:border-zinc-800 rounded-xl overflow-hidden shadow-md">
-                  {deployments.slice(0, 5).map((d, idx) => (
-                    <DeploymentCard
-                      key={d.id}
-                      deployment={d}
-                      onRollback={handleRollback}
-                      rolling={rolling}
-                      isFirst={idx === 0}
-                    />
-                  ))}
-                </div>
-              )}
-              {deployments.length > 5 && (
-                <p className="text-xs text-gray-400 dark:text-zinc-600 mt-2 text-center">
-                  Showing 5 of {deployments.length} deployments
-                </p>
-              )}
-            </div>
+              </div>
+            )}
 
             {/* Connected Services */}
             <ConnectedServicesPanel
@@ -1165,11 +1174,136 @@ export default function AppDetailPage() {
               accessToken={accessToken}
               onRefresh={loadAppServices}
             />
+
+            {!latestDeployment && appServices.length === 0 && (
+              <div className="text-center py-16 border border-dashed border-gray-200 dark:border-zinc-800 rounded-xl">
+                <Rocket className="w-8 h-8 mx-auto mb-2 text-gray-400 dark:text-zinc-700" />
+                <p className="text-sm font-medium text-gray-600 dark:text-zinc-400">Ready to deploy</p>
+                <p className="text-xs mt-1 text-gray-400 dark:text-zinc-600">Click &quot;Build &amp; Deploy&quot; to get started.</p>
+              </div>
+            )}
           </TabsContent>
 
-          {/* Logs & Monitoring tab — merged observability + logs */}
-          <TabsContent value="logs" className="pt-5 space-y-6">
-            {/* Observability: pods, CPU/RAM, events */}
+          {/* Deployments — full history, rollback */}
+          <TabsContent value="deployments" className="pt-5">
+            {deployments.length === 0 ? (
+              <div className="text-center py-12 border border-dashed border-gray-200 dark:border-zinc-800 rounded-xl">
+                <Package className="w-8 h-8 mx-auto mb-2 text-gray-400 dark:text-zinc-700" />
+                <p className="text-sm text-gray-500 dark:text-zinc-500">No deployments yet.</p>
+              </div>
+            ) : (
+              <div className="bg-white dark:bg-zinc-900 border border-gray-100 dark:border-zinc-800 rounded-xl overflow-hidden shadow-md">
+                {deployments.map((d, idx) => (
+                  <DeploymentCard
+                    key={d.id}
+                    deployment={d}
+                    onRollback={handleRollback}
+                    rolling={rolling}
+                    isFirst={idx === 0}
+                  />
+                ))}
+              </div>
+            )}
+          </TabsContent>
+
+          {/* Variables — top-level, most-used config */}
+          <TabsContent value="variables" className="pt-5">
+            <div className="max-w-2xl space-y-4">
+              <div className="bg-white dark:bg-[#141414] border border-gray-200 dark:border-[#222] rounded-xl p-5">
+                <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-1">Environment Variables</h3>
+                <p className="text-xs text-gray-400 dark:text-zinc-500 mb-4">
+                  Injected into the container at runtime. Changes take effect on the next deployment.
+                </p>
+                <EnvVarEditor value={envVars} onChange={setEnvVars} />
+              </div>
+              <button
+                onClick={handleSaveEnvVars}
+                disabled={envSaving}
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-medium transition-colors"
+              >
+                {envSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
+                Save Variables
+              </button>
+            </div>
+          </TabsContent>
+
+          {/* Logs — auto-start, search, live toggle */}
+          <TabsContent value="logs" className="pt-5 space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                {streaming ? (
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-50 dark:bg-emerald-500/10 text-xs font-medium text-emerald-600 dark:text-emerald-400">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                    Live
+                  </span>
+                ) : (
+                  <button
+                    onClick={startLogs}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-medium transition-colors"
+                  >
+                    <Terminal className="w-3.5 h-3.5" />
+                    Start Streaming
+                  </button>
+                )}
+                {streaming && (
+                  <button
+                    onClick={stopLogs}
+                    className="text-xs text-gray-500 dark:text-zinc-500 hover:text-gray-700 dark:hover:text-zinc-300 transition-colors"
+                  >
+                    Pause
+                  </button>
+                )}
+                {logs && !streaming && (
+                  <button
+                    onClick={() => setLogs("")}
+                    className="text-xs text-gray-400 dark:text-zinc-600 hover:text-gray-500 dark:hover:text-zinc-400 transition-colors"
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+              {/* Search */}
+              <div className="relative">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 dark:text-zinc-600" />
+                <input
+                  type="text"
+                  value={logSearch}
+                  onChange={(e) => setLogSearch(e.target.value)}
+                  placeholder="Filter logs..."
+                  className="pl-8 pr-3 py-1.5 w-56 rounded-lg border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs text-gray-800 dark:text-zinc-200 focus:outline-none focus:ring-1 focus:ring-blue-500/50"
+                />
+              </div>
+            </div>
+
+            <div className="bg-zinc-950 border border-gray-200 dark:border-zinc-800 rounded-xl overflow-hidden">
+              <div className="flex items-center gap-1.5 px-4 py-2.5 border-b border-gray-200 dark:border-zinc-800">
+                <span className="w-2.5 h-2.5 rounded-full bg-red-500/40" />
+                <span className="w-2.5 h-2.5 rounded-full bg-amber-500/40" />
+                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500/40" />
+                <span className="text-xs text-zinc-700 ml-2 font-mono">{app.name}</span>
+                {streaming && (
+                  <span className="ml-auto flex items-center gap-1 text-xs text-emerald-500">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                    live
+                  </span>
+                )}
+              </div>
+              <AnsiTerminal
+                content={
+                  logs
+                    ? logSearch
+                      ? logs.split("\n").filter(line => line.toLowerCase().includes(logSearch.toLowerCase())).join("\n") || "# No matching lines\n"
+                      : logs
+                    : "# Waiting for log data...\n# Click 'Start Streaming' to connect.\n"
+                }
+                className="p-4 min-h-[300px] max-h-[600px]"
+                endRef={logsEndRef}
+              />
+            </div>
+          </TabsContent>
+
+          {/* Metrics — pod status, CPU/memory */}
+          <TabsContent value="metrics" className="pt-5">
             <ObservabilityTab
               tenantSlug={tenantSlug}
               appSlug={appSlug}
@@ -1181,92 +1315,9 @@ export default function AppDetailPage() {
               onStartLogs={startLogs}
               onStopLogs={stopLogs}
             />
-
-            {/* Standalone live logs terminal */}
-            <div>
-              <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
-                <Terminal className="w-4 h-4 text-gray-500 dark:text-zinc-500" />
-                Application Logs
-              </h3>
-              <div className="flex items-center gap-2 mb-3">
-                {!streaming ? (
-                  <button
-                    onClick={startLogs}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-medium transition-colors"
-                  >
-                    <Terminal className="w-3.5 h-3.5" />
-                    {logs ? "Restart Streaming" : "Stream Logs"}
-                  </button>
-                ) : (
-                  <button
-                    onClick={stopLogs}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-white text-xs font-medium transition-colors"
-                  >
-                    <StopCircle className="w-3.5 h-3.5" />
-                    Stop
-                  </button>
-                )}
-                {streaming && (
-                  <span className="flex items-center gap-1.5 text-xs text-emerald-500">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                    live
-                  </span>
-                )}
-                {logs && !streaming && (
-                  <button
-                    onClick={() => setLogs("")}
-                    className="text-xs text-gray-400 dark:text-zinc-600 hover:text-gray-500 dark:hover:text-zinc-400 transition-colors"
-                  >
-                    Clear
-                  </button>
-                )}
-              </div>
-
-              <div className="bg-zinc-950 border border-gray-200 dark:border-zinc-800 rounded-xl overflow-hidden">
-                <div className="flex items-center gap-1.5 px-4 py-2.5 border-b border-gray-200 dark:border-zinc-800">
-                  <span className="w-2.5 h-2.5 rounded-full bg-red-500/40" />
-                  <span className="w-2.5 h-2.5 rounded-full bg-amber-500/40" />
-                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-500/40" />
-                  <span className="text-xs text-zinc-700 ml-2 font-mono">
-                    {app.name} · live logs
-                  </span>
-                  {streaming && (
-                    <span className="ml-auto flex items-center gap-1 text-xs text-emerald-500">
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                      live
-                    </span>
-                  )}
-                </div>
-                <AnsiTerminal
-                  content={logs || "# Click 'Stream Logs' to start receiving live logs from running pods...\n"}
-                  className="p-4 min-h-[240px] max-h-[500px]"
-                  endRef={logsEndRef}
-                />
-              </div>
-            </div>
           </TabsContent>
 
-          {/* Domains tab */}
-          <TabsContent value="domains" className="pt-5">
-            <DomainsTab
-              tenantSlug={tenantSlug}
-              appSlug={app.slug}
-              accessToken={accessToken}
-            />
-          </TabsContent>
-
-          {/* CronJobs tab (conditional) */}
-          {app.app_type === "cronjob" && (
-            <TabsContent value="cronjobs" className="pt-5">
-              <CronJobsTab
-                tenantSlug={tenantSlug}
-                appSlug={app.slug}
-                accessToken={accessToken}
-              />
-            </TabsContent>
-          )}
-
-          {/* Settings tab */}
+          {/* Settings — flat scrollable, "set once" config */}
           <TabsContent value="settings" className="pt-5">
             <AppSettings
               tenantSlug={tenantSlug}
@@ -1274,6 +1325,7 @@ export default function AppDetailPage() {
               accessToken={accessToken}
               onSaved={(updated) => {
                 setApp(updated);
+                setEnvVars(updated.env_vars ?? {});
               }}
             />
           </TabsContent>
@@ -1301,8 +1353,6 @@ export default function AppDetailPage() {
         appName={app.name}
         imageTag={app.image_tag}
         replicas={app.replicas}
-        cpuLimit={app.resource_cpu_limit || "500m"}
-        memoryLimit={app.resource_memory_limit || "512Mi"}
       />
 
       <ScaleModal
