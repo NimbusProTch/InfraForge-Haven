@@ -27,8 +27,8 @@ export async function login(page: Page) {
 
   // Fill Keycloak form
   await page.waitForURL(/keycloak/, { timeout: 10_000 });
-  await page.fill("#username", "testdev");
-  await page.fill("#password", "Test1234!");
+  await page.fill("#username", "admin");
+  await page.fill("#password", "HavenAdmin2026!");
   await page.click("#kc-login");
 
   // Wait for redirect back
@@ -42,7 +42,7 @@ export async function getToken(): Promise<string> {
   const res = await fetch(`${KC}/realms/haven/protocol/openid-connect/token`, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: "client_id=haven-api&username=testdev&password=Test1234!&grant_type=password",
+    body: "client_id=haven-api&username=admin&password=HavenAdmin2026!&grant_type=password",
   });
   const data = await res.json();
   return data.access_token;
