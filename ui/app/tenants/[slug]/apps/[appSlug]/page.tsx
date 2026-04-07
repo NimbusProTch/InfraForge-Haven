@@ -1330,6 +1330,7 @@ export default function AppDetailPage() {
               streaming={streaming}
               onStartLogs={startLogs}
               onStopLogs={stopLogs}
+              accessToken={accessToken}
             />
           </TabsContent>
 
