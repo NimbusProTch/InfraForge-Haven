@@ -3,7 +3,13 @@
 import { useState } from "react";
 import { ServiceIcon } from "@/components/icons/ServiceIcons";
 import { api, AppServiceEntry } from "@/lib/api";
-import { DropdownMenu, DropdownItem, DropdownDivider } from "@/components/ui/dropdown-menu";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu";
 import { DisconnectConfirmDialog } from "@/components/DisconnectConfirmDialog";
 import {
   Link2,
@@ -141,32 +147,36 @@ export function ConnectedServicesPanel({
               </div>
 
               {/* Safe dropdown menu instead of direct disconnect button */}
-              <DropdownMenu
-                trigger={
-                  <button className="p-1.5 rounded-md text-gray-400 hover:text-gray-600 dark:hover:text-zinc-300 hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    aria-label={`Actions for ${svc.service_name}`}
+                    className="p-1.5 rounded-md text-gray-400 hover:text-gray-600 dark:hover:text-zinc-300 hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors"
+                  >
                     <MoreHorizontal className="w-4 h-4" />
                   </button>
-                }
-              >
-                <DropdownItem onClick={() => handleShowCredentials(svc.service_name)}>
-                  {credentialsLoading && showCredentials === svc.service_name ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <Key className="w-4 h-4" />
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={() => handleShowCredentials(svc.service_name)}>
+                    {credentialsLoading && showCredentials === svc.service_name ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <Key className="w-4 h-4" />
+                    )}
+                    {showCredentials === svc.service_name ? "Hide Credentials" : "View Credentials"}
+                  </DropdownMenuItem>
+                  {svc.connection_hint && (
+                    <DropdownMenuItem onClick={() => handleCopyConnection(svc.service_name, svc.connection_hint!)}>
+                      {copiedService === svc.service_name ? <Check className="w-4 h-4 text-emerald-500" /> : <Copy className="w-4 h-4" />}
+                      Copy Connection String
+                    </DropdownMenuItem>
                   )}
-                  {showCredentials === svc.service_name ? "Hide Credentials" : "View Credentials"}
-                </DropdownItem>
-                {svc.connection_hint && (
-                  <DropdownItem onClick={() => handleCopyConnection(svc.service_name, svc.connection_hint!)}>
-                    {copiedService === svc.service_name ? <Check className="w-4 h-4 text-emerald-500" /> : <Copy className="w-4 h-4" />}
-                    Copy Connection String
-                  </DropdownItem>
-                )}
-                <DropdownDivider />
-                <DropdownItem variant="danger" onClick={() => setDisconnectTarget(svc)}>
-                  <AlertCircle className="w-4 h-4" />
-                  Disconnect Service...
-                </DropdownItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem variant="danger" onClick={() => setDisconnectTarget(svc)}>
+                    <AlertCircle className="w-4 h-4" />
+                    Disconnect Service...
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
               </DropdownMenu>
             </div>
           ))}

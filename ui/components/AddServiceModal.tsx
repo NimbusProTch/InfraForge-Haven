@@ -309,6 +309,7 @@ export function AddServiceModal({ tenantSlug, appSlug, accessToken, onCreated }:
                 <button
                   type="button"
                   onClick={() => setTier("dev")}
+                  aria-pressed={tier === "dev"}
                   className={`flex flex-col items-start p-3 rounded-xl border-2 transition-all text-left ${
                     tier === "dev"
                       ? "border-blue-500 bg-blue-50/50 dark:bg-blue-950/20"
@@ -329,6 +330,7 @@ export function AddServiceModal({ tenantSlug, appSlug, accessToken, onCreated }:
                 <button
                   type="button"
                   onClick={() => setTier("prod")}
+                  aria-pressed={tier === "prod"}
                   className={`flex flex-col items-start p-3 rounded-xl border-2 transition-all text-left ${
                     tier === "prod"
                       ? "border-blue-500 bg-blue-50/50 dark:bg-blue-950/20"

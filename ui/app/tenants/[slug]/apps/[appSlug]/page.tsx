@@ -18,7 +18,13 @@ import { BuildModal, DeployModal } from "@/components/BuildDeployModal";
 import { ScaleModal } from "@/components/ScaleModal";
 import { RestartModal } from "@/components/RestartModal";
 import { ConnectedServicesPanel } from "@/components/ConnectedServicesPanel";
-import { DropdownMenu, DropdownItem, DropdownDivider } from "@/components/ui/dropdown-menu";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu";
 import type { AppServiceEntry } from "@/lib/api";
 import {
   Activity,
@@ -905,32 +911,36 @@ export default function AppDetailPage() {
               Build &amp; Deploy
             </button>
 
-            <DropdownMenu
-              trigger={
-                <button className="inline-flex items-center justify-center w-10 h-10 rounded-lg border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 hover:bg-gray-50 dark:hover:bg-zinc-700 text-gray-700 dark:text-zinc-200 transition-all shadow-sm">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  aria-label="More actions"
+                  className="inline-flex items-center justify-center w-10 h-10 rounded-lg border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 hover:bg-gray-50 dark:hover:bg-zinc-700 text-gray-700 dark:text-zinc-200 transition-all shadow-sm"
+                >
                   <ChevronDown className="w-4 h-4" />
                 </button>
-              }
-            >
-              {app.image_tag && (
-                <DropdownItem onClick={() => setShowDeployModal(true)}>
-                  <Rocket className="w-4 h-4 text-emerald-500" />
-                  Deploy Existing Image
-                </DropdownItem>
-              )}
-              <DropdownItem onClick={() => setShowScaleModal(true)}>
-                <Layers className="w-4 h-4 text-blue-500" />
-                Scale
-              </DropdownItem>
-              <DropdownItem onClick={() => setShowRestartModal(true)}>
-                <RotateCcw className="w-4 h-4 text-amber-500" />
-                Restart
-              </DropdownItem>
-              <DropdownDivider />
-              <DropdownItem href={app.repo_url}>
-                <ExternalLink className="w-4 h-4" />
-                View on GitHub
-              </DropdownItem>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                {app.image_tag && (
+                  <DropdownMenuItem onClick={() => setShowDeployModal(true)}>
+                    <Rocket className="w-4 h-4 text-emerald-500" />
+                    Deploy Existing Image
+                  </DropdownMenuItem>
+                )}
+                <DropdownMenuItem onClick={() => setShowScaleModal(true)}>
+                  <Layers className="w-4 h-4 text-blue-500" />
+                  Scale
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setShowRestartModal(true)}>
+                  <RotateCcw className="w-4 h-4 text-amber-500" />
+                  Restart
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => window.open(app.repo_url, "_blank")}>
+                  <ExternalLink className="w-4 h-4" />
+                  View on GitHub
+                </DropdownMenuItem>
+              </DropdownMenuContent>
             </DropdownMenu>
           </div>
         </div>
