@@ -2,12 +2,9 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { api, type Application, type GitHubRepo, type GitHubBranch, type DetectedDeps as DetectedDepsType } from "@/lib/api";
-import EnvVarEditor from "@/components/EnvVarEditor";
 import ResourceConfig, { type ResourceValues } from "@/components/ResourceConfig";
 import DomainConfig, { type DomainValues } from "@/components/DomainConfig";
-import DetectedDeps from "@/components/DetectedDeps";
 import {
   Loader2,
   Save,
@@ -17,15 +14,9 @@ import {
   RefreshCw,
   CheckCircle,
   FileCode,
-  Settings,
-  Variable,
   Cpu,
   Globe,
-  Layers,
   FolderOpen,
-  Lock,
-  Eye,
-  EyeOff,
 } from "lucide-react";
 
 const GITHUB_TOKEN_KEY = "haven_github_oauth_token";
@@ -49,10 +40,7 @@ export default function AppSettings({ tenantSlug, app, accessToken, onSaved }: A
   const [dockerfilePath, setDockerfilePath] = useState(app.dockerfile_path ?? "");
   const [buildContext, setBuildContext] = useState(app.build_context ?? "");
 
-  // Environment tab
-  const [envVars, setEnvVars] = useState<Record<string, string>>(app.env_vars ?? {});
-
-  // Resources tab
+  // Resources
   const [resources, setResources] = useState<ResourceValues>({
     cpu_request: app.resource_cpu_request ?? "100m",
     cpu_limit: app.resource_cpu_limit ?? "500m",
@@ -70,18 +58,6 @@ export default function AppSettings({ tenantSlug, app, accessToken, onSaved }: A
     health_check_type: "http",
     auto_deploy: app.auto_deploy ?? false,
   });
-
-  // Dependencies tab
-  const [detectedDeps, setDetectedDeps] = useState<DetectedDepsType | null>(app.detected_deps ?? null);
-  const [depsLoading, setDepsLoading] = useState(false);
-
-  // Secrets tab
-  const [visibleSecrets, setVisibleSecrets] = useState<Set<string>>(new Set());
-
-  const SENSITIVE_PATTERNS = /password|secret|key|token|credential|api_key|private|auth|cert|ssl/i;
-  function isSensitive(name: string): boolean {
-    return SENSITIVE_PATTERNS.test(name);
-  }
 
   // Save state
   const [saving, setSaving] = useState(false);
@@ -264,23 +240,6 @@ export default function AppSettings({ tenantSlug, app, accessToken, onSaved }: A
     setEditRepoUrl(repo.clone_url);
     setEditBranch(repo.default_branch);
     if (githubToken) loadBranches(repo, githubToken);
-    // Auto-detect dependencies on repo change
-    detectDependencies(repo);
-  }
-
-  async function detectDependencies(repo?: GitHubRepo) {
-    const targetRepo = repo ?? selectedRepo;
-    if (!targetRepo || !githubToken) return;
-    setDepsLoading(true);
-    try {
-      const [owner, repoName] = targetRepo.full_name.split("/");
-      const deps = await api.github.detect(owner, repoName, editBranch || targetRepo.default_branch, githubToken);
-      setDetectedDeps(deps);
-    } catch {
-      // ignore
-    } finally {
-      setDepsLoading(false);
-    }
   }
 
   async function handleSaveSettings() {
@@ -294,7 +253,6 @@ export default function AppSettings({ tenantSlug, app, accessToken, onSaved }: A
           repo_url: editRepoUrl,
           branch: editBranch,
           replicas: editReplicas,
-          env_vars: envVars,
           dockerfile_path: dockerfilePath || null,
           build_context: buildContext || null,
           use_dockerfile: useDockerfile,
@@ -325,38 +283,12 @@ export default function AppSettings({ tenantSlug, app, accessToken, onSaved }: A
 
   return (
     <div className="space-y-6 max-w-2xl">
-      <Tabs defaultValue="general">
-        <TabsList>
-          <TabsTrigger value="general">
-            <Settings className="w-3.5 h-3.5 mr-1.5" />
-            General
-          </TabsTrigger>
-          <TabsTrigger value="environment">
-            <Variable className="w-3.5 h-3.5 mr-1.5" />
-            Environment
-          </TabsTrigger>
-          <TabsTrigger value="resources">
-            <Cpu className="w-3.5 h-3.5 mr-1.5" />
-            Resources
-          </TabsTrigger>
-          <TabsTrigger value="domain">
-            <Globe className="w-3.5 h-3.5 mr-1.5" />
-            Domain & Health
-          </TabsTrigger>
-          <TabsTrigger value="dependencies">
-            <Layers className="w-3.5 h-3.5 mr-1.5" />
-            Dependencies
-          </TabsTrigger>
-          <TabsTrigger value="secrets">
-            <Lock className="w-3.5 h-3.5 mr-1.5" />
-            Secrets
-          </TabsTrigger>
-        </TabsList>
-
-        {/* General tab */}
-        <TabsContent value="general" className="pt-5">
-          <div className="bg-white dark:bg-[#141414] border border-gray-200 dark:border-[#222] rounded-lg p-5">
-            <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-4">Application Settings</h3>
+      {/* ─── SOURCE ─── */}
+      <div className="bg-white dark:bg-[#141414] border border-gray-200 dark:border-[#222] rounded-xl p-5">
+        <div className="flex items-center gap-2 mb-4">
+          <FileCode className="w-4 h-4 text-gray-500 dark:text-zinc-400" />
+          <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Source &amp; Build</h3>
+        </div>
             <div className="space-y-3">
               {/* Name */}
               <div>
@@ -638,23 +570,60 @@ export default function AppSettings({ tenantSlug, app, accessToken, onSaved }: A
               )}
             </div>
 
-            <button
-              onClick={handleSaveSettings}
-              disabled={saving}
-              className="mt-4 inline-flex items-center gap-1.5 px-4 py-1.5 rounded-md bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-xs font-medium transition-colors"
-            >
-              {saving ? (
-                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-              ) : (
-                <Save className="w-3.5 h-3.5" />
-              )}
-              Save Changes
-            </button>
-          </div>
+        <button
+          onClick={handleSaveSettings}
+          disabled={saving}
+          className="mt-4 inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-medium transition-colors"
+        >
+          {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+          Save Changes
+        </button>
+      </div>
 
-          {/* Danger zone */}
-          <div className="mt-6 bg-white dark:bg-[#141414] border border-red-300 dark:border-red-900/50 rounded-lg p-5">
-            <h3 className="text-sm font-semibold text-red-600 dark:text-red-400 mb-2">Danger Zone</h3>
+      {/* ─── NETWORKING ─── */}
+      <div className="bg-white dark:bg-[#141414] border border-gray-200 dark:border-[#222] rounded-xl p-5">
+        <div className="flex items-center gap-2 mb-4">
+          <Globe className="w-4 h-4 text-gray-500 dark:text-zinc-400" />
+          <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Networking &amp; Health</h3>
+        </div>
+        <DomainConfig
+          value={domainValues}
+          onChange={setDomainValues}
+          currentHostname={app.custom_domain || `${app.slug}.${tenantSlug}.sslip.io`}
+        />
+        <button
+          onClick={handleSaveSettings}
+          disabled={saving}
+          className="mt-4 inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-medium transition-colors"
+        >
+          {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+          Save Changes
+        </button>
+      </div>
+
+      {/* ─── RESOURCES ─── */}
+      <div className="bg-white dark:bg-[#141414] border border-gray-200 dark:border-[#222] rounded-xl p-5">
+        <div className="flex items-center gap-2 mb-4">
+          <Cpu className="w-4 h-4 text-gray-500 dark:text-zinc-400" />
+          <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Resources &amp; Scaling</h3>
+        </div>
+        <ResourceConfig value={resources} onChange={setResources} />
+        <button
+          onClick={handleSaveSettings}
+          disabled={saving}
+          className="mt-4 inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-medium transition-colors"
+        >
+          {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+          Save Changes
+        </button>
+      </div>
+
+      {/* ─── DANGER ZONE ─── */}
+      <div className="bg-white dark:bg-[#141414] border border-red-300 dark:border-red-900/50 rounded-xl p-5">
+        <div className="flex items-center gap-2 mb-2">
+          <Trash2 className="w-4 h-4 text-red-500" />
+          <h3 className="text-sm font-semibold text-red-600 dark:text-red-400">Danger Zone</h3>
+        </div>
             <p className="text-xs text-gray-500 dark:text-[#666] mb-3">
               Deleting this application will remove all deployments and K8s resources. This action cannot be undone.
             </p>
@@ -683,188 +652,8 @@ export default function AppSettings({ tenantSlug, app, accessToken, onSaved }: A
                 )}
                 Delete Application
               </button>
-            </div>
-          </div>
-        </TabsContent>
-
-        {/* Environment tab */}
-        <TabsContent value="environment" className="pt-5">
-          <div className="bg-white dark:bg-[#141414] border border-gray-200 dark:border-[#222] rounded-lg p-5">
-            <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-4">
-              Environment Variables
-            </h3>
-            <p className="text-xs text-gray-400 dark:text-[#555] mb-4">
-              Environment variables are injected into the container at runtime as Kubernetes Secrets.
-              Changes take effect on the next deployment.
-            </p>
-            <EnvVarEditor value={envVars} onChange={setEnvVars} />
-          </div>
-          <button
-            onClick={handleSaveSettings}
-            disabled={saving}
-            className="mt-4 inline-flex items-center gap-1.5 px-4 py-1.5 rounded-md bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-xs font-medium transition-colors"
-          >
-            {saving ? (
-              <Loader2 className="w-3.5 h-3.5 animate-spin" />
-            ) : (
-              <Save className="w-3.5 h-3.5" />
-            )}
-            Save Changes
-          </button>
-        </TabsContent>
-
-        {/* Resources tab */}
-        <TabsContent value="resources" className="pt-5">
-          <ResourceConfig value={resources} onChange={setResources} />
-          <button
-            onClick={handleSaveSettings}
-            disabled={saving}
-            className="mt-4 inline-flex items-center gap-1.5 px-4 py-1.5 rounded-md bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-xs font-medium transition-colors"
-          >
-            {saving ? (
-              <Loader2 className="w-3.5 h-3.5 animate-spin" />
-            ) : (
-              <Save className="w-3.5 h-3.5" />
-            )}
-            Save Changes
-          </button>
-        </TabsContent>
-
-        {/* Domain & Health tab */}
-        <TabsContent value="domain" className="pt-5">
-          <DomainConfig
-            value={domainValues}
-            onChange={setDomainValues}
-            currentHostname={app.custom_domain || `${app.slug}.${tenantSlug}.sslip.io`}
-          />
-          <button
-            onClick={handleSaveSettings}
-            disabled={saving}
-            className="mt-4 inline-flex items-center gap-1.5 px-4 py-1.5 rounded-md bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-xs font-medium transition-colors"
-          >
-            {saving ? (
-              <Loader2 className="w-3.5 h-3.5 animate-spin" />
-            ) : (
-              <Save className="w-3.5 h-3.5" />
-            )}
-            Save Changes
-          </button>
-        </TabsContent>
-
-        {/* Dependencies tab */}
-        <TabsContent value="dependencies" className="pt-5">
-          <DetectedDeps deps={detectedDeps} loading={depsLoading} />
-          {selectedRepo && githubToken && (
-            <button
-              type="button"
-              onClick={() => detectDependencies()}
-              disabled={depsLoading}
-              className="mt-4 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-gray-200 dark:border-[#2e2e2e] text-gray-700 dark:text-[#ccc] text-xs font-medium hover:bg-gray-50 dark:hover:bg-[#1a1a1a] transition-colors disabled:opacity-50"
-            >
-              {depsLoading ? (
-                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-              ) : (
-                <RefreshCw className="w-3.5 h-3.5" />
-              )}
-              Re-analyze
-            </button>
-          )}
-        </TabsContent>
-
-        {/* Secrets tab */}
-        <TabsContent value="secrets" className="pt-5">
-          <div className="bg-white dark:bg-[#141414] border border-gray-200 dark:border-[#222] rounded-lg p-5">
-            <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-2">Secret Variables</h3>
-            <p className="text-xs text-gray-400 dark:text-[#555] mb-4">
-              Variables with sensitive names are automatically detected. Values are masked by default.
-              All variables are stored as Kubernetes Secrets in your namespace.
-            </p>
-            {Object.entries(envVars).length === 0 ? (
-              <p className="text-xs text-gray-400 dark:text-[#555]">No environment variables defined yet. Add them in the Environment tab.</p>
-            ) : (
-              <div className="space-y-2">
-                {Object.entries(envVars)
-                  .filter(([key]) => isSensitive(key))
-                  .length === 0 ? (
-                  <p className="text-xs text-gray-400 dark:text-[#555]">No sensitive variables detected. Variables with names containing PASSWORD, SECRET, KEY, TOKEN, etc. will appear here.</p>
-                ) : (
-                  Object.entries(envVars)
-                    .filter(([key]) => isSensitive(key))
-                    .map(([key, value]) => {
-                      const isVisible = visibleSecrets.has(key);
-                      return (
-                        <div key={key} className="flex items-center gap-2 p-2.5 rounded-md border border-gray-100 dark:border-[#2a2a2a] bg-gray-50 dark:bg-[#0f0f0f]">
-                          <Lock className="w-3 h-3 text-amber-500 shrink-0" />
-                          <span className="text-xs font-mono text-gray-700 dark:text-[#ccc] flex-1">{key}</span>
-                          <span className="text-xs font-mono text-gray-500 dark:text-[#666] flex-1 truncate">
-                            {isVisible ? value : "•".repeat(Math.min(value.length, 20))}
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const next = new Set(visibleSecrets);
-                              if (isVisible) next.delete(key); else next.add(key);
-                              setVisibleSecrets(next);
-                            }}
-                            className="text-gray-400 hover:text-gray-600 dark:text-[#555] dark:hover:text-[#999] transition-colors"
-                            title={isVisible ? "Hide value" : "Show value"}
-                          >
-                            {isVisible ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                          </button>
-                        </div>
-                      );
-                    })
-                )}
-                <div className="mt-4 pt-4 border-t border-gray-100 dark:border-[#1e1e1e]">
-                  <h4 className="text-xs font-medium text-gray-500 dark:text-[#666] mb-2">All Variables ({Object.keys(envVars).length})</h4>
-                  <div className="space-y-1.5">
-                    {Object.entries(envVars).map(([key, value]) => {
-                      const sensitive = isSensitive(key);
-                      const isVisible = visibleSecrets.has(key);
-                      return (
-                        <div key={key} className="flex items-center gap-2">
-                          {sensitive && <Lock className="w-3 h-3 text-amber-500 shrink-0" />}
-                          {!sensitive && <span className="w-3 h-3 shrink-0" />}
-                          <span className="text-xs font-mono text-gray-600 dark:text-[#888] w-48 truncate">{key}</span>
-                          <span className="text-xs font-mono text-gray-400 dark:text-[#555] flex-1 truncate">
-                            {sensitive && !isVisible ? "•".repeat(Math.min(value.length, 20)) : value}
-                          </span>
-                          {sensitive && (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                const next = new Set(visibleSecrets);
-                                if (isVisible) next.delete(key); else next.add(key);
-                                setVisibleSecrets(next);
-                              }}
-                              className="text-gray-400 hover:text-gray-600 dark:text-[#555] dark:hover:text-[#999] transition-colors shrink-0"
-                            >
-                              {isVisible ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
-                            </button>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-          <div className="mt-4 bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800/30 rounded-lg p-4">
-            <div className="flex items-start gap-2">
-              <Lock className="w-3.5 h-3.5 text-amber-500 mt-0.5 shrink-0" />
-              <div>
-                <p className="text-xs font-medium text-amber-700 dark:text-amber-400 mb-1">Security Notice</p>
-                <p className="text-xs text-amber-600 dark:text-amber-500/80">
-                  All environment variables are stored as Kubernetes Secrets with namespace-scoped RBAC.
-                  Sensitive values are never logged or exposed in deployment outputs.
-                  For external secret management, connect HashiCorp Vault via the platform settings.
-                </p>
-              </div>
-            </div>
-          </div>
-        </TabsContent>
-      </Tabs>
+        </div>
+      </div>
     </div>
   );
 }
