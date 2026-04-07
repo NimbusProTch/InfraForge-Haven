@@ -21,11 +21,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { api, type ManagedService } from "@/lib/api";
-import { Plus, Server, Zap, Shield, Clock, ChevronLeft, HardDrive, RotateCcw } from "lucide-react";
+import { Plus, Server, Zap, Shield, Clock, ChevronLeft, HardDrive, RotateCcw, Database } from "lucide-react";
 import { ServiceIcon } from "@/components/icons/ServiceIcons";
 
 interface AddServiceModalProps {
   tenantSlug: string;
+  appSlug?: string;
   accessToken?: string;
   onCreated?: (service: ManagedService) => void;
 }
@@ -37,6 +38,7 @@ const SERVICE_TYPES = [
     description: "Reliable relational database with PITR backup",
     supportsBackup: true,
     supportsPitr: true,
+    hasDbName: true,
   },
   {
     value: "mysql",
@@ -44,6 +46,7 @@ const SERVICE_TYPES = [
     description: "Popular relational database with XtraDB Cluster",
     supportsBackup: true,
     supportsPitr: false,
+    hasDbName: true,
   },
   {
     value: "mongodb",
@@ -51,6 +54,7 @@ const SERVICE_TYPES = [
     description: "Flexible document database for modern apps",
     supportsBackup: true,
     supportsPitr: false,
+    hasDbName: true,
   },
   {
     value: "redis",
@@ -58,6 +62,7 @@ const SERVICE_TYPES = [
     description: "In-memory data store for caching and sessions",
     supportsBackup: false,
     supportsPitr: false,
+    hasDbName: false,
   },
   {
     value: "rabbitmq",
@@ -65,6 +70,7 @@ const SERVICE_TYPES = [
     description: "Distributed message broker for async workflows",
     supportsBackup: false,
     supportsPitr: false,
+    hasDbName: false,
   },
 ] as const;
 
@@ -81,7 +87,7 @@ const RETENTION_OPTIONS = [
   { value: "90", label: "90 days" },
 ] as const;
 
-export function AddServiceModal({ tenantSlug, accessToken, onCreated }: AddServiceModalProps) {
+export function AddServiceModal({ tenantSlug, appSlug, accessToken, onCreated }: AddServiceModalProps) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [step, setStep] = useState<"type" | "config">("type");
@@ -91,20 +97,29 @@ export function AddServiceModal({ tenantSlug, accessToken, onCreated }: AddServi
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Database config
+  const [dbName, setDbName] = useState("");
+  const [dbUser, setDbUser] = useState("");
+
   // Backup config state
   const [backupEnabled, setBackupEnabled] = useState(false);
   const [backupSchedule, setBackupSchedule] = useState("0 2 * * *");
   const [backupRetention, setBackupRetention] = useState("7");
   const [pitrEnabled, setPitrEnabled] = useState(false);
 
+  // Auto-connect
+  const [autoConnect, setAutoConnect] = useState(true);
+
   const selectedType = SERVICE_TYPES.find((t) => t.value === serviceType);
 
   // Auto-generate name when type is selected
   useEffect(() => {
     if (serviceType && step === "config") {
-      setName(`app-${serviceType.replace("postgres", "pg")}`);
+      const prefix = appSlug ?? "app";
+      const typeShort = serviceType === "postgres" ? "pg" : serviceType;
+      setName(`${prefix}-${typeShort}`);
     }
-  }, [serviceType, step]);
+  }, [serviceType, step, appSlug]);
 
   // Auto-enable backup for prod tier on backup-supported types
   useEffect(() => {
@@ -120,10 +135,13 @@ export function AddServiceModal({ tenantSlug, accessToken, onCreated }: AddServi
     setName("");
     setServiceType("");
     setTier("dev");
+    setDbName("");
+    setDbUser("");
     setBackupEnabled(false);
     setBackupSchedule("0 2 * * *");
     setBackupRetention("7");
     setPitrEnabled(false);
+    setAutoConnect(true);
     setError(null);
   }
 
@@ -137,11 +155,25 @@ export function AddServiceModal({ tenantSlug, accessToken, onCreated }: AddServi
     setLoading(true);
     setError(null);
     try {
+      const payload: Record<string, unknown> = { name, service_type: serviceType, tier };
+      if (dbName.trim()) payload.db_name = dbName.trim();
+      if (dbUser.trim()) payload.db_user = dbUser.trim();
+
       const svc = await api.services.create(
         tenantSlug,
-        { name, service_type: serviceType, tier },
+        payload as { name: string; service_type: string; tier: string },
         accessToken
       );
+
+      // Auto-connect to current app if requested
+      if (autoConnect && appSlug) {
+        try {
+          await api.services.connectToApp(tenantSlug, appSlug, svc.name, accessToken);
+        } catch {
+          // Connection may fail if service is still provisioning — that's OK
+        }
+      }
+
       onCreated?.(svc);
       setOpen(false);
       resetForm();
@@ -180,7 +212,7 @@ export function AddServiceModal({ tenantSlug, accessToken, onCreated }: AddServi
         </DialogHeader>
 
         {step === "type" ? (
-          /* ─── Step 1: Service Type Selection (Card Grid) ─── */
+          /* Step 1: Service Type Selection */
           <div className="grid grid-cols-2 gap-3 mt-2">
             {SERVICE_TYPES.map((svc) => (
               <button
@@ -202,9 +234,8 @@ export function AddServiceModal({ tenantSlug, accessToken, onCreated }: AddServi
             ))}
           </div>
         ) : (
-          /* ─── Step 2: Configuration ─── */
+          /* Step 2: Configuration */
           <form onSubmit={handleSubmit} className="space-y-5 mt-2">
-            {/* Back button */}
             <button
               type="button"
               onClick={() => setStep("type")}
@@ -218,16 +249,12 @@ export function AddServiceModal({ tenantSlug, accessToken, onCreated }: AddServi
             <div className="flex items-center gap-3 p-3 rounded-lg bg-gray-50 dark:bg-zinc-800/50 border border-gray-200 dark:border-zinc-700">
               <ServiceIcon type={serviceType} size={28} />
               <div>
-                <p className="text-sm font-medium text-gray-800 dark:text-zinc-200">
-                  {selectedType?.label}
-                </p>
-                <p className="text-xs text-gray-400 dark:text-zinc-500">
-                  {selectedType?.description}
-                </p>
+                <p className="text-sm font-medium text-gray-800 dark:text-zinc-200">{selectedType?.label}</p>
+                <p className="text-xs text-gray-400 dark:text-zinc-500">{selectedType?.description}</p>
               </div>
             </div>
 
-            {/* Name */}
+            {/* Service name */}
             <div className="space-y-1.5">
               <Label htmlFor="svc-name">Service name</Label>
               <Input
@@ -244,7 +271,38 @@ export function AddServiceModal({ tenantSlug, accessToken, onCreated }: AddServi
               </p>
             </div>
 
-            {/* Tier selection (visual cards) */}
+            {/* Database name & user — only for DB types */}
+            {selectedType?.hasDbName && (
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label htmlFor="db-name" className="flex items-center gap-1.5">
+                    <Database className="w-3 h-3" />
+                    Database name
+                  </Label>
+                  <Input
+                    id="db-name"
+                    placeholder={`${(appSlug ?? "app").replace(/-/g, "_")}_db`}
+                    value={dbName}
+                    onChange={(e) => setDbName(e.target.value)}
+                    pattern="^[a-z][a-z0-9_]*$"
+                  />
+                  <p className="text-xs text-muted-foreground">Optional. Auto-generated if empty.</p>
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="db-user">Database user</Label>
+                  <Input
+                    id="db-user"
+                    placeholder="app_user"
+                    value={dbUser}
+                    onChange={(e) => setDbUser(e.target.value)}
+                    pattern="^[a-z][a-z0-9_]*$"
+                  />
+                  <p className="text-xs text-muted-foreground">Optional. Auto-generated if empty.</p>
+                </div>
+              </div>
+            )}
+
+            {/* Tier selection */}
             <div className="space-y-1.5">
               <Label>Environment tier</Label>
               <div className="grid grid-cols-2 gap-3">
@@ -259,20 +317,12 @@ export function AddServiceModal({ tenantSlug, accessToken, onCreated }: AddServi
                 >
                   <div className="flex items-center gap-2 mb-2">
                     <Zap className="w-4 h-4 text-amber-500" />
-                    <span className="text-sm font-semibold text-gray-800 dark:text-zinc-200">
-                      Dev
-                    </span>
+                    <span className="text-sm font-semibold text-gray-800 dark:text-zinc-200">Dev</span>
                   </div>
                   <ul className="space-y-1 text-xs text-gray-500 dark:text-zinc-400">
-                    <li className="flex items-center gap-1.5">
-                      <Server className="w-3 h-3 shrink-0" /> 1 replica
-                    </li>
-                    <li className="flex items-center gap-1.5">
-                      <HardDrive className="w-3 h-3 shrink-0" /> Ephemeral
-                    </li>
-                    <li className="flex items-center gap-1.5">
-                      <Shield className="w-3 h-3 shrink-0 opacity-40" /> No backup
-                    </li>
+                    <li className="flex items-center gap-1.5"><Server className="w-3 h-3 shrink-0" /> 1 replica</li>
+                    <li className="flex items-center gap-1.5"><HardDrive className="w-3 h-3 shrink-0" /> Ephemeral</li>
+                    <li className="flex items-center gap-1.5"><Shield className="w-3 h-3 shrink-0 opacity-40" /> No backup</li>
                   </ul>
                 </button>
 
@@ -287,26 +337,18 @@ export function AddServiceModal({ tenantSlug, accessToken, onCreated }: AddServi
                 >
                   <div className="flex items-center gap-2 mb-2">
                     <Shield className="w-4 h-4 text-emerald-500" />
-                    <span className="text-sm font-semibold text-gray-800 dark:text-zinc-200">
-                      Prod
-                    </span>
+                    <span className="text-sm font-semibold text-gray-800 dark:text-zinc-200">Prod</span>
                   </div>
                   <ul className="space-y-1 text-xs text-gray-500 dark:text-zinc-400">
-                    <li className="flex items-center gap-1.5">
-                      <Server className="w-3 h-3 shrink-0" /> 3 replicas, HA
-                    </li>
-                    <li className="flex items-center gap-1.5">
-                      <HardDrive className="w-3 h-3 shrink-0" /> Persistent
-                    </li>
-                    <li className="flex items-center gap-1.5">
-                      <Shield className="w-3 h-3 shrink-0" /> Daily backup
-                    </li>
+                    <li className="flex items-center gap-1.5"><Server className="w-3 h-3 shrink-0" /> 3 replicas, HA</li>
+                    <li className="flex items-center gap-1.5"><HardDrive className="w-3 h-3 shrink-0" /> Persistent</li>
+                    <li className="flex items-center gap-1.5"><Shield className="w-3 h-3 shrink-0" /> Daily backup</li>
                   </ul>
                 </button>
               </div>
             </div>
 
-            {/* Backup configuration (only for DB types) */}
+            {/* Backup configuration */}
             {selectedType?.supportsBackup && (
               <div className="space-y-3 rounded-xl border border-gray-200 dark:border-zinc-800 p-4 bg-gray-50/50 dark:bg-zinc-800/30">
                 <div className="flex items-center justify-between">
@@ -320,22 +362,17 @@ export function AddServiceModal({ tenantSlug, accessToken, onCreated }: AddServi
                     aria-checked={backupEnabled}
                     onClick={() => setBackupEnabled(!backupEnabled)}
                     className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors ${
-                      backupEnabled
-                        ? "bg-blue-500"
-                        : "bg-gray-300 dark:bg-zinc-700"
+                      backupEnabled ? "bg-blue-500" : "bg-gray-300 dark:bg-zinc-700"
                     }`}
                   >
-                    <span
-                      className={`pointer-events-none block h-3.5 w-3.5 rounded-full bg-white shadow-sm transition-transform ${
-                        backupEnabled ? "translate-x-4" : "translate-x-0.5"
-                      }`}
-                    />
+                    <span className={`pointer-events-none block h-3.5 w-3.5 rounded-full bg-white shadow-sm transition-transform ${
+                      backupEnabled ? "translate-x-4" : "translate-x-0.5"
+                    }`} />
                   </button>
                 </div>
 
                 {backupEnabled && (
                   <div className="space-y-3 pt-1">
-                    {/* Schedule */}
                     <div className="space-y-1">
                       <Label htmlFor="backup-schedule" className="text-xs">
                         <Clock className="w-3 h-3 inline mr-1" />
@@ -347,15 +384,12 @@ export function AddServiceModal({ tenantSlug, accessToken, onCreated }: AddServi
                         </SelectTrigger>
                         <SelectContent>
                           {SCHEDULE_PRESETS.map((p) => (
-                            <SelectItem key={p.value} value={p.value}>
-                              {p.label}
-                            </SelectItem>
+                            <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
                     </div>
 
-                    {/* Retention */}
                     <div className="space-y-1">
                       <Label htmlFor="backup-retention" className="text-xs">
                         <HardDrive className="w-3 h-3 inline mr-1" />
@@ -367,41 +401,57 @@ export function AddServiceModal({ tenantSlug, accessToken, onCreated }: AddServi
                         </SelectTrigger>
                         <SelectContent>
                           {RETENTION_OPTIONS.map((r) => (
-                            <SelectItem key={r.value} value={r.value}>
-                              {r.label}
-                            </SelectItem>
+                            <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
                     </div>
 
-                    {/* PITR toggle (postgres only) */}
                     {selectedType?.supportsPitr && (
                       <div className="flex items-center justify-between pt-1">
-                        <Label className="text-xs cursor-pointer">
-                          Enable point-in-time recovery (PITR)
-                        </Label>
+                        <Label className="text-xs cursor-pointer">Enable point-in-time recovery (PITR)</Label>
                         <button
                           type="button"
                           role="switch"
                           aria-checked={pitrEnabled}
                           onClick={() => setPitrEnabled(!pitrEnabled)}
                           className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors ${
-                            pitrEnabled
-                              ? "bg-blue-500"
-                              : "bg-gray-300 dark:bg-zinc-700"
+                            pitrEnabled ? "bg-blue-500" : "bg-gray-300 dark:bg-zinc-700"
                           }`}
                         >
-                          <span
-                            className={`pointer-events-none block h-3.5 w-3.5 rounded-full bg-white shadow-sm transition-transform ${
-                              pitrEnabled ? "translate-x-4" : "translate-x-0.5"
-                            }`}
-                          />
+                          <span className={`pointer-events-none block h-3.5 w-3.5 rounded-full bg-white shadow-sm transition-transform ${
+                            pitrEnabled ? "translate-x-4" : "translate-x-0.5"
+                          }`} />
                         </button>
                       </div>
                     )}
                   </div>
                 )}
+              </div>
+            )}
+
+            {/* Auto-connect toggle */}
+            {appSlug && (
+              <div className="flex items-center justify-between py-2">
+                <div>
+                  <Label className="cursor-pointer">Auto-connect to this application</Label>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Automatically inject connection credentials after provisioning.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={autoConnect}
+                  onClick={() => setAutoConnect(!autoConnect)}
+                  className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors ${
+                    autoConnect ? "bg-blue-500" : "bg-gray-300 dark:bg-zinc-700"
+                  }`}
+                >
+                  <span className={`pointer-events-none block h-3.5 w-3.5 rounded-full bg-white shadow-sm transition-transform ${
+                    autoConnect ? "translate-x-4" : "translate-x-0.5"
+                  }`} />
+                </button>
               </div>
             )}
 

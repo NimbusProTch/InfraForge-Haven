@@ -383,6 +383,7 @@ export interface Application {
   max_replicas: number;
   cpu_threshold: number;
   auto_deploy: boolean;
+  app_type: "web" | "worker" | "cronjob";
   // Managed service connections
   env_from_secrets: Array<{ service_name: string; secret_name: string; namespace: string }> | null;
   pending_services: Array<{ service_name: string; service_type: string }> | null;
