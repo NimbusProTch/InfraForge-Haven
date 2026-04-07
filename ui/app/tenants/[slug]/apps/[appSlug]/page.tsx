@@ -11,17 +11,20 @@ import { useToast } from "@/components/Toast";
 import { api, type Application, type Deployment, type BuildStatus, type ContainerStatus, getLogsUrl } from "@/lib/api";
 import AppSettings from "@/components/AppSettings";
 import ObservabilityTab from "@/components/ObservabilityTab";
-import EnvironmentsTab from "@/components/EnvironmentsTab";
 import DomainsTab from "@/components/DomainsTab";
 import CronJobsTab from "@/components/CronJobsTab";
-import VolumesTab from "@/components/VolumesTab";
-import CanaryTab from "@/components/CanaryTab";
 import { AnsiTerminal } from "@/components/ui/ansi-terminal";
 import { BuildModal, DeployModal } from "@/components/BuildDeployModal";
 import { ScaleModal } from "@/components/ScaleModal";
-import { SyncModal } from "@/components/SyncModal";
 import { RestartModal } from "@/components/RestartModal";
 import { ConnectedServicesPanel } from "@/components/ConnectedServicesPanel";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu";
 import type { AppServiceEntry } from "@/lib/api";
 import {
   Activity,
@@ -40,8 +43,6 @@ import {
   Layers,
   Globe,
   Timer,
-  HardDrive,
-  GitCompare,
   Check,
   X,
   Circle,
@@ -49,6 +50,7 @@ import {
   RefreshCw,
   Search,
   Upload,
+  Clock,
 } from "lucide-react";
 
 const LB_IP = process.env.NEXT_PUBLIC_LB_IP ?? "";
@@ -64,7 +66,6 @@ interface PipelineStep {
   duration?: string | null;
 }
 
-// Map container name to pipeline step key
 const CONTAINER_TO_STEP: Record<string, string> = {
   "git-clone": "clone",
   "nixpacks": "detect",
@@ -88,7 +89,6 @@ function derivePipelineSteps(deployment: Deployment, buildStatus?: BuildStatus |
     { key: "deploy", label: "Deploy" },
   ];
 
-  // Use real container status if available
   if (buildStatus?.containers && buildStatus.containers.length > 0) {
     const containerMap: Record<string, ContainerStatus> = {};
     for (const c of buildStatus.containers) {
@@ -101,7 +101,6 @@ function derivePipelineSteps(deployment: Deployment, buildStatus?: BuildStatus |
       if (cs) {
         return { ...step, status: containerStatusToPipeline(cs), duration: cs.duration };
       }
-      // Push = build completed, Deploy = deployment status
       if (step.key === "push") {
         const buildCs = containerMap["build"];
         if (buildCs?.status === "completed") {
@@ -119,9 +118,7 @@ function derivePipelineSteps(deployment: Deployment, buildStatus?: BuildStatus |
     });
   }
 
-  // Fallback: derive from deployment status
   let statuses: PipelineStepStatus[];
-
   switch (deployment.status) {
     case "pending":
       statuses = ["pending", "pending", "pending", "pending", "pending"];
@@ -148,46 +145,17 @@ function derivePipelineSteps(deployment: Deployment, buildStatus?: BuildStatus |
     default:
       statuses = ["pending", "pending", "pending", "pending", "pending"];
   }
-
   return keys.map((step, i) => ({ ...step, status: statuses[i], duration: null }));
 }
 
-// ---- Premium Pipeline Visualization ----
+// ---- Step Icons ----
 
-// Step-specific icons
 const STEP_ICONS: Record<string, React.ElementType> = {
   clone: GitBranch,
   detect: Search,
   build: Hammer,
   push: Upload,
   deploy: Rocket,
-};
-
-const STEP_STYLES: Record<PipelineStepStatus, { border: string; bg: string; icon: string; text: string }> = {
-  success: {
-    border: "border-l-emerald-500 border-emerald-200 dark:border-emerald-500/20",
-    bg: "bg-emerald-50 dark:bg-emerald-500/5",
-    icon: "bg-emerald-500/15 border-emerald-500/30 text-emerald-500",
-    text: "text-emerald-700 dark:text-emerald-400",
-  },
-  running: {
-    border: "border-l-blue-500 border-blue-200 dark:border-blue-500/20",
-    bg: "bg-blue-50 dark:bg-blue-500/5",
-    icon: "bg-blue-500/15 border-blue-500/30 text-blue-500",
-    text: "text-blue-700 dark:text-blue-400",
-  },
-  failed: {
-    border: "border-l-red-500 border-red-200 dark:border-red-500/20",
-    bg: "bg-red-50 dark:bg-red-500/5",
-    icon: "bg-red-500/15 border-red-500/30 text-red-500",
-    text: "text-red-700 dark:text-red-400",
-  },
-  pending: {
-    border: "border-l-gray-300 dark:border-l-zinc-700 border-gray-200 dark:border-zinc-800 border-dashed",
-    bg: "bg-gray-50 dark:bg-zinc-900/30",
-    icon: "bg-gray-100 dark:bg-zinc-800 border-gray-300 dark:border-zinc-700 text-gray-400 dark:text-zinc-600",
-    text: "text-gray-400 dark:text-zinc-600",
-  },
 };
 
 function StepStatusIcon({
@@ -224,7 +192,6 @@ function StepStatusIcon({
       </div>
     );
   }
-  // pending
   return (
     <div className={`${s} rounded-full border-2 border-dashed border-gray-300 dark:border-zinc-600 bg-transparent flex items-center justify-center transition-all duration-300`}>
       {StepIcon ? (
@@ -282,14 +249,12 @@ function PipelineVisualization({
     );
   }
 
-  // Full size pipeline
   return (
     <div className="flex items-center w-full py-2">
       {steps.map((step, i) => {
         const isActive = activeStep === step.key;
         return (
           <div key={step.key} className="flex items-center flex-1 last:flex-none">
-            {/* Step circle + label */}
             <div
               className={`flex flex-col items-center gap-2 ${
                 isClickable && step.status !== "pending" ? "cursor-pointer group" : ""
@@ -315,7 +280,6 @@ function PipelineVisualization({
                 </span>
               </div>
             </div>
-            {/* Connector line with fill animation */}
             {i < steps.length - 1 && (
               <div className="flex-1 mx-3 min-w-6 relative self-start mt-5">
                 <div className="h-1 rounded-full bg-gray-200 dark:bg-zinc-700" />
@@ -337,10 +301,9 @@ function PipelineVisualization({
   );
 }
 
-const DEPLOY_STATUS_VARIANT: Record<
-  string,
-  "success" | "warning" | "destructive" | "secondary" | "default"
-> = {
+// ---- Status helpers ----
+
+const DEPLOY_STATUS_VARIANT: Record<string, "success" | "warning" | "destructive" | "secondary" | "default"> = {
   running: "success",
   building: "warning",
   built: "default",
@@ -369,6 +332,8 @@ function relativeTime(dateStr: string): string {
   return `${days}d ago`;
 }
 
+// ---- Deployment Card ----
+
 function DeploymentCard({
   deployment,
   onRollback,
@@ -394,13 +359,8 @@ function DeploymentCard({
       <div className="flex items-center justify-between px-5 py-4">
         <div className="flex items-center gap-3 min-w-0 flex-1">
           <div className="shrink-0">
-            <div
-              className={`w-2.5 h-2.5 rounded-full ${
-                STATUS_DOT_COLORS[deployment.status] ?? "bg-gray-400"
-              }`}
-            />
+            <div className={`w-2.5 h-2.5 rounded-full ${STATUS_DOT_COLORS[deployment.status] ?? "bg-gray-400"}`} />
           </div>
-
           <div className="min-w-0 shrink-0">
             <div className="flex items-center gap-2">
               <span className="text-sm font-mono font-bold text-gray-900 dark:text-white">
@@ -436,11 +396,7 @@ function DeploymentCard({
               className="text-gray-400 dark:text-zinc-600 hover:text-gray-700 dark:hover:text-zinc-300 transition-colors"
               title="Show error details"
             >
-              {expanded ? (
-                <ChevronUp className="w-3.5 h-3.5" />
-              ) : (
-                <ChevronDown className="w-3.5 h-3.5" />
-              )}
+              {expanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
             </button>
           )}
           {["running", "failed", "built"].includes(deployment.status) && deployment.image_tag && (
@@ -465,9 +421,7 @@ function DeploymentCard({
       {expanded && isFailed && deployment.error_message && (
         <div className="px-4 pb-3">
           <div className="bg-red-500/5 border border-red-500/20 rounded-lg p-3">
-            <pre className="text-xs font-mono text-red-400 whitespace-pre-wrap break-all">
-              {deployment.error_message}
-            </pre>
+            <pre className="text-xs font-mono text-red-400 whitespace-pre-wrap break-all">{deployment.error_message}</pre>
           </div>
         </div>
       )}
@@ -481,7 +435,8 @@ function DeploymentCard({
   );
 }
 
-// Step key → container name mapping for log filtering
+// ---- Build Log Terminal ----
+
 const STEP_TO_CONTAINER: Record<string, string> = {
   clone: "git-clone",
   detect: "nixpacks",
@@ -492,8 +447,6 @@ function parseLogSections(logs: string): Map<string, string> {
   const sections = new Map<string, string>();
   const regex = /^--- (git-clone|nixpacks|buildctl) ---$/m;
   const parts = logs.split(regex);
-
-  // parts: [preamble, "git-clone", logs1, "nixpacks", logs2, "buildctl", logs3]
   let currentContainer = "__preamble__";
   for (const part of parts) {
     if (["git-clone", "nixpacks", "buildctl"].includes(part)) {
@@ -527,7 +480,6 @@ function BuildLogTerminal({
 
   if (!logs && !streaming) return null;
 
-  // Parse logs into sections and filter if a step is active
   const sections = parseLogSections(logs);
   const containerName = activeLogStep ? STEP_TO_CONTAINER[activeLogStep] : null;
   const filteredLogs = containerName && sections.has(containerName)
@@ -555,7 +507,6 @@ function BuildLogTerminal({
           )}
         </div>
         <div className="flex items-center gap-2">
-          {/* Log filter tabs */}
           {onStepFilter && sections.size > 1 && (
             <div className="flex items-center gap-0.5 bg-gray-100 dark:bg-zinc-800 rounded-lg p-0.5">
               {filterTabs.map((tab) => (
@@ -593,11 +544,7 @@ function BuildLogTerminal({
             {containerName ? `build.log — ${containerName}` : "build.log"}
           </span>
         </div>
-        <AnsiTerminal
-          content={filteredLogs}
-          className="p-4 max-h-[400px]"
-          endRef={endRef}
-        />
+        <AnsiTerminal content={filteredLogs} className="p-4 max-h-[400px]" endRef={endRef} />
       </div>
     </div>
   );
@@ -618,14 +565,6 @@ export default function AppDetailPage() {
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<"build" | "deploy" | null>(null);
   const [rolling, setRolling] = useState<string | null>(null);
-  // syncing state removed — SyncModal handles its own state
-  const [syncStatus, setSyncStatus] = useState<{ health: string; sync: string } | null>(null);
-  const [argoHistory, setArgoHistory] = useState<Array<Record<string, unknown>>>([]);
-
-  const [editName, setEditName] = useState("");
-  const [editRepoUrl, setEditRepoUrl] = useState("");
-  const [editBranch, setEditBranch] = useState("");
-  const [editReplicas, setEditReplicas] = useState(1);
 
   const [logs, setLogs] = useState<string>("");
   const [streaming, setStreaming] = useState(false);
@@ -636,7 +575,6 @@ export default function AppDetailPage() {
   const [showBuildModal, setShowBuildModal] = useState(false);
   const [showDeployModal, setShowDeployModal] = useState(false);
   const [showScaleModal, setShowScaleModal] = useState(false);
-  const [showSyncModal, setShowSyncModal] = useState(false);
   const [showRestartModal, setShowRestartModal] = useState(false);
   const [appServices, setAppServices] = useState<AppServiceEntry[]>([]);
   const [lastStatusRefresh, setLastStatusRefresh] = useState<Date>(new Date());
@@ -656,29 +594,7 @@ export default function AppDetailPage() {
     try {
       const list = await api.deployments.list(tenantSlug, appSlug, accessToken);
       setDeployments(list);
-    } catch {
-      /* ignore */
-    }
-  }, [tenantSlug, appSlug, status, accessToken]);
-
-  const loadSyncStatus = useCallback(async () => {
-    if (status !== "authenticated") return;
-    try {
-      const s = await api.deployments.syncStatus(tenantSlug, appSlug, accessToken);
-      setSyncStatus(s);
-    } catch {
-      /* ignore - ArgoCD may not be configured */
-    }
-  }, [tenantSlug, appSlug, status, accessToken]);
-
-  const loadArgoHistory = useCallback(async () => {
-    if (status !== "authenticated") return;
-    try {
-      const h = await api.deployments.deployHistory(tenantSlug, appSlug, accessToken);
-      setArgoHistory(h);
-    } catch {
-      /* ignore */
-    }
+    } catch { /* ignore */ }
   }, [tenantSlug, appSlug, status, accessToken]);
 
   useEffect(() => {
@@ -690,14 +606,7 @@ export default function AppDetailPage() {
           api.deployments.list(tenantSlug, appSlug, accessToken).catch(() => []),
         ]);
         setApp(a);
-        setEditName(a.name);
-        setEditRepoUrl(a.repo_url);
-        setEditBranch(a.branch);
-        setEditReplicas(a.replicas);
         setDeployments(d as Deployment[]);
-        void loadSyncStatus();
-        void loadArgoHistory();
-        // Load connected services
         api.apps.getServices(tenantSlug, appSlug, accessToken).then(setAppServices).catch(() => {});
       } catch {
         router.push(`/tenants/${tenantSlug}`);
@@ -706,17 +615,13 @@ export default function AppDetailPage() {
       }
     }
     load();
-  }, [tenantSlug, appSlug, status, accessToken, router, loadSyncStatus, loadArgoHistory]);
+  }, [tenantSlug, appSlug, status, accessToken, router]);
 
   const loadApp = useCallback(async () => {
     if (status !== "authenticated") return;
     try {
       const a = await api.apps.get(tenantSlug, appSlug, accessToken);
       setApp(a);
-      setEditName(a.name);
-      setEditRepoUrl(a.repo_url);
-      setEditBranch(a.branch);
-      setEditReplicas(a.replicas);
     } catch { /* ignore */ }
   }, [tenantSlug, appSlug, status, accessToken]);
 
@@ -725,18 +630,18 @@ export default function AppDetailPage() {
     try {
       const svcs = await api.apps.getServices(tenantSlug, appSlug, accessToken);
       setAppServices(svcs);
-    } catch { /* ignore — services endpoint may not exist for old apps */ }
+    } catch { /* ignore */ }
   }, [tenantSlug, appSlug, status, accessToken]);
 
   const refreshStatus = useCallback(async () => {
     setRefreshingStatus(true);
     try {
-      await Promise.all([loadApp(), loadDeployments(), loadSyncStatus()]);
+      await Promise.all([loadApp(), loadDeployments()]);
       setLastStatusRefresh(new Date());
     } finally {
       setRefreshingStatus(false);
     }
-  }, [loadApp, loadDeployments, loadSyncStatus]);
+  }, [loadApp, loadDeployments]);
 
   const latestDeployment = deployments[0];
   const isActiveBuild =
@@ -748,9 +653,7 @@ export default function AppDetailPage() {
     try {
       const bs = await api.deployments.buildStatus(tenantSlug, appSlug, accessToken);
       setBuildStatus(bs);
-    } catch {
-      /* ignore */
-    }
+    } catch { /* ignore */ }
   }, [tenantSlug, appSlug, status, accessToken]);
 
   useEffect(() => {
@@ -760,12 +663,10 @@ export default function AppDetailPage() {
         loadBuildStatus();
         loadApp();
       }, 5000);
-      // Initial load
       loadBuildStatus();
     } else {
       setBuildStatus(null);
       setActiveLogStep(null);
-      // Refresh app data one more time to get final image_tag
       loadApp();
     }
     return () => {
@@ -784,11 +685,9 @@ export default function AppDetailPage() {
     if (shouldStream && !prevActiveRef.current && !streaming) {
       startLogs();
     }
-
     if (!shouldStream && prevActiveRef.current && streaming) {
       stopLogs();
     }
-
     prevActiveRef.current = !!shouldStream;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [latestDeployment?.status]);
@@ -910,8 +809,6 @@ export default function AppDetailPage() {
     }
   }
 
-  // handleSync removed — SyncModal handles sync with options
-
   if (status === "loading" || loading) {
     return (
       <AppShell userEmail={session?.user?.email}>
@@ -928,6 +825,12 @@ export default function AppDetailPage() {
   const appPublicUrl = LB_IP
     ? `https://${appSlug}.${tenantSlug}.apps.${LB_IP}.sslip.io`
     : null;
+
+  // Compute uptime from latest running deployment
+  const uptimeText = (() => {
+    if (currentStatus !== "running" || !latestDeployment) return null;
+    return relativeTime(latestDeployment.created_at).replace(" ago", "");
+  })();
 
   return (
     <AppShell userEmail={session?.user?.email}>
@@ -993,58 +896,52 @@ export default function AppDetailPage() {
             </div>
           </div>
 
-          {/* Action buttons */}
-          <div className="flex items-center gap-2 shrink-0">
+          {/* Action buttons: 1 primary + dropdown */}
+          <div className="flex items-center gap-1.5 shrink-0">
             <button
               onClick={() => setShowBuildModal(true)}
               disabled={!!actionLoading}
-              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 hover:bg-gray-50 dark:hover:bg-zinc-700 text-gray-700 dark:text-zinc-200 text-sm font-semibold transition-all shadow-sm hover:shadow disabled:opacity-50"
-            >
-              {actionLoading === "build" ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <Hammer className="w-4 h-4" />
-              )}
-              Build
-            </button>
-            <button
-              onClick={() => setShowDeployModal(true)}
-              disabled={!!actionLoading || !app.image_tag}
-              title={!app.image_tag ? "No image built yet" : "Deploy current image"}
               className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-bold transition-all shadow-lg shadow-emerald-500/25"
             >
-              {actionLoading === "deploy" ? (
+              {actionLoading === "build" ? (
                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
               ) : (
                 <Rocket className="w-3.5 h-3.5" />
               )}
-              Deploy
+              Build &amp; Deploy
             </button>
-            {/* Scale */}
-            <button
-              onClick={() => setShowScaleModal(true)}
-              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 hover:bg-gray-50 dark:hover:bg-zinc-700 text-gray-700 dark:text-zinc-200 text-sm font-semibold transition-all shadow-sm hover:shadow"
-            >
-              <Layers className="w-4 h-4" />
-              Scale
-            </button>
-            {/* Restart */}
-            <button
-              onClick={() => setShowRestartModal(true)}
-              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 hover:bg-gray-50 dark:hover:bg-zinc-700 text-gray-700 dark:text-zinc-200 text-sm font-semibold transition-all shadow-sm hover:shadow"
-              title="Restart all pods"
-            >
-              <RotateCcw className="w-4 h-4" />
-              Restart
-            </button>
-            <button
-              onClick={() => setShowSyncModal(true)}
-              title="ArgoCD sync with diff preview and options"
-              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 hover:bg-gray-50 dark:hover:bg-zinc-700 text-gray-700 dark:text-zinc-200 text-sm font-semibold transition-all shadow-sm hover:shadow"
-            >
-              <RefreshCw className="w-4 h-4" />
-              ArgoCD Sync
-            </button>
+
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  aria-label="More actions"
+                  className="inline-flex items-center justify-center w-10 h-10 rounded-lg border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 hover:bg-gray-50 dark:hover:bg-zinc-700 text-gray-700 dark:text-zinc-200 transition-all shadow-sm"
+                >
+                  <ChevronDown className="w-4 h-4" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                {app.image_tag && (
+                  <DropdownMenuItem onClick={() => setShowDeployModal(true)}>
+                    <Rocket className="w-4 h-4 text-emerald-500" />
+                    Deploy Existing Image
+                  </DropdownMenuItem>
+                )}
+                <DropdownMenuItem onClick={() => setShowScaleModal(true)}>
+                  <Layers className="w-4 h-4 text-blue-500" />
+                  Scale
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setShowRestartModal(true)}>
+                  <RotateCcw className="w-4 h-4 text-amber-500" />
+                  Restart
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => window.open(app.repo_url, "_blank")}>
+                  <ExternalLink className="w-4 h-4" />
+                  View on GitHub
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </div>
 
@@ -1067,7 +964,6 @@ export default function AppDetailPage() {
               activeStep={activeLogStep}
               onStepClick={(key) => setActiveLogStep(activeLogStep === key ? null : key)}
             />
-            {/* Per-container status summary */}
             {buildStatus?.containers && buildStatus.containers.length > 0 && (
               <div className="flex items-center gap-3 mt-3 px-1">
                 {buildStatus.containers.map((c) => (
@@ -1096,7 +992,7 @@ export default function AppDetailPage() {
           </div>
         )}
 
-        {/* Built status banner — image ready, not yet deployed */}
+        {/* Built status banner */}
         {currentStatus === "built" && latestDeployment && (
           <div className="mb-6 bg-purple-50 dark:bg-purple-500/5 border border-purple-200 dark:border-purple-500/20 rounded-xl p-4 flex items-center justify-between">
             <div className="flex items-center gap-3">
@@ -1104,9 +1000,7 @@ export default function AppDetailPage() {
                 <Package className="w-4 h-4 text-purple-500" />
               </div>
               <div>
-                <p className="text-sm font-semibold text-purple-700 dark:text-purple-400">
-                  Image built successfully
-                </p>
+                <p className="text-sm font-semibold text-purple-700 dark:text-purple-400">Image built successfully</p>
                 <p className="text-xs text-purple-500 dark:text-purple-500/70">
                   {latestDeployment.image_tag ? `Tag: ${latestDeployment.image_tag.split(":").pop()}` : "Ready to deploy"}
                 </p>
@@ -1117,53 +1011,74 @@ export default function AppDetailPage() {
               disabled={!!actionLoading}
               className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 disabled:opacity-50 text-white text-sm font-bold transition-all shadow-lg shadow-purple-500/25"
             >
-              {actionLoading === "deploy" ? (
-                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-              ) : (
-                <Rocket className="w-3.5 h-3.5" />
-              )}
+              {actionLoading === "deploy" ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Rocket className="w-3.5 h-3.5" />}
               Deploy Now
             </button>
           </div>
         )}
 
-        {/* App info bar — Material style */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
-          {[
-            { label: "Replicas", value: String(app.replicas), color: "from-blue-400 to-blue-600", icon: Layers },
-            { label: "Branch", value: app.branch, color: "from-violet-400 to-violet-600", icon: GitBranch },
-            { label: "Image", value: app.image_tag ? app.image_tag.split(":").pop() ?? "--" : "--", color: "from-emerald-400 to-emerald-600", icon: Package },
-            { label: "Webhook", value: app.webhook_token ? `...${app.webhook_token.slice(-8)}` : "--", color: "from-amber-400 to-amber-600", icon: Globe },
-          ].map(({ label, value, color, icon: InfoIcon }) => (
-            <div key={label} className="bg-white dark:bg-zinc-900 rounded-xl shadow-md border border-gray-100 dark:border-zinc-800 p-4">
-              <div className="flex items-center gap-3">
-                <div className={`w-10 h-10 rounded-lg bg-gradient-to-br ${color} shadow-sm flex items-center justify-center shrink-0`}>
-                  <InfoIcon className="w-5 h-5 text-white" />
-                </div>
-                <div className="min-w-0">
-                  <p className="text-xs font-bold text-gray-500 dark:text-zinc-400 uppercase tracking-wider">{label}</p>
-                  <p className="text-base font-bold text-gray-900 dark:text-white font-mono truncate">{value}</p>
+        {/* Info cards — 3 customer-relevant cards */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+          {/* Status card */}
+          <div className="bg-white dark:bg-zinc-900 rounded-xl shadow-md border border-gray-100 dark:border-zinc-800 p-4">
+            <div className="flex items-center gap-3">
+              <div className={`w-10 h-10 rounded-lg shadow-sm flex items-center justify-center shrink-0 ${
+                currentStatus === "running" ? "bg-gradient-to-br from-emerald-400 to-emerald-600" :
+                currentStatus === "failed" ? "bg-gradient-to-br from-red-400 to-red-600" :
+                currentStatus === "building" || currentStatus === "deploying" ? "bg-gradient-to-br from-amber-400 to-amber-600" :
+                "bg-gradient-to-br from-gray-400 to-gray-600"
+              }`}>
+                <Activity className="w-5 h-5 text-white" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-xs font-bold text-gray-500 dark:text-zinc-400 uppercase tracking-wider">Status</p>
+                <div className="flex items-center gap-2">
+                  <p className="text-base font-bold text-gray-900 dark:text-white capitalize">{currentStatus ?? "—"}</p>
+                  {uptimeText && (
+                    <span className="text-xs text-gray-400 dark:text-zinc-500">· {uptimeText}</span>
+                  )}
                 </div>
               </div>
             </div>
-          ))}
-        </div>
+          </div>
 
-        {/* ArgoCD status bar */}
-        {syncStatus && (
-          <div className="mb-4 flex items-center gap-3 px-3 py-2 rounded-lg border border-gray-200 dark:border-zinc-800 bg-gray-50 dark:bg-zinc-900/30">
-            <span className="text-xs text-gray-400 dark:text-zinc-600">ArgoCD</span>
-            <div className="flex items-center gap-2">
-              <span className={`text-xs font-medium ${syncStatus.health === "Healthy" ? "text-emerald-400" : syncStatus.health === "Degraded" ? "text-red-400" : "text-amber-400"}`}>
-                {syncStatus.health}
-              </span>
-              <span className="text-gray-300 dark:text-zinc-700">·</span>
-              <span className={`text-xs font-medium ${syncStatus.sync === "Synced" ? "text-emerald-400" : syncStatus.sync === "OutOfSync" ? "text-amber-400" : "text-gray-500 dark:text-zinc-400"}`}>
-                {syncStatus.sync}
-              </span>
+          {/* Instances card */}
+          <div className="bg-white dark:bg-zinc-900 rounded-xl shadow-md border border-gray-100 dark:border-zinc-800 p-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-blue-400 to-blue-600 shadow-sm flex items-center justify-center shrink-0">
+                <Layers className="w-5 h-5 text-white" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-xs font-bold text-gray-500 dark:text-zinc-400 uppercase tracking-wider">Instances</p>
+                <p className="text-base font-bold text-gray-900 dark:text-white font-mono">{app.replicas} replica{app.replicas !== 1 ? "s" : ""}</p>
+              </div>
             </div>
           </div>
-        )}
+
+          {/* Last Deploy card */}
+          <div className="bg-white dark:bg-zinc-900 rounded-xl shadow-md border border-gray-100 dark:border-zinc-800 p-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-violet-400 to-violet-600 shadow-sm flex items-center justify-center shrink-0">
+                <Clock className="w-5 h-5 text-white" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-xs font-bold text-gray-500 dark:text-zinc-400 uppercase tracking-wider">Last Deploy</p>
+                <p className="text-base font-bold text-gray-900 dark:text-white font-mono">
+                  {latestDeployment ? (
+                    <>
+                      {relativeTime(latestDeployment.created_at)}
+                      {latestDeployment.commit_sha && (
+                        <span className="text-gray-400 dark:text-zinc-500 text-xs ml-1.5">
+                          · {latestDeployment.commit_sha.slice(0, 7)}
+                        </span>
+                      )}
+                    </>
+                  ) : "—"}
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
 
         {/* Provisioning banner */}
         {app.pending_services && app.pending_services.length > 0 && (
@@ -1181,124 +1096,80 @@ export default function AppDetailPage() {
           </div>
         )}
 
-        {/* Connected Services */}
-        <div className="mb-4">
-          <ConnectedServicesPanel
-            tenantSlug={tenantSlug}
-            appSlug={appSlug}
-            services={appServices}
-            accessToken={accessToken}
-            onRefresh={loadAppServices}
-          />
-        </div>
-
-        {/* Tabs */}
-        <Tabs defaultValue="deployments">
+        {/* Tabs — reduced from 9 to 4-5 */}
+        <Tabs defaultValue="overview">
           <TabsList>
-            <TabsTrigger value="deployments">
-              Deployments
-              <span className="ml-1.5 text-xs text-gray-400 dark:text-zinc-600">{deployments.length}</span>
-            </TabsTrigger>
-            <TabsTrigger value="observability">
+            <TabsTrigger value="overview">
               <Activity className="w-3.5 h-3.5 mr-1" />
-              Observability
+              Overview
             </TabsTrigger>
             <TabsTrigger value="logs">
               <Terminal className="w-3.5 h-3.5 mr-1" />
-              Logs
-            </TabsTrigger>
-            <TabsTrigger value="environments">
-              <Layers className="w-3.5 h-3.5 mr-1" />
-              Environments
+              Logs &amp; Monitoring
             </TabsTrigger>
             <TabsTrigger value="domains">
               <Globe className="w-3.5 h-3.5 mr-1" />
               Domains
             </TabsTrigger>
-            <TabsTrigger value="cronjobs">
-              <Timer className="w-3.5 h-3.5 mr-1" />
-              Jobs
-            </TabsTrigger>
-            <TabsTrigger value="storage">
-              <HardDrive className="w-3.5 h-3.5 mr-1" />
-              Storage
-            </TabsTrigger>
-            <TabsTrigger value="canary">
-              <GitCompare className="w-3.5 h-3.5 mr-1" />
-              Canary
-            </TabsTrigger>
+            {app.app_type === "cronjob" && (
+              <TabsTrigger value="cronjobs">
+                <Timer className="w-3.5 h-3.5 mr-1" />
+                Scheduled Jobs
+              </TabsTrigger>
+            )}
             <TabsTrigger value="settings">
               <Settings className="w-3.5 h-3.5 mr-1" />
               Settings
             </TabsTrigger>
           </TabsList>
 
-          {/* Deployments tab */}
-          <TabsContent value="deployments" className="pt-5">
-            {deployments.length === 0 ? (
-              <div className="text-center py-16 border border-dashed border-gray-200 dark:border-zinc-800 rounded-xl">
-                <Package className="w-8 h-8 mx-auto mb-2 text-gray-400 dark:text-zinc-700" />
-                <p className="text-sm text-gray-500 dark:text-zinc-500">No deployments yet.</p>
-                <p className="text-xs mt-1 text-gray-400 dark:text-zinc-600">Click &quot;Build&quot; to trigger the first build.</p>
-              </div>
-            ) : (
-              <div className="bg-white dark:bg-zinc-900 border border-gray-100 dark:border-zinc-800 rounded-xl overflow-hidden shadow-md">
-                {deployments.map((d, idx) => (
-                  <DeploymentCard
-                    key={d.id}
-                    deployment={d}
-                    onRollback={handleRollback}
-                    rolling={rolling}
-                    isFirst={idx === 0}
-                  />
-                ))}
-              </div>
-            )}
-            {argoHistory.length > 0 && (
-              <div className="mt-6">
-                <h4 className="text-xs font-medium text-gray-500 dark:text-zinc-500 uppercase tracking-wider mb-3">ArgoCD Revisions</h4>
-                <div className="bg-white dark:bg-zinc-900/50 border border-gray-200 dark:border-zinc-800 rounded-xl overflow-hidden shadow-sm">
-                  {argoHistory.slice(0, 10).map((h, i) => {
-                    const revision = h.revision as number | undefined;
-                    const deployedAt = h.deployedAt as string | undefined;
-                    const message = (h.source as Record<string, unknown> | undefined)?.repoURL as string ?? "";
-                    return (
-                      <div key={i} className="flex items-center justify-between px-4 py-2.5 border-b border-gray-100 dark:border-zinc-800/60 last:border-0">
-                        <div className="flex items-center gap-3">
-                          <span className="text-xs font-mono text-gray-500 dark:text-zinc-500">r{revision}</span>
-                          <span className="text-xs text-gray-400 dark:text-zinc-600 truncate max-w-xs">{message}</span>
-                        </div>
-                        <div className="flex items-center gap-3 shrink-0">
-                          {deployedAt && (
-                            <span className="text-xs text-gray-400 dark:text-zinc-700">{new Date(deployedAt).toLocaleString()}</span>
-                          )}
-                          {typeof revision === "number" && (
-                            <button
-                              onClick={async () => {
-                                try {
-                                  await api.deployments.argoCDRollback(tenantSlug, appSlug, revision, accessToken);
-                                  toastSuccess(`Rolled back to revision ${revision}`);
-                                } catch (err) {
-                                  toastError(err instanceof Error ? err.message : "Rollback failed");
-                                }
-                              }}
-                              className="text-gray-400 dark:text-zinc-600 hover:text-gray-700 dark:hover:text-zinc-300 transition-colors"
-                              title={`Rollback to revision ${revision}`}
-                            >
-                              <RotateCcw className="w-3.5 h-3.5" />
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
+          {/* Overview tab — deployments + connected services */}
+          <TabsContent value="overview" className="pt-5 space-y-6">
+            {/* Recent Deployments */}
+            <div>
+              <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
+                <Package className="w-4 h-4 text-gray-500 dark:text-zinc-500" />
+                Recent Deployments
+              </h3>
+              {deployments.length === 0 ? (
+                <div className="text-center py-12 border border-dashed border-gray-200 dark:border-zinc-800 rounded-xl">
+                  <Package className="w-8 h-8 mx-auto mb-2 text-gray-400 dark:text-zinc-700" />
+                  <p className="text-sm text-gray-500 dark:text-zinc-500">No deployments yet.</p>
+                  <p className="text-xs mt-1 text-gray-400 dark:text-zinc-600">Click &quot;Build &amp; Deploy&quot; to get started.</p>
                 </div>
-              </div>
-            )}
+              ) : (
+                <div className="bg-white dark:bg-zinc-900 border border-gray-100 dark:border-zinc-800 rounded-xl overflow-hidden shadow-md">
+                  {deployments.slice(0, 5).map((d, idx) => (
+                    <DeploymentCard
+                      key={d.id}
+                      deployment={d}
+                      onRollback={handleRollback}
+                      rolling={rolling}
+                      isFirst={idx === 0}
+                    />
+                  ))}
+                </div>
+              )}
+              {deployments.length > 5 && (
+                <p className="text-xs text-gray-400 dark:text-zinc-600 mt-2 text-center">
+                  Showing 5 of {deployments.length} deployments
+                </p>
+              )}
+            </div>
+
+            {/* Connected Services */}
+            <ConnectedServicesPanel
+              tenantSlug={tenantSlug}
+              appSlug={appSlug}
+              services={appServices}
+              accessToken={accessToken}
+              onRefresh={loadAppServices}
+            />
           </TabsContent>
 
-          {/* Observability tab */}
-          <TabsContent value="observability" className="pt-5">
+          {/* Logs & Monitoring tab — merged observability + logs */}
+          <TabsContent value="logs" className="pt-5 space-y-6">
+            {/* Observability: pods, CPU/RAM, events */}
             <ObservabilityTab
               tenantSlug={tenantSlug}
               appSlug={appSlug}
@@ -1310,74 +1181,69 @@ export default function AppDetailPage() {
               onStartLogs={startLogs}
               onStopLogs={stopLogs}
             />
-          </TabsContent>
 
-          {/* Logs tab */}
-          <TabsContent value="logs" className="pt-5">
-            <div className="flex items-center gap-2 mb-3">
-              {!streaming ? (
-                <button
-                  onClick={startLogs}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-medium transition-colors"
-                >
-                  <Terminal className="w-3.5 h-3.5" />
-                  {logs ? "Restart Streaming" : "Stream Logs"}
-                </button>
-              ) : (
-                <button
-                  onClick={stopLogs}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-white text-xs font-medium transition-colors"
-                >
-                  <StopCircle className="w-3.5 h-3.5" />
-                  Stop
-                </button>
-              )}
-              {streaming && (
-                <span className="flex items-center gap-1.5 text-xs text-emerald-500">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                  live
-                </span>
-              )}
-              {logs && !streaming && (
-                <button
-                  onClick={() => setLogs("")}
-                  className="text-xs text-gray-400 dark:text-zinc-600 hover:text-gray-500 dark:hover:text-zinc-400 transition-colors"
-                >
-                  Clear
-                </button>
-              )}
-            </div>
-
-            <div className="bg-zinc-950 border border-gray-200 dark:border-zinc-800 rounded-xl overflow-hidden">
-              <div className="flex items-center gap-1.5 px-4 py-2.5 border-b border-gray-200 dark:border-zinc-800">
-                <span className="w-2.5 h-2.5 rounded-full bg-red-500/40" />
-                <span className="w-2.5 h-2.5 rounded-full bg-amber-500/40" />
-                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500/40" />
-                <span className="text-xs text-zinc-700 ml-2 font-mono">
-                  {app.name} · live logs
-                </span>
+            {/* Standalone live logs terminal */}
+            <div>
+              <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
+                <Terminal className="w-4 h-4 text-gray-500 dark:text-zinc-500" />
+                Application Logs
+              </h3>
+              <div className="flex items-center gap-2 mb-3">
+                {!streaming ? (
+                  <button
+                    onClick={startLogs}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-medium transition-colors"
+                  >
+                    <Terminal className="w-3.5 h-3.5" />
+                    {logs ? "Restart Streaming" : "Stream Logs"}
+                  </button>
+                ) : (
+                  <button
+                    onClick={stopLogs}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-white text-xs font-medium transition-colors"
+                  >
+                    <StopCircle className="w-3.5 h-3.5" />
+                    Stop
+                  </button>
+                )}
                 {streaming && (
-                  <span className="ml-auto flex items-center gap-1 text-xs text-emerald-500">
+                  <span className="flex items-center gap-1.5 text-xs text-emerald-500">
                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
                     live
                   </span>
                 )}
+                {logs && !streaming && (
+                  <button
+                    onClick={() => setLogs("")}
+                    className="text-xs text-gray-400 dark:text-zinc-600 hover:text-gray-500 dark:hover:text-zinc-400 transition-colors"
+                  >
+                    Clear
+                  </button>
+                )}
               </div>
-              <AnsiTerminal
-                content={logs || "# Click 'Stream logs' to start receiving live logs from running pods...\n"}
-                className="p-4 min-h-[240px] max-h-[500px]"
-                endRef={logsEndRef}
-              />
-            </div>
-          </TabsContent>
 
-          {/* Environments tab */}
-          <TabsContent value="environments" className="pt-5">
-            <EnvironmentsTab
-              tenantSlug={tenantSlug}
-              appSlug={app.slug}
-              accessToken={accessToken}
-            />
+              <div className="bg-zinc-950 border border-gray-200 dark:border-zinc-800 rounded-xl overflow-hidden">
+                <div className="flex items-center gap-1.5 px-4 py-2.5 border-b border-gray-200 dark:border-zinc-800">
+                  <span className="w-2.5 h-2.5 rounded-full bg-red-500/40" />
+                  <span className="w-2.5 h-2.5 rounded-full bg-amber-500/40" />
+                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-500/40" />
+                  <span className="text-xs text-zinc-700 ml-2 font-mono">
+                    {app.name} · live logs
+                  </span>
+                  {streaming && (
+                    <span className="ml-auto flex items-center gap-1 text-xs text-emerald-500">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                      live
+                    </span>
+                  )}
+                </div>
+                <AnsiTerminal
+                  content={logs || "# Click 'Stream Logs' to start receiving live logs from running pods...\n"}
+                  className="p-4 min-h-[240px] max-h-[500px]"
+                  endRef={logsEndRef}
+                />
+              </div>
+            </div>
           </TabsContent>
 
           {/* Domains tab */}
@@ -1389,32 +1255,16 @@ export default function AppDetailPage() {
             />
           </TabsContent>
 
-          {/* CronJobs tab */}
-          <TabsContent value="cronjobs" className="pt-5">
-            <CronJobsTab
-              tenantSlug={tenantSlug}
-              appSlug={app.slug}
-              accessToken={accessToken}
-            />
-          </TabsContent>
-
-          {/* Storage tab */}
-          <TabsContent value="storage" className="pt-5">
-            <VolumesTab
-              tenantSlug={tenantSlug}
-              appSlug={app.slug}
-              accessToken={accessToken}
-            />
-          </TabsContent>
-
-          {/* Canary tab */}
-          <TabsContent value="canary" className="pt-5">
-            <CanaryTab
-              tenantSlug={tenantSlug}
-              appSlug={app.slug}
-              accessToken={accessToken}
-            />
-          </TabsContent>
+          {/* CronJobs tab (conditional) */}
+          {app.app_type === "cronjob" && (
+            <TabsContent value="cronjobs" className="pt-5">
+              <CronJobsTab
+                tenantSlug={tenantSlug}
+                appSlug={app.slug}
+                accessToken={accessToken}
+              />
+            </TabsContent>
+          )}
 
           {/* Settings tab */}
           <TabsContent value="settings" className="pt-5">
@@ -1424,17 +1274,13 @@ export default function AppDetailPage() {
               accessToken={accessToken}
               onSaved={(updated) => {
                 setApp(updated);
-                setEditName(updated.name);
-                setEditRepoUrl(updated.repo_url);
-                setEditBranch(updated.branch);
-                setEditReplicas(updated.replicas);
               }}
             />
           </TabsContent>
         </Tabs>
       </div>
 
-      {/* Build Modal */}
+      {/* Modals */}
       <BuildModal
         open={showBuildModal}
         onClose={() => setShowBuildModal(false)}
@@ -1447,7 +1293,6 @@ export default function AppDetailPage() {
         dockerfilePath={app.dockerfile_path}
       />
 
-      {/* Deploy Modal */}
       <DeployModal
         open={showDeployModal}
         onClose={() => setShowDeployModal(false)}
@@ -1459,6 +1304,7 @@ export default function AppDetailPage() {
         cpuLimit={app.resource_cpu_limit || "500m"}
         memoryLimit={app.resource_memory_limit || "512Mi"}
       />
+
       <ScaleModal
         open={showScaleModal}
         onClose={() => setShowScaleModal(false)}
@@ -1475,14 +1321,7 @@ export default function AppDetailPage() {
         accessToken={accessToken}
         onSuccess={() => { void loadApp(); toastSuccess("Scale applied"); }}
       />
-      <SyncModal
-        open={showSyncModal}
-        onClose={() => setShowSyncModal(false)}
-        tenantSlug={tenantSlug}
-        appSlug={appSlug}
-        accessToken={accessToken}
-        onSuccess={() => { void loadSyncStatus(); toastSuccess("Sync complete"); }}
-      />
+
       <RestartModal
         open={showRestartModal}
         onClose={() => setShowRestartModal(false)}
