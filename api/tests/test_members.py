@@ -31,6 +31,10 @@ async def member_tenant(db_session: AsyncSession) -> Tenant:
     db_session.add(tenant)
     await db_session.commit()
     await db_session.refresh(tenant)
+    # NOTE: H0-10 made the members router enforce membership. Tests opt-in
+    # via the existing `_test_user_is_owner` fixture (declared below) where
+    # they need a successful call. Tests that don't opt in are testing
+    # tenant-not-found (404) or unrelated paths.
     return tenant
 
 
@@ -187,6 +191,7 @@ async def test_add_member_tenant_not_found_returns_403_or_404(async_client: Asyn
 
 
 @pytest.mark.asyncio
+@pytest.mark.usefixtures("_test_user_is_owner")
 async def test_update_member_role(async_client: AsyncClient, member_tenant: Tenant, dev_member: TenantMember):
     resp = await async_client.patch(
         f"/api/v1/tenants/{member_tenant.slug}/members/{dev_member.user_id}",
@@ -198,8 +203,20 @@ async def test_update_member_role(async_client: AsyncClient, member_tenant: Tena
 
 @pytest.mark.asyncio
 async def test_cannot_downgrade_last_owner(
-    async_client: AsyncClient, member_tenant: Tenant, owner_member: TenantMember
+    async_client: AsyncClient, member_tenant: Tenant, owner_member: TenantMember, db_session: AsyncSession
 ):
+    # Make the test user an admin (not owner) so the "last owner" guard
+    # actually triggers when we try to demote owner-001.
+    db_session.add(
+        TenantMember(
+            tenant_id=member_tenant.id,
+            user_id="test-user",
+            email="test@haven.nl",
+            role=MemberRole.admin,
+        )
+    )
+    await db_session.commit()
+
     resp = await async_client.patch(
         f"/api/v1/tenants/{member_tenant.slug}/members/{owner_member.user_id}",
         json={"role": "member"},
@@ -209,6 +226,7 @@ async def test_cannot_downgrade_last_owner(
 
 
 @pytest.mark.asyncio
+@pytest.mark.usefixtures("_test_user_is_owner")
 async def test_can_downgrade_owner_when_multiple(
     async_client: AsyncClient, member_tenant: Tenant, owner_member: TenantMember, db_session: AsyncSession
 ):
@@ -232,6 +250,7 @@ async def test_can_downgrade_owner_when_multiple(
 
 
 @pytest.mark.asyncio
+@pytest.mark.usefixtures("_test_user_is_owner")
 async def test_update_member_not_found(async_client: AsyncClient, member_tenant: Tenant):
     resp = await async_client.patch(
         f"/api/v1/tenants/{member_tenant.slug}/members/nonexistent",
@@ -258,13 +277,28 @@ async def test_remove_member(async_client: AsyncClient, member_tenant: Tenant, d
 
 
 @pytest.mark.asyncio
-async def test_cannot_remove_last_owner(async_client: AsyncClient, member_tenant: Tenant, owner_member: TenantMember):
+async def test_cannot_remove_last_owner(
+    async_client: AsyncClient, member_tenant: Tenant, owner_member: TenantMember, db_session: AsyncSession
+):
+    # H0-10: caller must be a tenant member; admin role is enough to attempt
+    # the delete and trigger the "last owner" guard.
+    db_session.add(
+        TenantMember(
+            tenant_id=member_tenant.id,
+            user_id="test-user",
+            email="test@haven.nl",
+            role=MemberRole.admin,
+        )
+    )
+    await db_session.commit()
+
     resp = await async_client.delete(f"/api/v1/tenants/{member_tenant.slug}/members/{owner_member.user_id}")
     assert resp.status_code == 409
     assert "last owner" in resp.json()["detail"]
 
 
 @pytest.mark.asyncio
+@pytest.mark.usefixtures("_test_user_is_owner")
 async def test_remove_member_not_found(async_client: AsyncClient, member_tenant: Tenant):
     resp = await async_client.delete(f"/api/v1/tenants/{member_tenant.slug}/members/nonexistent")
     assert resp.status_code == 404

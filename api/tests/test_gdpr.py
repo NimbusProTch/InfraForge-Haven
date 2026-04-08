@@ -14,6 +14,7 @@ from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.tenant import Tenant
+from app.models.tenant_member import MemberRole, TenantMember
 from app.models.user_consent import ConsentType, UserConsent
 
 # ---------------------------------------------------------------------------
@@ -37,6 +38,11 @@ async def gdpr_tenant(db_session: AsyncSession) -> Tenant:
         storage_limit="50Gi",
     )
     db_session.add(tenant)
+    await db_session.flush()
+    # H0-9: GDPR router now enforces membership
+    db_session.add(
+        TenantMember(tenant_id=tenant.id, user_id="test-user", email="test@haven.nl", role=MemberRole("owner"))
+    )
     await db_session.commit()
     await db_session.refresh(tenant)
     return tenant

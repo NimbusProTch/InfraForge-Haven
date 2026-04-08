@@ -13,20 +13,35 @@ from app.auth.jwt import verify_token
 from app.deps import get_db, get_k8s
 from app.main import app
 from app.models.tenant import Tenant
+from app.models.tenant_member import MemberRole, TenantMember
 
 
-async def _make_tenant(db: AsyncSession) -> Tenant:
+async def _make_tenant(db: AsyncSession, slug: str = "bkp-tenant", add_test_user: bool = True) -> Tenant:
+    """Create a tenant. By default also adds 'test-user' as owner so the
+    default async_client (mocked verify_token returns sub='test-user') passes
+    membership checks. Pass add_test_user=False to create a tenant the test
+    user is NOT a member of, for cross-tenant isolation tests.
+    """
     tenant = Tenant(
         id=uuid.uuid4(),
-        slug="bkp-tenant",
-        name="Backup Tenant",
-        namespace="tenant-bkp-tenant",
-        keycloak_realm="bkp-tenant",
+        slug=slug,
+        name=f"Backup Tenant {slug}",
+        namespace=f"tenant-{slug}",
+        keycloak_realm=slug,
         cpu_limit="4",
         memory_limit="8Gi",
         storage_limit="50Gi",
     )
     db.add(tenant)
+    await db.flush()
+    if add_test_user:
+        member = TenantMember(
+            tenant_id=tenant.id,
+            user_id="test-user",
+            email="test@haven.nl",
+            role=MemberRole("owner"),
+        )
+        db.add(member)
     await db.commit()
     await db.refresh(tenant)
     return tenant
@@ -120,3 +135,30 @@ async def test_trigger_backup_response_structure(k8s_client, db_session):
     assert len(data["backup_name"]) > 0
     assert isinstance(data["triggered_at"], str)
     assert data["backup_name"].startswith("backup-haven-bkp-tenant-")
+
+
+# ---------------------------------------------------------------------------
+# H0-2: Cross-tenant isolation regression tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_list_backups_cross_tenant_access_denied(async_client, db_session):
+    """A non-member must NOT be able to list another tenant's backups.
+
+    Regression for H0-2: prior to the fix, _get_tenant_or_404 in backup.py
+    looked up the tenant by slug but never verified the caller was a member,
+    so any authenticated user could enumerate any tenant's DR artifacts.
+    """
+    foreign = await _make_tenant(db_session, slug="foreign-bkp", add_test_user=False)
+    response = await async_client.get(f"/api/v1/tenants/{foreign.slug}/backup")
+    assert response.status_code == 403
+    assert "not a member" in response.json()["detail"].lower()
+
+
+@pytest.mark.asyncio
+async def test_trigger_backup_cross_tenant_access_denied(k8s_client, db_session):
+    """A non-member must NOT be able to trigger backups on another tenant."""
+    foreign = await _make_tenant(db_session, slug="foreign-bkp-trigger", add_test_user=False)
+    response = await k8s_client.post(f"/api/v1/tenants/{foreign.slug}/backup")
+    assert response.status_code == 403

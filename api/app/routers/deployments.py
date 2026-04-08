@@ -21,20 +21,19 @@ router = APIRouter(prefix="/tenants/{tenant_slug}/apps/{app_slug}", tags=["deplo
 logger = logging.getLogger(__name__)
 
 
-async def _get_tenant_or_404(tenant_slug: str, db: DBSession, current_user: dict | None = None) -> Tenant:
+async def _get_tenant_or_404(tenant_slug: str, db: DBSession, current_user: dict) -> Tenant:
+    """H0-10: current_user is now MANDATORY (was fail-open `dict | None = None`)."""
+    from app.models.tenant_member import TenantMember
+
     result = await db.execute(select(Tenant).where(Tenant.slug == tenant_slug))
     tenant = result.scalar_one_or_none()
     if tenant is None:
         raise HTTPException(status_code=404, detail="Tenant not found")
-    if current_user:
-        from app.models.tenant_member import TenantMember
 
-        uid = current_user.get("sub", "")
-        mem = await db.execute(
-            select(TenantMember).where(TenantMember.tenant_id == tenant.id, TenantMember.user_id == uid)
-        )
-        if mem.scalar_one_or_none() is None:
-            raise HTTPException(status_code=403, detail="You are not a member of this tenant")
+    uid = current_user.get("sub", "")
+    mem = await db.execute(select(TenantMember).where(TenantMember.tenant_id == tenant.id, TenantMember.user_id == uid))
+    if mem.scalar_one_or_none() is None:
+        raise HTTPException(status_code=403, detail="You are not a member of this tenant")
     return tenant
 
 

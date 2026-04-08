@@ -173,3 +173,37 @@ async def test_audit_logs_filter_by_resource_type(async_client, db_session, samp
     data = resp.json()
     assert data["total"] == 1
     assert data["items"][0]["resource_type"] == "service"
+
+
+# ---------------------------------------------------------------------------
+# H0-1: Cross-tenant isolation regression tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_audit_logs_cross_tenant_access_denied(async_client, db_session, sample_tenant):
+    """A non-member must NOT be able to read another tenant's audit logs.
+
+    Regression test for the H0-1 hot-fix: prior to the fix, audit.py looked
+    up the tenant by slug but never verified the caller was a member of it,
+    so any authenticated user could read any tenant's audit logs.
+    """
+    # Create a second tenant where 'test-user' is NOT a member
+    other_tenant = Tenant(
+        id=uuid.uuid4(),
+        slug="other-gemeente",
+        name="Other Gemeente",
+        namespace="tenant-other-gemeente",
+        keycloak_realm="other-gemeente",
+    )
+    db_session.add(other_tenant)
+    await db_session.commit()
+
+    # Write some audit data into the other tenant
+    await audit_service.audit(db_session, tenant_id=other_tenant.id, action="app.create", resource_id="secret-app")
+    await db_session.commit()
+
+    # 'test-user' (default async_client) is not a member of 'other-gemeente'
+    resp = await async_client.get(f"/api/v1/tenants/{other_tenant.slug}/audit-logs")
+    assert resp.status_code == 403
+    assert "not a member" in resp.json()["detail"].lower()

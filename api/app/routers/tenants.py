@@ -69,8 +69,21 @@ async def my_tenants(db: DBSession, current_user: CurrentUser) -> list[Tenant]:
 
 @router.get("", response_model=list[TenantResponse])
 async def list_tenants(db: DBSession, current_user: CurrentUser) -> list[Tenant]:
-    """List all tenants (admin view). For user-specific list, use GET /tenants/me."""
-    result = await db.execute(select(Tenant).order_by(Tenant.created_at.desc()))
+    """List tenants the current user is a member of.
+
+    H0-4: Prior to the fix this endpoint returned EVERY tenant in the system
+    to any authenticated user, leaking the customer list and enabling tenant
+    enumeration. It now behaves identically to GET /tenants/me — scoped to
+    the caller's memberships. A separate "platform admin" view (with proper
+    role enforcement) can be added in Sprint H2 if needed.
+    """
+    user_id = current_user.get("sub", "")
+    result = await db.execute(
+        select(Tenant)
+        .join(TenantMember, TenantMember.tenant_id == Tenant.id)
+        .where(TenantMember.user_id == user_id)
+        .order_by(Tenant.created_at.desc())
+    )
     return list(result.scalars().all())
 
 
@@ -163,8 +176,11 @@ async def update_tenant(tenant_slug: str, body: TenantUpdate, db: DBSession, cur
     tenant = await _get_tenant_or_404(tenant_slug, db)
     await _require_tenant_membership(tenant, current_user, db, min_role="admin")
 
-    # Only allow safe fields to be updated
-    _MUTABLE_FIELDS = {"name", "cpu_limit", "memory_limit", "storage_limit", "tier", "active", "github_token"}
+    # H0-3: github_token is intentionally excluded — it must only be set via
+    # the OAuth callback flow (api/app/routers/github.py). Allowing PATCH would
+    # let an admin paste an arbitrary GitHub token (potentially someone else's
+    # leaked token) and bypass the OAuth handshake.
+    _MUTABLE_FIELDS = {"name", "cpu_limit", "memory_limit", "storage_limit", "tier", "active"}
     update_data = body.model_dump(exclude_none=True)
     for field, value in update_data.items():
         if field in _MUTABLE_FIELDS:

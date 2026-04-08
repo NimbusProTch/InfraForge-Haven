@@ -9,6 +9,7 @@ Covers:
 """
 
 import logging
+import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
@@ -22,6 +23,8 @@ from app.models.organization import (
     OrgTenantMembership,
     SSOConfig,
 )
+from app.models.tenant import Tenant
+from app.models.tenant_member import MemberRole, TenantMember
 from app.schemas.organization import (
     BillingSummaryResponse,
     OrganizationCreate,
@@ -340,8 +343,48 @@ async def list_org_tenants(org_slug: str, db: DBSession) -> list[OrgTenantMember
     status_code=status.HTTP_201_CREATED,
     dependencies=[Depends(require_org_role("owner", "admin"))],
 )
-async def add_tenant_to_org(org_slug: str, body: OrgTenantAdd, db: DBSession) -> OrgTenantMembership:
+async def add_tenant_to_org(
+    org_slug: str,
+    body: OrgTenantAdd,
+    db: DBSession,
+    current_user: CurrentUser,
+) -> OrgTenantMembership:
+    """Attach a tenant to an organization.
+
+    H0-5: The caller must be owner OR admin of BOTH the organization (enforced
+    by `require_org_role` above) AND the tenant being added. Without the
+    tenant-side check an org admin could attach any tenant in the system to
+    their org and gain visibility into it via billing/aggregation endpoints.
+    """
     org = await _get_org_or_404(org_slug, db)
+
+    # Validate the tenant_id is a real UUID — body.tenant_id is a String field
+    # because OrgTenantMembership.tenant_id is also a String column (no FK).
+    try:
+        tenant_uuid = uuid.UUID(body.tenant_id)
+    except (ValueError, TypeError) as exc:
+        raise HTTPException(status_code=400, detail="tenant_id must be a valid UUID") from exc
+
+    # Verify the tenant exists
+    tenant_q = await db.execute(select(Tenant).where(Tenant.id == tenant_uuid))
+    tenant = tenant_q.scalar_one_or_none()
+    if tenant is None:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+
+    # Verify the caller is owner/admin of THAT tenant
+    user_id = current_user.get("sub", "")
+    member_q = await db.execute(
+        select(TenantMember).where(
+            TenantMember.tenant_id == tenant.id,
+            TenantMember.user_id == user_id,
+        )
+    )
+    tenant_member = member_q.scalar_one_or_none()
+    if tenant_member is None or tenant_member.role not in (MemberRole.owner, MemberRole.admin):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You must be owner or admin of the tenant to attach it to an organization",
+        )
 
     # Prevent duplicate
     existing = await db.execute(

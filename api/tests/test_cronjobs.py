@@ -14,6 +14,7 @@ from app.deps import get_db, get_k8s
 from app.main import app
 from app.models.application import Application
 from app.models.tenant import Tenant
+from app.models.tenant_member import MemberRole, TenantMember
 
 
 @pytest_asyncio.fixture
@@ -56,6 +57,8 @@ async def _make_tenant_and_app(db: AsyncSession) -> tuple[Tenant, Application]:
     )
     db.add(tenant)
     await db.flush()
+    # H0-9: cronjobs router now enforces membership
+    db.add(TenantMember(tenant_id=tenant.id, user_id="test-user", email="test@haven.nl", role=MemberRole("owner")))
 
     app_obj = Application(
         id=uuid.uuid4(),

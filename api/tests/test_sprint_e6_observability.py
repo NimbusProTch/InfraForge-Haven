@@ -17,6 +17,7 @@ from app.deps import get_db, get_k8s
 from app.main import app
 from app.models.application import Application
 from app.models.tenant import Tenant
+from app.models.tenant_member import MemberRole, TenantMember
 
 
 async def _tenant(db: AsyncSession, slug: str = "obs-test") -> Tenant:
@@ -31,6 +32,19 @@ async def _tenant(db: AsyncSession, slug: str = "obs-test") -> Tenant:
         storage_limit="50Gi",
     )
     db.add(t)
+    await db.flush()
+    # H0-9: observability router now enforces membership; this file's local
+    # obs_client / obs_client_no_k8s fixtures mock verify_token with sub='test'
+    # (NOT 'test-user'), so add the member with that user_id.
+    db.add(
+        TenantMember(
+            id=uuid.uuid4(),
+            tenant_id=t.id,
+            user_id="test",
+            email="t@t.nl",
+            role=MemberRole("owner"),
+        )
+    )
     await db.commit()
     await db.refresh(t)
     return t

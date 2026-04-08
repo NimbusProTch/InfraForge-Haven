@@ -23,6 +23,7 @@ from app.main import app
 from app.models.managed_service import ManagedService, ServiceStatus, ServiceTier
 from app.models.managed_service import ServiceType as ModelServiceType
 from app.models.tenant import Tenant
+from app.models.tenant_member import MemberRole, TenantMember
 from app.services.backup_service import (
     BackupService,
     RestoreRequest,
@@ -36,7 +37,10 @@ from app.services.backup_service import (
 # ---------------------------------------------------------------------------
 
 
-async def _make_tenant(db: AsyncSession, slug: str = "bkp-test") -> Tenant:
+async def _make_tenant(db: AsyncSession, slug: str = "bkp-test", add_test_user: bool = True) -> Tenant:
+    """Create a tenant with test-user as owner so per-service backup
+    endpoints (which now enforce membership) succeed by default.
+    """
     tenant = Tenant(
         id=uuid.uuid4(),
         slug=slug,
@@ -48,6 +52,15 @@ async def _make_tenant(db: AsyncSession, slug: str = "bkp-test") -> Tenant:
         storage_limit="50Gi",
     )
     db.add(tenant)
+    await db.flush()
+    if add_test_user:
+        member = TenantMember(
+            tenant_id=tenant.id,
+            user_id="test-user",
+            email="test@haven.nl",
+            role=MemberRole("owner"),
+        )
+        db.add(member)
     await db.commit()
     await db.refresh(tenant)
     return tenant
@@ -444,3 +457,18 @@ async def test_backup_service_restore_unsupported_type():
     )
     with pytest.raises(RuntimeError, match="not supported"):
         await svc.restore_backup(request)
+
+
+# ---------------------------------------------------------------------------
+# H0-2: Per-service cross-tenant isolation regression
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_per_service_backup_cross_tenant_access_denied(async_client, db_session):
+    """A non-member must NOT be able to list per-service backups for another tenant."""
+    foreign = await _make_tenant(db_session, slug="foreign-svc-bkp", add_test_user=False)
+    await _make_service(db_session, foreign, name="app-pg")
+    response = await async_client.get(f"/api/v1/tenants/{foreign.slug}/services/app-pg/backups")
+    assert response.status_code == 403
+    assert "not a member" in response.json()["detail"].lower()

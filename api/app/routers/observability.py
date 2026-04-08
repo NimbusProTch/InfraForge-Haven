@@ -110,11 +110,22 @@ def _bytes_to_mib(n: int) -> str:
     return f"{round(n / (1024**2))}Mi"
 
 
-async def _get_tenant_or_404(tenant_slug: str, db: DBSession) -> Tenant:
+async def _get_tenant_or_404(tenant_slug: str, db: DBSession, current_user: dict) -> Tenant:
+    """H0-9: Lock pod/log/metric data to tenant members."""
+    # Local import to avoid widening the file's import set unnecessarily.
+    from app.models.tenant_member import TenantMember
+
     result = await db.execute(select(Tenant).where(Tenant.slug == tenant_slug))
     tenant = result.scalar_one_or_none()
     if tenant is None:
         raise HTTPException(status_code=404, detail="Tenant not found")
+
+    user_id = current_user.get("sub", "")
+    member_q = await db.execute(
+        select(TenantMember).where(TenantMember.tenant_id == tenant.id, TenantMember.user_id == user_id)
+    )
+    if member_q.scalar_one_or_none() is None:
+        raise HTTPException(status_code=403, detail="You are not a member of this tenant")
     return tenant
 
 
@@ -151,7 +162,7 @@ async def get_pods(
     is unavailable the response still returns successfully with an empty
     pod list and ``k8s_available=False``.
     """
-    tenant = await _get_tenant_or_404(tenant_slug, db)
+    tenant = await _get_tenant_or_404(tenant_slug, db, current_user)
     app = await _get_app_or_404(tenant.id, app_slug, db)
     namespace = tenant.namespace
     label_selector = f"app={app.slug}"
@@ -268,7 +279,7 @@ async def get_events(
     starts with the app slug.  Returns the most recent ``limit`` events,
     newest first.
     """
-    tenant = await _get_tenant_or_404(tenant_slug, db)
+    tenant = await _get_tenant_or_404(tenant_slug, db, current_user)
     app = await _get_app_or_404(tenant.id, app_slug, db)
     namespace = tenant.namespace
 

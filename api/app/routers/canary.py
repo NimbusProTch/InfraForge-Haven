@@ -22,6 +22,7 @@ from sqlalchemy import select
 from app.deps import CurrentUser, DBSession, K8sDep
 from app.models.application import Application
 from app.models.tenant import Tenant
+from app.models.tenant_member import TenantMember
 
 logger = logging.getLogger(__name__)
 
@@ -52,11 +53,19 @@ class CanaryStatus(BaseModel):
 # ---------------------------------------------------------------------------
 
 
-async def _get_tenant_or_404(tenant_slug: str, db: DBSession) -> Tenant:
+async def _get_tenant_or_404(tenant_slug: str, db: DBSession, current_user: dict) -> Tenant:
+    """H0-9: Lock canary deploy state to tenant members."""
     result = await db.execute(select(Tenant).where(Tenant.slug == tenant_slug))
     t = result.scalar_one_or_none()
     if t is None:
         raise HTTPException(status_code=404, detail="Tenant not found")
+
+    user_id = current_user.get("sub", "")
+    member_q = await db.execute(
+        select(TenantMember).where(TenantMember.tenant_id == t.id, TenantMember.user_id == user_id)
+    )
+    if member_q.scalar_one_or_none() is None:
+        raise HTTPException(status_code=403, detail="You are not a member of this tenant")
     return t
 
 
@@ -139,7 +148,7 @@ async def get_canary_status(
     current_user: CurrentUser,
 ) -> CanaryStatus:
     """Get current canary deployment status."""
-    tenant = await _get_tenant_or_404(tenant_slug, db)
+    tenant = await _get_tenant_or_404(tenant_slug, db, current_user)
     app = await _get_app_or_404(tenant.id, app_slug, db)
 
     canary_image = None
@@ -198,7 +207,7 @@ async def configure_canary(
     - Deletes canary Deployment and Service
     - All traffic returns to stable
     """
-    tenant = await _get_tenant_or_404(tenant_slug, db)
+    tenant = await _get_tenant_or_404(tenant_slug, db, current_user)
     app = await _get_app_or_404(tenant.id, app_slug, db)
 
     if config.enabled and not config.canary_image and not app.canary_enabled:
@@ -284,7 +293,7 @@ async def promote_canary(
 
     This effectively makes the canary the new stable version.
     """
-    tenant = await _get_tenant_or_404(tenant_slug, db)
+    tenant = await _get_tenant_or_404(tenant_slug, db, current_user)
     app = await _get_app_or_404(tenant.id, app_slug, db)
 
     if not app.canary_enabled:
@@ -330,7 +339,7 @@ async def rollback_canary(
     current_user: CurrentUser,
 ) -> dict:
     """Rollback canary: disable canary, all traffic returns to stable."""
-    tenant = await _get_tenant_or_404(tenant_slug, db)
+    tenant = await _get_tenant_or_404(tenant_slug, db, current_user)
     app = await _get_app_or_404(tenant.id, app_slug, db)
 
     if not app.canary_enabled:

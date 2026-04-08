@@ -19,18 +19,17 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/tenants/{tenant_slug}/members", tags=["members"])
 
 
-async def _get_tenant_or_404(tenant_slug: str, db: DBSession, current_user: dict | None = None) -> Tenant:
+async def _get_tenant_or_404(tenant_slug: str, db: DBSession, current_user: dict) -> Tenant:
+    """H0-10: current_user is now MANDATORY (was fail-open `dict | None = None`)."""
     result = await db.execute(select(Tenant).where(Tenant.slug == tenant_slug))
     tenant = result.scalar_one_or_none()
     if tenant is None:
         raise HTTPException(status_code=404, detail="Tenant not found")
-    if current_user:
-        uid = current_user.get("sub", "")
-        mem = await db.execute(
-            select(TenantMember).where(TenantMember.tenant_id == tenant.id, TenantMember.user_id == uid)
-        )
-        if mem.scalar_one_or_none() is None:
-            raise HTTPException(status_code=403, detail="You are not a member of this tenant")
+
+    uid = current_user.get("sub", "")
+    mem = await db.execute(select(TenantMember).where(TenantMember.tenant_id == tenant.id, TenantMember.user_id == uid))
+    if mem.scalar_one_or_none() is None:
+        raise HTTPException(status_code=403, detail="You are not a member of this tenant")
     return tenant
 
 
@@ -65,7 +64,7 @@ async def list_members(tenant_slug: str, db: DBSession, current_user: CurrentUse
 async def add_member(
     tenant_slug: str, body: TenantMemberInvite, db: DBSession, current_user: CurrentUser
 ) -> TenantMember:
-    tenant = await _get_tenant_or_404(tenant_slug, db)
+    tenant = await _get_tenant_or_404(tenant_slug, db, current_user)
 
     # Prevent duplicate membership
     existing = await db.execute(
@@ -122,11 +121,20 @@ async def add_member(
     return member
 
 
-@router.patch("/{user_id}", response_model=TenantMemberResponse)
+@router.patch(
+    "/{user_id}",
+    response_model=TenantMemberResponse,
+    dependencies=[Depends(require_role("owner", "admin"))],
+)
 async def update_member_role(
     tenant_slug: str, user_id: str, body: TenantMemberUpdate, db: DBSession, current_user: CurrentUser
 ) -> TenantMember:
-    tenant = await _get_tenant_or_404(tenant_slug, db)
+    """H0-13: PATCH was previously a vertical privilege escalation vector.
+    Without `require_role("owner","admin")` any tenant member — including a
+    viewer — could promote themselves to owner or demote the actual owner.
+    The H0-10 fix made membership mandatory but did not enforce role.
+    """
+    tenant = await _get_tenant_or_404(tenant_slug, db, current_user)
     member = await _get_member_or_404(tenant.id, user_id, db)
 
     # Cannot downgrade the last owner
@@ -146,9 +154,18 @@ async def update_member_role(
     return member
 
 
-@router.delete("/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/{user_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(require_role("owner", "admin"))],
+)
 async def remove_member(tenant_slug: str, user_id: str, db: DBSession, current_user: CurrentUser) -> None:
-    tenant = await _get_tenant_or_404(tenant_slug, db)
+    """H0-13: DELETE was previously a member-nuking vector. Without role
+    enforcement any tenant member could remove other members. The "last
+    owner" guard at the bottom prevents total wipe but a viewer could
+    still remove every admin and (combined with the PATCH bug) take over.
+    """
+    tenant = await _get_tenant_or_404(tenant_slug, db, current_user)
     member = await _get_member_or_404(tenant.id, user_id, db)
 
     # Cannot remove the last owner

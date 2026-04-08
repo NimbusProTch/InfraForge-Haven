@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.application import Application
 from app.models.environment import Environment, EnvironmentType
 from app.models.tenant import Tenant
+from app.models.tenant_member import MemberRole, TenantMember
 
 # ---------------------------------------------------------------------------
 # Helper fixtures
@@ -27,6 +28,10 @@ async def tenant_and_app(db_session: AsyncSession):
     )
     db_session.add(tenant)
     await db_session.flush()
+    # H0-9: environments router now enforces membership
+    db_session.add(
+        TenantMember(tenant_id=tenant.id, user_id="test-user", email="test@haven.nl", role=MemberRole("owner"))
+    )
 
     app_obj = Application(
         id=uuid.uuid4(),
