@@ -132,6 +132,15 @@ PROBE_ENDPOINTS: list[tuple[str, str, str, str]] = [
     ("applications-list", "GET", "/api/v1/tenants/{slug}/apps", "H0-10"),
     ("deployments-list", "GET", "/api/v1/tenants/{slug}/apps/{app}/deployments", "H0-10"),
     ("members-list", "GET", "/api/v1/tenants/{slug}/members", "H0-10"),
+    # H0-11 group: events.py SSE streams had NO authentication AT ALL — anyone
+    # on the network could subscribe to any tenant's lifecycle bus
+    ("events-tenant", "GET", "/api/v1/tenants/{slug}/events", "H0-11"),
+    ("events-app-lifecycle", "GET", "/api/v1/tenants/{slug}/apps/{app}/lifecycle-events", "H0-11"),
+    # H0-12 group: github.py /connect was an RCE vector — any authenticated user
+    # could paste an OAuth token onto any tenant, then the next build would
+    # clone the attacker repo with attacker credentials inside the victim ns
+    ("github-status", "GET", "/api/v1/github/status/{slug}", "H0-12"),
+    ("github-disconnect", "DELETE", "/api/v1/github/connect/{slug}", "H0-12"),
 ]
 
 

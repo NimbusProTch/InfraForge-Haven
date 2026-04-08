@@ -25,7 +25,8 @@ from app.main import app
 from app.models.base import Base
 from app.models.cluster import Cluster  # noqa: F401
 from app.models.cronjob import CronJob  # noqa: F401
-from app.models.tenant_member import TenantMember  # noqa: F401
+from app.models.tenant import Tenant
+from app.models.tenant_member import MemberRole, TenantMember
 from app.services.lifecycle_events import (
     LifecycleChannel,
     LifecycleEvent,
@@ -273,10 +274,43 @@ class TestLifecycleEventBus:
 
 
 class TestSSEEndpoints:
-    """Test SSE endpoints with pre-completed channels (no hanging streams)."""
+    """Test SSE endpoints with pre-completed channels (no hanging streams).
+
+    H0-11: Each endpoint now requires the caller to be a TenantMember of
+    the tenant whose stream they're subscribing to. The shared `client`
+    fixture authenticates as 'test-user', so each test must seed a Tenant
+    + TenantMember row before opening the stream.
+    """
+
+    @staticmethod
+    async def _seed(db, slug: str) -> None:
+        import uuid as _uuid
+
+        t = Tenant(
+            id=_uuid.uuid4(),
+            slug=slug,
+            name=slug,
+            namespace=f"tenant-{slug}",
+            keycloak_realm=slug,
+            cpu_limit="1",
+            memory_limit="1Gi",
+            storage_limit="10Gi",
+        )
+        db.add(t)
+        await db.flush()
+        db.add(
+            TenantMember(
+                tenant_id=t.id,
+                user_id="test-user",
+                email="test@haven.nl",
+                role=MemberRole("owner"),
+            )
+        )
+        await db.commit()
 
     @pytest.mark.asyncio
-    async def test_tenant_events_endpoint_returns_sse(self, client):
+    async def test_tenant_events_endpoint_returns_sse(self, client, db):
+        await self._seed(db, "sse-test-1")
         key = "tenant:sse-test-1"
         lifecycle_bus._channels.pop(key, None)
         lifecycle_bus.emit(key, "namespace", "done", "NS created")
@@ -294,7 +328,8 @@ class TestSSEEndpoints:
         assert "NS created" in body
 
     @pytest.mark.asyncio
-    async def test_service_events_endpoint(self, client):
+    async def test_service_events_endpoint(self, client, db):
+        await self._seed(db, "sse-test-2")
         key = "service:sse-test-2:my-pg"
         lifecycle_bus._channels.pop(key, None)
         lifecycle_bus.emit(key, "provision", "done", "PG created")
@@ -310,7 +345,8 @@ class TestSSEEndpoints:
         assert "PG created" in body
 
     @pytest.mark.asyncio
-    async def test_app_events_endpoint(self, client):
+    async def test_app_events_endpoint(self, client, db):
+        await self._seed(db, "sse-test-3")
         key = "app:sse-test-3:my-app"
         lifecycle_bus._channels.pop(key, None)
         lifecycle_bus.emit(key, "build", "done", "Build OK")
@@ -326,7 +362,8 @@ class TestSSEEndpoints:
         assert "Build OK" in body
 
     @pytest.mark.asyncio
-    async def test_events_contain_valid_sse_format(self, client):
+    async def test_events_contain_valid_sse_format(self, client, db):
+        await self._seed(db, "sse-fmt")
         key = "tenant:sse-fmt"
         lifecycle_bus._channels.pop(key, None)
         lifecycle_bus.emit(key, "step1", "done", "msg1")
