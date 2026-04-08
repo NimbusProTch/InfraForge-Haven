@@ -27,6 +27,11 @@ from app.services.keycloak_service import KeycloakService
 
 
 async def _tenant(db: AsyncSession, slug: str = "signup-test") -> Tenant:
+    """Create a bare tenant. Tests in this file use a custom auth_client
+    fixture (sub='user-123') and explicitly attach the appropriate RBAC
+    member via _member() — we deliberately do NOT auto-attach 'test-user'
+    here, unlike the default async_client convention used elsewhere.
+    """
     t = Tenant(
         id=uuid.uuid4(),
         slug=slug,
@@ -199,6 +204,8 @@ async def test_add_duplicate_member_409(auth_client, db_session):
 async def test_update_member_role(auth_client, db_session):
     """PATCH /members/{user_id} updates role."""
     t = await _tenant(db_session, "update-role")
+    # H0-10: caller (auth_client sub='user-123') must be a tenant member
+    await _member(db_session, t, "user-123", "user@haven.nl", MemberRole("owner"))
     m = await _member(db_session, t, "user-1", "user@test.nl", MemberRole("member"))
 
     resp = await auth_client.patch(
@@ -213,6 +220,8 @@ async def test_update_member_role(auth_client, db_session):
 async def test_remove_member(auth_client, db_session):
     """DELETE /members/{user_id} removes member."""
     t = await _tenant(db_session, "remove-member")
+    # H0-10: caller must be a tenant member with owner role
+    await _member(db_session, t, "user-123", "user@haven.nl", MemberRole("owner"))
     await _member(db_session, t, "owner-1", "owner@test.nl", MemberRole("owner"))
     m = await _member(db_session, t, "user-1", "user@test.nl", MemberRole("member"))
 
@@ -224,6 +233,9 @@ async def test_remove_member(auth_client, db_session):
 async def test_cannot_remove_last_owner(auth_client, db_session):
     """Cannot remove the last owner of a tenant."""
     t = await _tenant(db_session, "last-owner")
+    # H0-10: caller is admin (so the call goes through), only-owner is the
+    # sole owner whose removal should trip the "last owner" guard.
+    await _member(db_session, t, "user-123", "user@haven.nl", MemberRole("admin"))
     m = await _member(db_session, t, "only-owner", "owner@test.nl", MemberRole("owner"))
 
     resp = await auth_client.delete(f"/api/v1/tenants/{t.slug}/members/{m.user_id}")
