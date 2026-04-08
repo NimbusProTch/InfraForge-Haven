@@ -2,14 +2,18 @@
 
 import logging
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
+from app.auth.jwt import verify_token
 from app.services.gitea_client import gitea_client
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/internal/gitea", tags=["internal"])
+# H0-14: every endpoint in this router requires a valid JWT.
+# Pre-fix this endpoint was unauthenticated and exposed the internal
+# Gitea base URL — an information disclosure on infrastructure topology.
+router = APIRouter(prefix="/internal/gitea", tags=["internal"], dependencies=[Depends(verify_token)])
 
 
 class GiteaHealth(BaseModel):
