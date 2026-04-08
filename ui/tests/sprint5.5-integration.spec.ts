@@ -352,107 +352,14 @@ test.describe("ScaleModal", () => {
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
-// 4. SyncModal
+// 4. SyncModal — REMOVED (P2.3 / H3c)
 // ═══════════════════════════════════════════════════════════════════════════
-
-test.describe("SyncModal", () => {
-  test("opens on ArgoCD Sync button and loads status", async ({ page }) => {
-    await setupAppDetailPage(page);
-    await gotoAppDetail(page);
-
-    await page.getByRole("button", { name: "ArgoCD Sync" }).click();
-
-    const dialog = page.getByRole("dialog");
-    await expect(dialog.getByText(`ArgoCD Sync: ${APP.slug}`)).toBeVisible();
-    await expect(dialog.getByText("Healthy")).toBeVisible();
-    await expect(dialog.getByText("Synced")).toBeVisible();
-  });
-
-  test("shows resource diff entries", async ({ page }) => {
-    await setupAppDetailPage(page);
-    await gotoAppDetail(page);
-
-    await page.getByRole("button", { name: "ArgoCD Sync" }).click();
-
-    await expect(page.getByText("What Will Change")).toBeVisible();
-    await expect(page.getByText("Deployment/test-api")).toBeVisible();
-    await expect(page.getByText("OutOfSync").first()).toBeVisible();
-  });
-
-  test("shows sync options (Prune, Force, Dry Run)", async ({ page }) => {
-    await setupAppDetailPage(page);
-    await gotoAppDetail(page);
-
-    await page.getByRole("button", { name: "ArgoCD Sync" }).click();
-
-    await expect(page.getByText("Sync Options")).toBeVisible();
-    await expect(page.getByText("Prune removed resources")).toBeVisible();
-    await expect(page.getByText("Force (override immutable fields)")).toBeVisible();
-    await expect(page.getByText("Dry Run (preview only)")).toBeVisible();
-  });
-
-  test("shows recent sync history", async ({ page }) => {
-    await setupAppDetailPage(page);
-    await gotoAppDetail(page);
-
-    await page.getByRole("button", { name: "ArgoCD Sync" }).click();
-
-    const dialog = page.getByRole("dialog");
-    await expect(dialog.getByText("Recent Syncs")).toBeVisible();
-    await expect(dialog.getByText("abc1234").first()).toBeVisible();
-    await expect(dialog.getByText("def4567").first()).toBeVisible();
-  });
-
-  test("Sync Now triggers sync API", async ({ page }) => {
-    let syncCalled = false;
-    await setupAppDetailPage(page);
-    await mockApi(page, `/tenants/${TENANT.slug}/apps/${APP.slug}/sync`, (route) => {
-      if (route.request().method() === "POST") {
-        syncCalled = true;
-        route.fulfill({
-          status: 200,
-          contentType: "application/json",
-          body: JSON.stringify({
-            triggered: true,
-            app_name: APP.slug,
-            options: { prune: true, force: false, dry_run: false },
-          }),
-        });
-      } else {
-        route.fallback();
-      }
-    });
-    await gotoAppDetail(page);
-
-    await page.getByRole("button", { name: "ArgoCD Sync" }).click();
-    await page.getByRole("button", { name: "Sync Now" }).click();
-
-    await page.waitForTimeout(500);
-    expect(syncCalled).toBe(true);
-    await expect(page.getByText("Sync triggered successfully")).toBeVisible();
-  });
-
-  test("Dry Run checkbox changes button text", async ({ page }) => {
-    await setupAppDetailPage(page);
-    await gotoAppDetail(page);
-
-    await page.getByRole("button", { name: "ArgoCD Sync" }).click();
-
-    await page.getByLabel("Dry Run (preview only)").check();
-    await expect(page.getByRole("button", { name: "Dry Run" })).toBeVisible();
-  });
-
-  test("no diff shows in-sync message", async ({ page }) => {
-    await setupAppDetailPage(page);
-    // Override diff to empty
-    await mockGet(page, `/tenants/${TENANT.slug}/apps/${APP.slug}/sync-diff`, []);
-    await gotoAppDetail(page);
-
-    await page.getByRole("button", { name: "ArgoCD Sync" }).click();
-
-    await expect(page.getByText("All resources are in sync")).toBeVisible();
-  });
-});
+//
+// The SyncModal component (ui/components/SyncModal.tsx) was deleted in
+// Sprint H3 (P2.3) — it had zero imports across the UI codebase, so its
+// 7 Playwright tests were testing a hypothetical UI that did not exist.
+// Removing the test block here, the dead component file, and the
+// `api.sync*` API client methods all together.
 
 // ═══════════════════════════════════════════════════════════════════════════
 // 5. RestartModal
