@@ -28,7 +28,7 @@ from app.services.gitops_service import GitOpsService
 from app.services.helm_values_builder import build_app_values
 
 # Maximum time (seconds) to wait for a deployment to become ready
-WAIT_FOR_READY_TIMEOUT = 60
+WAIT_FOR_READY_TIMEOUT = 180
 
 logger = logging.getLogger(__name__)
 
@@ -239,10 +239,18 @@ async def run_pipeline(
     # --- WAIT FOR READY -------------------------------------------------
     try:
         if use_gitops and argocd:
+            # Trigger immediate sync (instead of waiting for ArgoCD's polling interval)
+            argocd_app_name = f"{tenant_slug}-{app_slug}"
+            try:
+                synced = await argocd.trigger_sync(argocd_app_name, prune=False)
+                logger.info("ArgoCD sync triggered for %s: %s", argocd_app_name, synced)
+            except Exception as sync_exc:
+                logger.warning("Failed to trigger ArgoCD sync: %s", sync_exc)
+
             # Wait for ArgoCD to sync and report healthy
             try:
                 ready, msg = await asyncio.wait_for(
-                    argocd.wait_for_healthy(f"{tenant_slug}-{app_slug}"),
+                    argocd.wait_for_healthy(argocd_app_name),
                     timeout=WAIT_FOR_READY_TIMEOUT,
                 )
             except TimeoutError:
@@ -252,11 +260,11 @@ async def run_pipeline(
                 logger.warning("ArgoCD wait failed (%s) — falling back to K8s check", msg)
                 try:
                     ready, msg = await asyncio.wait_for(
-                        deploy_svc.wait_for_ready(namespace, app_slug, timeout=90),
-                        timeout=90,
+                        deploy_svc.wait_for_ready(namespace, app_slug, timeout=120),
+                        timeout=120,
                     )
                 except TimeoutError:
-                    ready, msg = False, "K8s readiness check timed out after 90s"
+                    ready, msg = False, "K8s readiness check timed out after 120s"
         else:
             # Direct K8s mode: wait for deployment ready replicas
             try:
