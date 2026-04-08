@@ -176,3 +176,111 @@ async def test_cross_tenant_access_returns_403(
     body = response.json()
     detail = (body.get("detail") or "").lower()
     assert "not a member" in detail, f"[{h0_tag}] {router_id}: expected 'not a member' in detail, got {detail!r}"
+
+
+# ---------------------------------------------------------------------------
+# H0-13: Vertical privilege escalation regression
+# ---------------------------------------------------------------------------
+
+
+@pytest_asyncio.fixture
+async def viewer_client(db_session: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
+    """Async client authed as 'viewer-user' — paired with `viewer_tenant`
+    fixture below to put the user in the tenant as a viewer (not owner/admin).
+    """
+
+    async def _override_db():
+        yield db_session
+
+    app.dependency_overrides[get_db] = _override_db
+    app.dependency_overrides[get_k8s] = _mock_k8s
+    app.dependency_overrides[verify_token] = lambda: {
+        "sub": "viewer-user",
+        "email": "viewer@example.com",
+    }
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        yield client
+
+    app.dependency_overrides.clear()
+
+
+@pytest_asyncio.fixture
+async def viewer_tenant(db_session: AsyncSession) -> tuple[Tenant, str]:
+    """A tenant where the calling user ('viewer-user') is a VIEWER and another
+    user ('owner-user') is the owner. Returns (tenant, target_user_id).
+    """
+    tenant = Tenant(
+        id=uuid.uuid4(),
+        slug="viewer-tenant",
+        name="Viewer Test",
+        namespace="tenant-viewer-tenant",
+        keycloak_realm="viewer-tenant",
+        cpu_limit="2",
+        memory_limit="4Gi",
+        storage_limit="20Gi",
+    )
+    db_session.add(tenant)
+    await db_session.flush()
+    db_session.add(
+        TenantMember(
+            id=uuid.uuid4(),
+            tenant_id=tenant.id,
+            user_id="owner-user",
+            email="owner@example.com",
+            role=MemberRole("owner"),
+        )
+    )
+    db_session.add(
+        TenantMember(
+            id=uuid.uuid4(),
+            tenant_id=tenant.id,
+            user_id="viewer-user",
+            email="viewer@example.com",
+            role=MemberRole("viewer"),
+        )
+    )
+    await db_session.commit()
+    await db_session.refresh(tenant)
+    return tenant, "owner-user"
+
+
+@pytest.mark.asyncio
+async def test_viewer_cannot_promote_self_to_owner(
+    viewer_client: AsyncClient,
+    viewer_tenant: tuple[Tenant, str],
+) -> None:
+    """H0-13: PATCH /members/{user_id} previously had no role check.
+
+    Pre-fix: a viewer could PATCH their own membership row with `{"role": "owner"}`
+    and silently take over the tenant. Post-fix: 403 because PATCH carries
+    `require_role("owner","admin")`.
+    """
+    tenant, _ = viewer_tenant
+    response = await viewer_client.patch(
+        f"/api/v1/tenants/{tenant.slug}/members/viewer-user",
+        json={"role": "owner"},
+    )
+    assert response.status_code == 403, (
+        f"viewer must not be able to promote themselves: got {response.status_code} {response.text[:200]}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_viewer_cannot_delete_other_member(
+    viewer_client: AsyncClient,
+    viewer_tenant: tuple[Tenant, str],
+) -> None:
+    """H0-13: DELETE /members/{user_id} previously had no role check.
+
+    Pre-fix: a viewer could DELETE the owner row (modulo the "last owner"
+    guard which only fired when there was exactly one owner — but a viewer
+    could still nuke every admin). Post-fix: 403.
+    """
+    tenant, target = viewer_tenant
+    response = await viewer_client.delete(
+        f"/api/v1/tenants/{tenant.slug}/members/{target}",
+    )
+    assert response.status_code == 403, (
+        f"viewer must not be able to delete other members: got {response.status_code} {response.text[:200]}"
+    )

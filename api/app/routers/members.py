@@ -121,10 +121,19 @@ async def add_member(
     return member
 
 
-@router.patch("/{user_id}", response_model=TenantMemberResponse)
+@router.patch(
+    "/{user_id}",
+    response_model=TenantMemberResponse,
+    dependencies=[Depends(require_role("owner", "admin"))],
+)
 async def update_member_role(
     tenant_slug: str, user_id: str, body: TenantMemberUpdate, db: DBSession, current_user: CurrentUser
 ) -> TenantMember:
+    """H0-13: PATCH was previously a vertical privilege escalation vector.
+    Without `require_role("owner","admin")` any tenant member — including a
+    viewer — could promote themselves to owner or demote the actual owner.
+    The H0-10 fix made membership mandatory but did not enforce role.
+    """
     tenant = await _get_tenant_or_404(tenant_slug, db, current_user)
     member = await _get_member_or_404(tenant.id, user_id, db)
 
@@ -145,8 +154,17 @@ async def update_member_role(
     return member
 
 
-@router.delete("/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/{user_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(require_role("owner", "admin"))],
+)
 async def remove_member(tenant_slug: str, user_id: str, db: DBSession, current_user: CurrentUser) -> None:
+    """H0-13: DELETE was previously a member-nuking vector. Without role
+    enforcement any tenant member could remove other members. The "last
+    owner" guard at the bottom prevents total wipe but a viewer could
+    still remove every admin and (combined with the PATCH bug) take over.
+    """
     tenant = await _get_tenant_or_404(tenant_slug, db, current_user)
     member = await _get_member_or_404(tenant.id, user_id, db)
 
