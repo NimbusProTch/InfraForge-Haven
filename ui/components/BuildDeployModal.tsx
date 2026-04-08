@@ -193,12 +193,13 @@ interface ImageEntry {
   date: string;
   commitSha?: string;
   status?: string;
+  deploymentId?: string;
 }
 
 interface DeployModalProps {
   open: boolean;
   onClose: () => void;
-  onConfirm: (options: { replicas?: number; resource_cpu_limit?: string; resource_memory_limit?: string }) => void;
+  onConfirm: (options: { replicas?: number; deploymentId?: string }) => void;
   loading: boolean;
   appName: string;
   imageTag: string | null;
@@ -227,8 +228,11 @@ export function DeployModal({
   const imageRepo = currentTag?.split(":")[0]?.split("/").pop() ?? "";
 
   const handleConfirm = () => {
+    const isDifferentImage = selectedImage !== imageTag && selectedImage != null;
+    const selected = availableImages.find((i) => i.tag === selectedImage);
     onConfirm({
       replicas: selectedReplicas !== replicas ? selectedReplicas : undefined,
+      deploymentId: isDifferentImage ? selected?.deploymentId : undefined,
     });
   };
 

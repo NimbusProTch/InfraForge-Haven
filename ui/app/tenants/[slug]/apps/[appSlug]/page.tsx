@@ -782,12 +782,18 @@ export default function AppDetailPage() {
     }
   }
 
-  async function handleDeployConfirm(opts: { replicas?: number; resource_cpu_limit?: string; resource_memory_limit?: string }) {
+  async function handleDeployConfirm(opts: { replicas?: number; deploymentId?: string }) {
     setShowDeployModal(false);
     setActionLoading("deploy");
     try {
-      const body = (opts.replicas || opts.resource_cpu_limit || opts.resource_memory_limit) ? opts : undefined;
-      await api.deployments.deploy(tenantSlug, appSlug, accessToken, body);
+      if (opts.deploymentId) {
+        // Deploy a specific historical image (POST /deploy-image?deployment_id=<id>)
+        await api.deployments.deployImage(tenantSlug, appSlug, accessToken, opts.deploymentId);
+      } else {
+        // Redeploy the current image
+        const body = opts.replicas ? { replicas: opts.replicas } : undefined;
+        await api.deployments.deploy(tenantSlug, appSlug, accessToken, body);
+      }
       await loadDeployments();
       if (opts.replicas) await loadApp();
       toastSuccess("Deploy started");
@@ -1373,9 +1379,15 @@ export default function AppDetailPage() {
         availableImages={
           deployments
             .filter((d) => d.image_tag)
-            .reduce<Array<{ tag: string; date: string; commitSha?: string; status?: string }>>((acc, d) => {
+            .reduce<Array<{ tag: string; date: string; commitSha?: string; status?: string; deploymentId?: string }>>((acc, d) => {
               if (!acc.find((i) => i.tag === d.image_tag)) {
-                acc.push({ tag: d.image_tag!, date: d.created_at, commitSha: d.commit_sha, status: d.status });
+                acc.push({
+                  tag: d.image_tag!,
+                  date: d.created_at,
+                  commitSha: d.commit_sha,
+                  status: d.status,
+                  deploymentId: d.id,
+                });
               }
               return acc;
             }, [])
