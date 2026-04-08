@@ -18,6 +18,8 @@ from app.auth.jwt import verify_token
 from app.deps import get_db
 from app.main import app
 from app.models.organization import Organization, OrganizationMember, OrgMemberRole
+from app.models.tenant import Tenant
+from app.models.tenant_member import MemberRole, TenantMember
 
 # ---------------------------------------------------------------------------
 # Test users
@@ -228,29 +230,65 @@ class TestMemberManagement:
 # ---------------------------------------------------------------------------
 
 
+async def _make_tenant_with_owner(db: AsyncSession, slug: str, owner_user: dict) -> Tenant:
+    """Create a tenant in the DB with `owner_user` as the owner.
+
+    Used by H0-5 tests so we have a real Tenant row + TenantMember to satisfy
+    the new ownership check in `add_tenant_to_org`.
+    """
+    tenant = Tenant(
+        id=uuid.uuid4(),
+        slug=slug,
+        name=f"Tenant {slug}",
+        namespace=f"tenant-{slug}",
+        keycloak_realm=slug,
+        cpu_limit="4",
+        memory_limit="8Gi",
+        storage_limit="50Gi",
+    )
+    db.add(tenant)
+    await db.flush()
+    db.add(
+        TenantMember(
+            id=uuid.uuid4(),
+            tenant_id=tenant.id,
+            user_id=owner_user["sub"],
+            email=owner_user["email"],
+            display_name=owner_user["name"],
+            role=MemberRole.owner,
+        )
+    )
+    await db.commit()
+    await db.refresh(tenant)
+    return tenant
+
+
 class TestTenantBinding:
     async def test_bind_tenant_admin_ok(self, db_session: AsyncSession, org_with_members: Organization):
-        tid = str(uuid.uuid4())
+        # H0-5: USER_ADMIN must also own the tenant being bound
+        tenant = await _make_tenant_with_owner(db_session, "tb-admin", USER_ADMIN)
         async with _client_as(db_session, USER_ADMIN) as client:
-            resp = await client.post(f"{PREFIX}/test-org/tenants", json={"tenant_id": tid})
+            resp = await client.post(f"{PREFIX}/test-org/tenants", json={"tenant_id": str(tenant.id)})
             assert resp.status_code == 201
 
     async def test_bind_tenant_member_403(self, db_session: AsyncSession, org_with_members: Organization):
+        # USER_MEMBER lacks org admin role — must be 403 even before tenant ownership check
+        tenant = await _make_tenant_with_owner(db_session, "tb-member", USER_MEMBER)
         async with _client_as(db_session, USER_MEMBER) as client:
-            resp = await client.post(f"{PREFIX}/test-org/tenants", json={"tenant_id": str(uuid.uuid4())})
+            resp = await client.post(f"{PREFIX}/test-org/tenants", json={"tenant_id": str(tenant.id)})
             assert resp.status_code == 403
 
     async def test_bind_duplicate_409(self, db_session: AsyncSession, org_with_members: Organization):
-        tid = str(uuid.uuid4())
+        tenant = await _make_tenant_with_owner(db_session, "tb-dup", USER_OWNER)
         async with _client_as(db_session, USER_OWNER) as client:
-            await client.post(f"{PREFIX}/test-org/tenants", json={"tenant_id": tid})
-            resp = await client.post(f"{PREFIX}/test-org/tenants", json={"tenant_id": tid})
+            await client.post(f"{PREFIX}/test-org/tenants", json={"tenant_id": str(tenant.id)})
+            resp = await client.post(f"{PREFIX}/test-org/tenants", json={"tenant_id": str(tenant.id)})
             assert resp.status_code == 409
 
     async def test_list_tenants_member_ok(self, db_session: AsyncSession, org_with_members: Organization):
-        tid = str(uuid.uuid4())
+        tenant = await _make_tenant_with_owner(db_session, "tb-list", USER_OWNER)
         async with _client_as(db_session, USER_OWNER) as client:
-            await client.post(f"{PREFIX}/test-org/tenants", json={"tenant_id": tid})
+            await client.post(f"{PREFIX}/test-org/tenants", json={"tenant_id": str(tenant.id)})
         async with _client_as(db_session, USER_MEMBER) as client:
             resp = await client.get(f"{PREFIX}/test-org/tenants")
             assert resp.status_code == 200
@@ -262,11 +300,58 @@ class TestTenantBinding:
             assert resp.status_code == 403
 
     async def test_unbind_tenant(self, db_session: AsyncSession, org_with_members: Organization):
-        tid = str(uuid.uuid4())
+        tenant = await _make_tenant_with_owner(db_session, "tb-unbind", USER_OWNER)
         async with _client_as(db_session, USER_OWNER) as client:
-            await client.post(f"{PREFIX}/test-org/tenants", json={"tenant_id": tid})
-            resp = await client.delete(f"{PREFIX}/test-org/tenants/{tid}")
+            await client.post(f"{PREFIX}/test-org/tenants", json={"tenant_id": str(tenant.id)})
+            resp = await client.delete(f"{PREFIX}/test-org/tenants/{tenant.id}")
             assert resp.status_code == 204
+
+    # ----- H0-5: cross-tenant ownership regression tests -----
+
+    async def test_bind_tenant_404_when_tenant_does_not_exist(
+        self, db_session: AsyncSession, org_with_members: Organization
+    ):
+        """H0-5: a non-existent tenant_id must return 404, not silently bind."""
+        async with _client_as(db_session, USER_OWNER) as client:
+            resp = await client.post(f"{PREFIX}/test-org/tenants", json={"tenant_id": str(uuid.uuid4())})
+            assert resp.status_code == 404
+
+    async def test_bind_tenant_403_when_caller_not_tenant_owner(
+        self, db_session: AsyncSession, org_with_members: Organization
+    ):
+        """H0-5: an org admin who is NOT owner/admin of the target tenant must
+        be denied. Prior to the fix, USER_OWNER (org owner) could attach any
+        tenant in the system to their org and gain billing visibility.
+        """
+        # Tenant owned by USER_OUTSIDER, not USER_OWNER
+        foreign = await _make_tenant_with_owner(db_session, "foreign-target", USER_OUTSIDER)
+        async with _client_as(db_session, USER_OWNER) as client:
+            resp = await client.post(f"{PREFIX}/test-org/tenants", json={"tenant_id": str(foreign.id)})
+            assert resp.status_code == 403
+            assert "owner or admin of the tenant" in resp.json()["detail"].lower()
+
+    async def test_bind_tenant_403_when_caller_is_only_viewer_of_tenant(
+        self, db_session: AsyncSession, org_with_members: Organization
+    ):
+        """H0-5: viewer/member of a tenant cannot attach it to an org — must
+        be owner or admin of the tenant.
+        """
+        # Tenant owned by USER_OUTSIDER, USER_OWNER added as viewer
+        foreign = await _make_tenant_with_owner(db_session, "viewer-target", USER_OUTSIDER)
+        db_session.add(
+            TenantMember(
+                id=uuid.uuid4(),
+                tenant_id=foreign.id,
+                user_id=USER_OWNER["sub"],
+                email=USER_OWNER["email"],
+                display_name=USER_OWNER["name"],
+                role=MemberRole.viewer,
+            )
+        )
+        await db_session.commit()
+        async with _client_as(db_session, USER_OWNER) as client:
+            resp = await client.post(f"{PREFIX}/test-org/tenants", json={"tenant_id": str(foreign.id)})
+            assert resp.status_code == 403
 
 
 # ---------------------------------------------------------------------------
