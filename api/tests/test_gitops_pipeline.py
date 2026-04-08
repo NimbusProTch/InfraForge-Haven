@@ -256,7 +256,7 @@ async def test_pipeline_uses_gitops_when_configured():
     call_args = mock_gitops.write_app_values.call_args
     assert call_args[0][0] == "gemeente-a"
     assert call_args[0][1] == "my-app"
-    mock_argocd.trigger_sync.assert_awaited_once_with("gemeente-a-my-app")
+    mock_argocd.trigger_sync.assert_awaited_with("gemeente-a-my-app", prune=False)
 
 
 @pytest.mark.asyncio
