@@ -181,3 +181,93 @@ async def test_delete_tenant_db_removed_even_when_gitops_fails(tc, monkeypatch):
 
     resp = await tc.get("/api/v1/tenants/tc-stuck2")
     assert resp.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# H0-3: github_token PATCH guard
+# ---------------------------------------------------------------------------
+
+
+# ---------------------------------------------------------------------------
+# H0-4: GET /tenants is now user-scoped (no cross-tenant enumeration)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_list_tenants_only_returns_caller_memberships(tc, db_session):
+    """GET /tenants must only return tenants the caller is a member of.
+
+    Regression for H0-4: prior to the fix this endpoint returned every tenant
+    in the system to any authenticated user, enabling tenant enumeration and
+    leaking the customer list of a multi-tenant SaaS.
+    """
+    # user-1 (the tc fixture's authed user) creates one tenant
+    await tc.post("/api/v1/tenants", json={"name": "Mine", "slug": "tc-mine"})
+
+    # Insert a second tenant directly with NO membership for user-1
+    other = Tenant(
+        id=uuid.uuid4(),
+        slug="tc-other-owner",
+        name="Other",
+        namespace="tenant-tc-other-owner",
+        keycloak_realm="tc-other-owner",
+        cpu_limit="4",
+        memory_limit="8Gi",
+        storage_limit="50Gi",
+    )
+    db_session.add(other)
+    await db_session.flush()
+    db_session.add(
+        TenantMember(
+            id=uuid.uuid4(),
+            tenant_id=other.id,
+            user_id="some-other-user",
+            email="other@example.com",
+            role=MemberRole("owner"),
+        )
+    )
+    await db_session.commit()
+
+    resp = await tc.get("/api/v1/tenants")
+    assert resp.status_code == 200
+    slugs = {t["slug"] for t in resp.json()}
+    assert "tc-mine" in slugs
+    assert "tc-other-owner" not in slugs, "GET /tenants must not leak tenants the caller is not a member of"
+
+
+@pytest.mark.asyncio
+async def test_patch_tenant_cannot_set_github_token(tc, db_session):
+    """PATCH /tenants/{slug} must NOT change github_token even if posted.
+
+    Regression for H0-3: prior to the fix, github_token was in _MUTABLE_FIELDS
+    in routers/tenants.py, so an admin could paste an arbitrary GitHub token
+    (potentially someone else's leaked one) and bypass the OAuth handshake.
+
+    The token must only be set via the OAuth callback in routers/github.py.
+    """
+    # Create a tenant with a known github_token (simulating a prior OAuth connect)
+    await tc.post("/api/v1/tenants", json={"name": "Tok", "slug": "tc-tok"})
+
+    from sqlalchemy import select
+
+    from app.models.tenant import Tenant as TenantModel
+
+    res = await db_session.execute(select(TenantModel).where(TenantModel.slug == "tc-tok"))
+    tenant = res.scalar_one()
+    tenant.github_token = "ghp_legit_owner_token"
+    await db_session.commit()
+
+    # Attacker PATCHes the tenant trying to overwrite the token
+    resp = await tc.patch(
+        "/api/v1/tenants/tc-tok",
+        json={"name": "Tok renamed", "github_token": "ghp_ATTACKER"},
+    )
+    assert resp.status_code == 200
+    # Name change is allowed
+    assert resp.json()["name"] == "Tok renamed"
+
+    # github_token MUST be unchanged
+    await db_session.refresh(tenant)
+    assert tenant.github_token == "ghp_legit_owner_token", (
+        "github_token must not be mutable via PATCH — only OAuth callback can set it"
+    )
