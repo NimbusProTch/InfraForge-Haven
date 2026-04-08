@@ -166,6 +166,78 @@ class TestDeleteApplicationSet:
         svc = TenantService(k8s, harbor=_make_harbor_mock())
         await svc._delete_applicationset("test")
 
+    @pytest.mark.asyncio
+    async def test_delete_cascades_child_applications(self):
+        """ApplicationSet delete should also clean up labeled child Applications."""
+        k8s = _make_k8s()
+        # Mock list_namespaced_custom_object to return 2 child Applications
+        k8s.custom_objects.list_namespaced_custom_object.return_value = {
+            "items": [
+                {"metadata": {"name": "appset-test-app1"}},
+                {"metadata": {"name": "appset-test-app2"}},
+            ]
+        }
+        svc = TenantService(k8s, harbor=_make_harbor_mock())
+        await svc._delete_applicationset("test")
+
+        # list called with tenant label selector
+        k8s.custom_objects.list_namespaced_custom_object.assert_called_once_with(
+            group="argoproj.io",
+            version="v1alpha1",
+            namespace="argocd",
+            plural="applications",
+            label_selector="haven.io/tenant=test",
+        )
+        # delete called for each child + the ApplicationSet itself = 3 times
+        assert k8s.custom_objects.delete_namespaced_custom_object.call_count == 3
+
+    @pytest.mark.asyncio
+    async def test_delete_retries_on_transient_failure(self):
+        """ApplicationSet delete should retry up to 3 times on transient 500 errors."""
+        k8s = _make_k8s()
+        # First 2 attempts fail with 500, 3rd succeeds
+        call_count = {"n": 0}
+
+        def _delete(**kwargs):
+            if kwargs.get("name", "").startswith("appset-"):
+                call_count["n"] += 1
+                if call_count["n"] < 3:
+                    raise ApiException(status=500, reason="Transient error")
+                return None
+            return None
+
+        k8s.custom_objects.delete_namespaced_custom_object.side_effect = _delete
+        svc = TenantService(k8s, harbor=_make_harbor_mock())
+        await svc._delete_applicationset("retry-test")
+
+        # Should have retried — total 3 attempts on the ApplicationSet
+        assert call_count["n"] == 3
+
+    @pytest.mark.asyncio
+    async def test_delete_force_after_all_retries_fail(self):
+        """After 3 regular attempts fail, should try force delete with grace_period_seconds=0."""
+        k8s = _make_k8s()
+        all_attempts = []
+
+        def _delete(**kwargs):
+            if kwargs.get("name", "").startswith("appset-"):
+                all_attempts.append(kwargs)
+                # Force delete has grace_period_seconds — succeed on that
+                if kwargs.get("grace_period_seconds") == 0:
+                    return None
+                raise ApiException(status=500, reason="Stuck")
+            return None
+
+        k8s.custom_objects.delete_namespaced_custom_object.side_effect = _delete
+        svc = TenantService(k8s, harbor=_make_harbor_mock())
+        await svc._delete_applicationset("force-test")
+
+        # Should see regular attempts + force delete
+        regular = [a for a in all_attempts if "grace_period_seconds" not in a]
+        force = [a for a in all_attempts if a.get("grace_period_seconds") == 0]
+        assert len(regular) >= 1  # At least one regular attempt
+        assert len(force) == 1  # One force delete
+
 
 # ---------------------------------------------------------------------------
 # Deprovision includes ApplicationSet deletion
