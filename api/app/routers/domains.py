@@ -19,6 +19,7 @@ from app.deps import CurrentUser, DBSession, K8sDep
 from app.models.application import Application
 from app.models.domain import CertificateStatus, DomainVerification
 from app.models.tenant import Tenant
+from app.models.tenant_member import TenantMember
 from app.schemas.domain import DomainCreate, DomainResponse, DomainVerifyResponse, WildcardCertRequest
 from app.services.domain_service import (
     CertManagerService,
@@ -39,11 +40,19 @@ router = APIRouter(tags=["domains"])
 # ---------------------------------------------------------------------------
 
 
-async def _get_tenant_or_404(tenant_slug: str, db: DBSession) -> Tenant:
+async def _get_tenant_or_404(tenant_slug: str, db: DBSession, current_user: dict) -> Tenant:
+    """H0-9: Lock custom-domain configuration to tenant members."""
     result = await db.execute(select(Tenant).where(Tenant.slug == tenant_slug))
     tenant = result.scalar_one_or_none()
     if tenant is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant not found")
+
+    user_id = current_user.get("sub", "")
+    member_q = await db.execute(
+        select(TenantMember).where(TenantMember.tenant_id == tenant.id, TenantMember.user_id == user_id)
+    )
+    if member_q.scalar_one_or_none() is None:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You are not a member of this tenant")
     return tenant
 
 
@@ -98,7 +107,7 @@ async def add_domain(
     Returns the DNS verification instructions the user needs to follow.
     The domain is NOT yet active — the user must verify DNS ownership first.
     """
-    tenant = await _get_tenant_or_404(tenant_slug, db)
+    tenant = await _get_tenant_or_404(tenant_slug, db, current_user)
     app = await _get_app_or_404(tenant.id, app_slug, db)
 
     # Check for duplicates across all applications (domain must be globally unique)
@@ -127,7 +136,7 @@ async def list_domains(
     current_user: CurrentUser,
 ) -> list[DomainResponse]:
     """List all custom domains for an application."""
-    tenant = await _get_tenant_or_404(tenant_slug, db)
+    tenant = await _get_tenant_or_404(tenant_slug, db, current_user)
     app = await _get_app_or_404(tenant.id, app_slug, db)
 
     result = await db.execute(
@@ -149,7 +158,7 @@ async def get_domain(
     current_user: CurrentUser,
 ) -> DomainResponse:
     """Get details for a specific custom domain."""
-    tenant = await _get_tenant_or_404(tenant_slug, db)
+    tenant = await _get_tenant_or_404(tenant_slug, db, current_user)
     app = await _get_app_or_404(tenant.id, app_slug, db)
     domain_record = await _get_domain_or_404(app.id, domain, db)
     return _to_response(domain_record)
@@ -169,7 +178,7 @@ async def verify_domain(
     Checks the TXT record `_haven-verify.{domain}` = `{verification_token}`.
     If verified, kicks off cert-manager certificate issuance and updates the HTTPRoute.
     """
-    tenant = await _get_tenant_or_404(tenant_slug, db)
+    tenant = await _get_tenant_or_404(tenant_slug, db, current_user)
     app = await _get_app_or_404(tenant.id, app_slug, db)
     domain_record = await _get_domain_or_404(app.id, domain, db)
 
@@ -222,7 +231,7 @@ async def sync_cert_status(
     current_user: CurrentUser,
 ) -> DomainResponse:
     """Sync the cert-manager Certificate status from the cluster into the DB."""
-    tenant = await _get_tenant_or_404(tenant_slug, db)
+    tenant = await _get_tenant_or_404(tenant_slug, db, current_user)
     app = await _get_app_or_404(tenant.id, app_slug, db)
     domain_record = await _get_domain_or_404(app.id, domain, db)
 
@@ -252,7 +261,7 @@ async def delete_domain(
     Deletes the cert-manager Certificate, removes the hostname from HTTPRoute,
     then deletes the DB record.
     """
-    tenant = await _get_tenant_or_404(tenant_slug, db)
+    tenant = await _get_tenant_or_404(tenant_slug, db, current_user)
     app = await _get_app_or_404(tenant.id, app_slug, db)
     domain_record = await _get_domain_or_404(app.id, domain, db)
 

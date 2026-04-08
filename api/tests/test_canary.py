@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.application import Application
 from app.models.tenant import Tenant
+from app.models.tenant_member import MemberRole, TenantMember
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -26,6 +27,8 @@ async def _make_tenant_and_app(db: AsyncSession, app_slug: str = "canary-app") -
     )
     db.add(tenant)
     await db.flush()
+    # H0-9: canary router now enforces membership
+    db.add(TenantMember(tenant_id=tenant.id, user_id="test-user", email="test@haven.nl", role=MemberRole("owner")))
 
     app_obj = Application(
         id=uuid.uuid4(),

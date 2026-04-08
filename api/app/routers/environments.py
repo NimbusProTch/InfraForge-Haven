@@ -10,6 +10,7 @@ from app.deps import CurrentUser, DBSession, K8sDep
 from app.models.application import Application
 from app.models.environment import Environment, EnvironmentStatus, EnvironmentType
 from app.models.tenant import Tenant
+from app.models.tenant_member import TenantMember
 from app.schemas.environment import EnvironmentCreate, EnvironmentResponse, EnvironmentUpdate
 
 router = APIRouter(prefix="/tenants/{tenant_slug}/apps/{app_slug}/environments", tags=["environments"])
@@ -39,11 +40,19 @@ def _compute_domain(tenant_slug: str, app_slug: str, env: Environment) -> str:
     return f"pr-{env.pr_number}-{base}"
 
 
-async def _get_tenant_or_404(tenant_slug: str, db: DBSession) -> Tenant:
+async def _get_tenant_or_404(tenant_slug: str, db: DBSession, current_user: dict) -> Tenant:
+    """H0-9: Lock environment + env-var data (likely contains secrets) to tenant members."""
     result = await db.execute(select(Tenant).where(Tenant.slug == tenant_slug))
     tenant = result.scalar_one_or_none()
     if tenant is None:
         raise HTTPException(status_code=404, detail="Tenant not found")
+
+    user_id = current_user.get("sub", "")
+    member_q = await db.execute(
+        select(TenantMember).where(TenantMember.tenant_id == tenant.id, TenantMember.user_id == user_id)
+    )
+    if member_q.scalar_one_or_none() is None:
+        raise HTTPException(status_code=403, detail="You are not a member of this tenant")
     return tenant
 
 
@@ -71,7 +80,7 @@ async def _get_env_or_404(app: Application, env_name: str, db: DBSession) -> Env
 async def list_environments(
     tenant_slug: str, app_slug: str, db: DBSession, current_user: CurrentUser
 ) -> list[Environment]:
-    tenant = await _get_tenant_or_404(tenant_slug, db)
+    tenant = await _get_tenant_or_404(tenant_slug, db, current_user)
     app = await _get_app_or_404(tenant, app_slug, db)
     result = await db.execute(
         select(Environment).where(Environment.application_id == app.id).order_by(Environment.created_at.asc())
@@ -83,7 +92,7 @@ async def list_environments(
 async def create_environment(
     tenant_slug: str, app_slug: str, body: EnvironmentCreate, db: DBSession, current_user: CurrentUser
 ) -> Environment:
-    tenant = await _get_tenant_or_404(tenant_slug, db)
+    tenant = await _get_tenant_or_404(tenant_slug, db, current_user)
     app = await _get_app_or_404(tenant, app_slug, db)
 
     # Prevent duplicate names within an app
@@ -114,7 +123,7 @@ async def create_environment(
 async def get_environment(
     tenant_slug: str, app_slug: str, env_name: str, db: DBSession, current_user: CurrentUser
 ) -> Environment:
-    tenant = await _get_tenant_or_404(tenant_slug, db)
+    tenant = await _get_tenant_or_404(tenant_slug, db, current_user)
     app = await _get_app_or_404(tenant, app_slug, db)
     return await _get_env_or_404(app, env_name, db)
 
@@ -123,7 +132,7 @@ async def get_environment(
 async def update_environment(
     tenant_slug: str, app_slug: str, env_name: str, body: EnvironmentUpdate, db: DBSession, current_user: CurrentUser
 ) -> Environment:
-    tenant = await _get_tenant_or_404(tenant_slug, db)
+    tenant = await _get_tenant_or_404(tenant_slug, db, current_user)
     app = await _get_app_or_404(tenant, app_slug, db)
     env = await _get_env_or_404(app, env_name, db)
 
@@ -139,7 +148,7 @@ async def update_environment(
 async def delete_environment(
     tenant_slug: str, app_slug: str, env_name: str, db: DBSession, k8s: K8sDep, current_user: CurrentUser
 ) -> None:
-    tenant = await _get_tenant_or_404(tenant_slug, db)
+    tenant = await _get_tenant_or_404(tenant_slug, db, current_user)
     app = await _get_app_or_404(tenant, app_slug, db)
     env = await _get_env_or_404(app, env_name, db)
 

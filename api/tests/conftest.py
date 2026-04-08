@@ -166,6 +166,8 @@ async def sample_tenant(db_session: AsyncSession) -> Tenant:
 
 @pytest_asyncio.fixture
 async def tenant_with_app(db_session: AsyncSession):
+    from app.models.tenant_member import MemberRole
+
     tenant = Tenant(
         id=uuid.uuid4(),
         slug="obs-tenant",
@@ -178,6 +180,16 @@ async def tenant_with_app(db_session: AsyncSession):
     )
     db_session.add(tenant)
     await db_session.flush()
+    # H0-9/H0-10: routers now require tenant membership; add the default
+    # async_client mock user as owner so existing happy-path tests still pass.
+    db_session.add(
+        TenantMember(
+            tenant_id=tenant.id,
+            user_id="test-user",
+            email="test@haven.nl",
+            role=MemberRole("owner"),
+        )
+    )
 
     app_obj = Application(
         id=uuid.uuid4(),

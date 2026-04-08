@@ -16,6 +16,7 @@ from app.deps import CurrentUser, DBSession, K8sDep
 from app.models.application import Application
 from app.models.cronjob import CronJob
 from app.models.tenant import Tenant
+from app.models.tenant_member import TenantMember
 from app.schemas.cronjob import CronJobCreate, CronJobResponse, CronJobUpdate
 
 logger = logging.getLogger(__name__)
@@ -28,11 +29,19 @@ router = APIRouter(prefix="/tenants/{tenant_slug}/apps/{app_slug}/cronjobs", tag
 # ---------------------------------------------------------------------------
 
 
-async def _get_tenant_or_404(tenant_slug: str, db: DBSession) -> Tenant:
+async def _get_tenant_or_404(tenant_slug: str, db: DBSession, current_user: dict) -> Tenant:
+    """H0-9: Lock cron schedules to tenant members."""
     result = await db.execute(select(Tenant).where(Tenant.slug == tenant_slug))
     t = result.scalar_one_or_none()
     if t is None:
         raise HTTPException(status_code=404, detail="Tenant not found")
+
+    user_id = current_user.get("sub", "")
+    member_q = await db.execute(
+        select(TenantMember).where(TenantMember.tenant_id == t.id, TenantMember.user_id == user_id)
+    )
+    if member_q.scalar_one_or_none() is None:
+        raise HTTPException(status_code=403, detail="You are not a member of this tenant")
     return t
 
 
@@ -120,7 +129,7 @@ def _build_k8s_cronjob(cj: CronJob, app: Application, namespace: str) -> dict:
 @router.get("", response_model=list[CronJobResponse])
 async def list_cronjobs(tenant_slug: str, app_slug: str, db: DBSession, current_user: CurrentUser) -> list[CronJob]:
     """List all CronJobs for an application."""
-    tenant = await _get_tenant_or_404(tenant_slug, db)
+    tenant = await _get_tenant_or_404(tenant_slug, db, current_user)
     app = await _get_app_or_404(tenant.id, app_slug, db)
 
     result = await db.execute(
@@ -139,7 +148,7 @@ async def create_cronjob(
     current_user: CurrentUser,
 ) -> CronJob:
     """Create a K8s CronJob for an application."""
-    tenant = await _get_tenant_or_404(tenant_slug, db)
+    tenant = await _get_tenant_or_404(tenant_slug, db, current_user)
     app = await _get_app_or_404(tenant.id, app_slug, db)
 
     k8s_name = _k8s_cronjob_name(app.slug, body.name)
@@ -189,7 +198,7 @@ async def get_cronjob(
     db: DBSession,
     current_user: CurrentUser,
 ) -> CronJob:
-    tenant = await _get_tenant_or_404(tenant_slug, db)
+    tenant = await _get_tenant_or_404(tenant_slug, db, current_user)
     app = await _get_app_or_404(tenant.id, app_slug, db)
     return await _get_cronjob_or_404(app.id, cronjob_id, db)
 
@@ -205,7 +214,7 @@ async def update_cronjob(
     current_user: CurrentUser,
 ) -> CronJob:
     """Update a CronJob (schedule, resources, suspend state, etc.)."""
-    tenant = await _get_tenant_or_404(tenant_slug, db)
+    tenant = await _get_tenant_or_404(tenant_slug, db, current_user)
     app = await _get_app_or_404(tenant.id, app_slug, db)
     cj = await _get_cronjob_or_404(app.id, cronjob_id, db)
 
@@ -241,7 +250,7 @@ async def delete_cronjob(
     current_user: CurrentUser,
 ) -> None:
     """Delete a CronJob from DB and K8s."""
-    tenant = await _get_tenant_or_404(tenant_slug, db)
+    tenant = await _get_tenant_or_404(tenant_slug, db, current_user)
     app = await _get_app_or_404(tenant.id, app_slug, db)
     cj = await _get_cronjob_or_404(app.id, cronjob_id, db)
 
@@ -270,7 +279,7 @@ async def run_cronjob_now(
     current_user: CurrentUser,
 ) -> dict:
     """Trigger an immediate one-off run of a CronJob (creates a K8s Job from the CronJob template)."""
-    tenant = await _get_tenant_or_404(tenant_slug, db)
+    tenant = await _get_tenant_or_404(tenant_slug, db, current_user)
     app = await _get_app_or_404(tenant.id, app_slug, db)
     cj = await _get_cronjob_or_404(app.id, cronjob_id, db)
 

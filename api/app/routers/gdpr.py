@@ -35,11 +35,27 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/tenants/{tenant_slug}/gdpr", tags=["gdpr"])
 
 
-async def _get_tenant_or_404(tenant_slug: str, db: DBSession) -> Tenant:
+async def _get_tenant_or_404(tenant_slug: str, db: DBSession, current_user: dict) -> Tenant:
+    """Look up tenant by slug AND verify the caller is a member.
+
+    H0-9: GDPR endpoints expose user data exports + erasure operations and
+    MUST be locked to tenant members. Returns 404 for missing tenant, 403
+    for non-member.
+    """
     result = await db.execute(select(Tenant).where(Tenant.slug == tenant_slug))
     tenant = result.scalar_one_or_none()
     if tenant is None:
         raise HTTPException(status_code=404, detail="Tenant not found")
+
+    user_id = current_user.get("sub", "")
+    member_q = await db.execute(
+        select(TenantMember).where(
+            TenantMember.tenant_id == tenant.id,
+            TenantMember.user_id == user_id,
+        )
+    )
+    if member_q.scalar_one_or_none() is None:
+        raise HTTPException(status_code=403, detail="You are not a member of this tenant")
     return tenant
 
 
@@ -53,7 +69,7 @@ async def list_consents(
     tenant_slug: str, db: DBSession, current_user: CurrentUser, user_id: str | None = None
 ) -> list[UserConsent]:
     """List all consent records for this tenant (optionally filtered by user_id)."""
-    tenant = await _get_tenant_or_404(tenant_slug, db)
+    tenant = await _get_tenant_or_404(tenant_slug, db, current_user)
     stmt = select(UserConsent).where(UserConsent.tenant_id == tenant.id)
     if user_id:
         stmt = stmt.where(UserConsent.user_id == user_id)
@@ -66,7 +82,7 @@ async def grant_consent(
     tenant_slug: str, body: ConsentGrant, db: DBSession, current_user: CurrentUser, user_id: str = "anonymous"
 ) -> UserConsent:
     """Record a consent grant (GDPR Art. 7)."""
-    tenant = await _get_tenant_or_404(tenant_slug, db)
+    tenant = await _get_tenant_or_404(tenant_slug, db, current_user)
     consent = UserConsent(
         tenant_id=tenant.id,
         user_id=user_id,
@@ -87,7 +103,7 @@ async def revoke_consent(
     tenant_slug: str, consent_type: ConsentType, db: DBSession, current_user: CurrentUser, user_id: str = "anonymous"
 ) -> UserConsent:
     """Revoke a consent type — creates a new revocation record (GDPR Art. 7(3))."""
-    tenant = await _get_tenant_or_404(tenant_slug, db)
+    tenant = await _get_tenant_or_404(tenant_slug, db, current_user)
     revocation = UserConsent(
         tenant_id=tenant.id,
         user_id=user_id,
@@ -110,7 +126,7 @@ async def revoke_consent(
 @router.get("/retention", response_model=RetentionPolicyResponse)
 async def get_retention_policy(tenant_slug: str, db: DBSession, current_user: CurrentUser) -> DataRetentionPolicy:
     """Get the data retention policy for this tenant."""
-    tenant = await _get_tenant_or_404(tenant_slug, db)
+    tenant = await _get_tenant_or_404(tenant_slug, db, current_user)
     result = await db.execute(select(DataRetentionPolicy).where(DataRetentionPolicy.tenant_id == str(tenant.id)))
     policy = result.scalar_one_or_none()
     if policy is None:
@@ -127,7 +143,7 @@ async def update_retention_policy(
     tenant_slug: str, body: RetentionPolicyUpdate, db: DBSession, current_user: CurrentUser
 ) -> DataRetentionPolicy:
     """Update the data retention policy for this tenant."""
-    tenant = await _get_tenant_or_404(tenant_slug, db)
+    tenant = await _get_tenant_or_404(tenant_slug, db, current_user)
     result = await db.execute(select(DataRetentionPolicy).where(DataRetentionPolicy.tenant_id == str(tenant.id)))
     policy = result.scalar_one_or_none()
     if policy is None:
@@ -152,7 +168,7 @@ async def export_data(
     tenant_slug: str, db: DBSession, current_user: CurrentUser, user_id: str = "anonymous"
 ) -> DataExportResponse:
     """Export all data for this tenant as structured JSON (GDPR Art. 20)."""
-    tenant = await _get_tenant_or_404(tenant_slug, db)
+    tenant = await _get_tenant_or_404(tenant_slug, db, current_user)
 
     # Applications
     apps_result = await db.execute(select(Application).where(Application.tenant_id == tenant.id))
@@ -245,7 +261,7 @@ async def erase_data(
             detail="Confirmation string must be 'ERASE MY DATA'",
         )
 
-    tenant = await _get_tenant_or_404(tenant_slug, db)
+    tenant = await _get_tenant_or_404(tenant_slug, db, current_user)
     tenant_id = tenant.id
 
     # Count before deletion for the response

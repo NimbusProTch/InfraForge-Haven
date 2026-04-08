@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 import pytest
 
 from app.models.tenant import Tenant
+from app.models.tenant_member import MemberRole, TenantMember
 from app.models.usage_record import UsageRecord
 from app.schemas.billing import PLAN_LIMITS
 from app.services.usage_service import (
@@ -16,6 +17,19 @@ from app.services.usage_service import (
     get_plan_limits,
     get_usage_history,
 )
+
+
+def _add_test_user_owner(db_session, tenant: Tenant) -> None:
+    """H0-9: billing router now enforces tenant membership; add test-user as owner."""
+    db_session.add(
+        TenantMember(
+            tenant_id=tenant.id,
+            user_id="test-user",
+            email="test@haven.nl",
+            role=MemberRole("owner"),
+        )
+    )
+
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -33,6 +47,8 @@ async def free_tenant(db_session):
         tier="free",
     )
     db_session.add(tenant)
+    await db_session.flush()
+    _add_test_user_owner(db_session, tenant)
     await db_session.commit()
     await db_session.refresh(tenant)
     return tenant
@@ -49,6 +65,8 @@ async def starter_tenant(db_session):
         tier="starter",
     )
     db_session.add(tenant)
+    await db_session.flush()
+    _add_test_user_owner(db_session, tenant)
     await db_session.commit()
     await db_session.refresh(tenant)
     return tenant

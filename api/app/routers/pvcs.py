@@ -15,6 +15,7 @@ from sqlalchemy import select
 from app.deps import CurrentUser, DBSession, K8sDep
 from app.models.application import Application
 from app.models.tenant import Tenant
+from app.models.tenant_member import TenantMember
 
 logger = logging.getLogger(__name__)
 
@@ -56,11 +57,19 @@ class VolumeListResponse(BaseModel):
 # ---------------------------------------------------------------------------
 
 
-async def _get_tenant_or_404(tenant_slug: str, db: DBSession) -> Tenant:
+async def _get_tenant_or_404(tenant_slug: str, db: DBSession, current_user: dict) -> Tenant:
+    """H0-9: Lock PVC inventory to tenant members."""
     result = await db.execute(select(Tenant).where(Tenant.slug == tenant_slug))
     t = result.scalar_one_or_none()
     if t is None:
         raise HTTPException(status_code=404, detail="Tenant not found")
+
+    user_id = current_user.get("sub", "")
+    member_q = await db.execute(
+        select(TenantMember).where(TenantMember.tenant_id == t.id, TenantMember.user_id == user_id)
+    )
+    if member_q.scalar_one_or_none() is None:
+        raise HTTPException(status_code=403, detail="You are not a member of this tenant")
     return t
 
 
@@ -88,7 +97,7 @@ async def list_volumes(
     tenant_slug: str, app_slug: str, db: DBSession, k8s: K8sDep, current_user: CurrentUser
 ) -> VolumeListResponse:
     """List PVCs attached to an application."""
-    tenant = await _get_tenant_or_404(tenant_slug, db)
+    tenant = await _get_tenant_or_404(tenant_slug, db, current_user)
     app = await _get_app_or_404(tenant.id, app_slug, db)
 
     if not k8s.is_available():
@@ -145,7 +154,7 @@ async def create_volume(
     The volume spec is persisted in the Application.volumes JSON field.
     A PVC is created in K8s when the cluster is available.
     """
-    tenant = await _get_tenant_or_404(tenant_slug, db)
+    tenant = await _get_tenant_or_404(tenant_slug, db, current_user)
     app = await _get_app_or_404(tenant.id, app_slug, db)
 
     # Check for duplicate volume name
@@ -217,7 +226,7 @@ async def delete_volume(
     current_user: CurrentUser,
 ) -> None:
     """Delete a PVC and remove it from the application's volume list."""
-    tenant = await _get_tenant_or_404(tenant_slug, db)
+    tenant = await _get_tenant_or_404(tenant_slug, db, current_user)
     app = await _get_app_or_404(tenant.id, app_slug, db)
 
     existing_volumes = list(app.volumes or [])
