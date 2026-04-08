@@ -45,12 +45,15 @@ class Deployment(Base, TimestampMixin):
     environment: Mapped["Environment | None"] = relationship(back_populates="deployments")
 
 
-# TODO: Remove unused model — replaced by K8s Job direct API
-class BuildJob(Base, TimestampMixin):
-    __tablename__ = "build_jobs"
-
-    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
-    deployment_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("deployments.id"), index=True)
-    k8s_job_name: Mapped[str] = mapped_column(String(255))
-    status: Mapped[str] = mapped_column(String(50), default="pending")
-    logs: Mapped[str | None] = mapped_column(Text, nullable=True)
+# H3b (P2.2): The `BuildJob` model used to live here. It carried a TODO
+# "Remove unused model — replaced by K8s Job direct API" since the build
+# pipeline switched to submitting K8s Jobs directly via the Kubernetes
+# Python client (no DB row to mirror them). It had zero production callers
+# (only `tests/test_build_queue.py` referenced the unrelated
+# `BuildJobStatus` Redis-queue enum from `services/build_queue_service.py`).
+#
+# Sprint H3 deleted the model. The corresponding `build_jobs` table is
+# dropped in Alembic migration 0022.
+#
+# `BuildJobResponse` schema was likewise dead and removed from
+# `app/schemas/deployment.py`.

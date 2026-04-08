@@ -25,7 +25,7 @@ from app.models.base import Base  # noqa: E402
 from app.models.cluster import Cluster  # noqa: E402, F401
 from app.models.cronjob import CronJob  # noqa: E402, F401
 from app.models.data_retention_policy import DataRetentionPolicy  # noqa: E402, F401
-from app.models.deployment import BuildJob, Deployment  # noqa: E402, F401
+from app.models.deployment import Deployment  # noqa: E402, F401
 from app.models.domain import DomainVerification  # noqa: E402, F401
 from app.models.environment import Environment  # noqa: E402, F401
 from app.models.managed_service import ManagedService  # noqa: E402, F401
