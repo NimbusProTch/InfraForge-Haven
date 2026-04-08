@@ -355,3 +355,65 @@ variable "use_real_domain" {
   type        = bool
   default     = false
 }
+
+# ===== H1b-2 (P4.2): etcd snapshot + off-cluster S3 backend =====
+# Pre-fix the dev cluster had ZERO automated etcd snapshots — total
+# cluster loss = total data loss. Defaults take a daily local snapshot
+# on each master at 02:00 UTC. Off-cluster upload requires explicit
+# setup of an S3-compatible bucket (Cloudflare R2 free tier recommended).
+
+variable "etcd_snapshot_schedule" {
+  description = "Cron expression for automated etcd snapshots. Default: daily 02:00 UTC."
+  type        = string
+  default     = "0 2 * * *"
+}
+
+variable "etcd_snapshot_retention" {
+  description = "Number of local etcd snapshots to retain on each master before pruning"
+  type        = number
+  default     = 30
+}
+
+variable "etcd_s3_enabled" {
+  description = "Ship etcd snapshots to off-cluster S3-compatible bucket. Default false. Morning TODO: provision Cloudflare R2 (free 10 GB), set true, fill in keys."
+  type        = bool
+  default     = false
+}
+
+variable "etcd_s3_endpoint" {
+  description = "S3-compatible endpoint URL (e.g. <account>.r2.cloudflarestorage.com)"
+  type        = string
+  default     = ""
+}
+
+variable "etcd_s3_bucket" {
+  description = "S3 bucket name for etcd snapshots"
+  type        = string
+  default     = ""
+}
+
+variable "etcd_s3_folder" {
+  description = "Subfolder inside the bucket (e.g. \"dev\")"
+  type        = string
+  default     = "dev"
+}
+
+variable "etcd_s3_region" {
+  description = "S3 region (use \"auto\" for Cloudflare R2)"
+  type        = string
+  default     = "auto"
+}
+
+variable "etcd_s3_access_key" {
+  description = "S3 access key — set via TF_VAR_etcd_s3_access_key or terraform.tfvars"
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "etcd_s3_secret_key" {
+  description = "S3 secret key — set via TF_VAR_etcd_s3_secret_key or terraform.tfvars"
+  type        = string
+  default     = ""
+  sensitive   = true
+}
