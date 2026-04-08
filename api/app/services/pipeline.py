@@ -252,11 +252,11 @@ async def run_pipeline(
                 logger.warning("ArgoCD wait failed (%s) — falling back to K8s check", msg)
                 try:
                     ready, msg = await asyncio.wait_for(
-                        deploy_svc.wait_for_ready(namespace, app_slug, timeout=30),
-                        timeout=30,
+                        deploy_svc.wait_for_ready(namespace, app_slug, timeout=90),
+                        timeout=90,
                     )
                 except TimeoutError:
-                    ready, msg = False, "K8s readiness check timed out after 30s"
+                    ready, msg = False, "K8s readiness check timed out after 90s"
         else:
             # Direct K8s mode: wait for deployment ready replicas
             try:
