@@ -11,7 +11,7 @@ Tests:
 
 import uuid
 from collections.abc import AsyncGenerator
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 import pytest_asyncio
@@ -124,34 +124,20 @@ async def test_tenants_me_excludes_other_users(auth_client, db_session):
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
-async def test_keycloak_enable_self_registration():
-    """KeycloakService.enable_self_registration calls the correct API."""
-    kc = KeycloakService()
-    with patch.object(kc, "_get_admin_token", return_value="mock-token"):
-        with patch("httpx.AsyncClient.put") as mock_put:
-            mock_resp = MagicMock()
-            mock_resp.raise_for_status = MagicMock()
-            mock_put.return_value = mock_resp
-            await kc.enable_self_registration("haven")
-            mock_put.assert_called_once()
-            call_args = mock_put.call_args
-            assert "haven" in call_args.args[0]
-            assert call_args.kwargs["json"]["registrationAllowed"] is True
+# H3a (P2.1): Removed `test_keycloak_enable_self_registration` and
+# `test_keycloak_service_has_create_realm` — the underlying methods were
+# dead code (no production callers, only kept alive by these "method
+# exists" assertions). The Sprint H3 cleanup deleted them.
+#
+# `test_keycloak_service_has_create_user` is kept because `create_user` is
+# still actively called from `routers/members.py::add_member`.
 
 
 def test_keycloak_service_has_create_user():
-    """KeycloakService has create_user method."""
+    """KeycloakService has create_user method (still used by member invite flow)."""
     kc = KeycloakService()
     assert hasattr(kc, "create_user")
     assert callable(kc.create_user)
-
-
-def test_keycloak_service_has_create_realm():
-    """KeycloakService has create_realm method."""
-    kc = KeycloakService()
-    assert hasattr(kc, "create_realm")
-    assert callable(kc.create_realm)
 
 
 # ---------------------------------------------------------------------------

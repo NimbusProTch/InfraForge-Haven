@@ -82,9 +82,13 @@ async def client(db, k8s_mock):
 
 
 def _patch_externals():
+    """H3a (P2.1): slots [0]/[1] kept as nullcontext to preserve positional
+    indexing in callsites. The keycloak realm methods were deleted."""
+    from contextlib import nullcontext
+
     return [
-        patch("app.routers.tenants.keycloak_service.create_realm", new_callable=AsyncMock),
-        patch("app.routers.tenants.keycloak_service.delete_realm", new_callable=AsyncMock),
+        nullcontext(),  # was: keycloak_service.create_realm (deleted in H3a)
+        nullcontext(),  # was: keycloak_service.delete_realm (deleted in H3a)
         patch("app.routers.tenants.gitops_scaffold.scaffold_tenant", new_callable=AsyncMock),
         patch("app.routers.tenants.gitops_scaffold.delete_tenant", new_callable=AsyncMock),
         patch("app.routers.applications.gitops_scaffold.scaffold_app", new_callable=AsyncMock),

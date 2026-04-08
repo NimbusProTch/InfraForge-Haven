@@ -245,15 +245,20 @@ async def test_b10_create_tenant_auto_owner(auth_client, db_session):
 
 @pytest.mark.asyncio
 async def test_b11_create_tenant_no_realm(auth_client):
-    """B11: POST /tenants → per-tenant realm NOT created (disabled)."""
-    # This test verifies the code path — realm creation is commented out
+    """B11: POST /tenants → no per-tenant realm is created.
+
+    H3a (P2.1): The keycloak_service.create_realm method was deleted (it
+    was dead code, never called). This test now verifies create_tenant has
+    no reference to it AT ALL — the historical "DISABLED" comment is also
+    gone, replaced by an explanatory NOTE about Sprint H3 cleanup.
+    """
     import inspect
 
     from app.routers import tenants
 
     source = inspect.getsource(tenants.create_tenant)
-    # Should have the commented-out realm creation
-    assert "DISABLED" in source or "not called" in source.lower() or "# await keycloak_service.create_realm" in source
+    assert "create_realm" not in source, "create_tenant must not reference deleted create_realm"
+    assert "Sprint H3" in source, "create_tenant should carry the H3 cleanup NOTE"
 
 
 @pytest.mark.asyncio

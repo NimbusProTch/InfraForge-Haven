@@ -1,4 +1,22 @@
-"""Keycloak Admin REST API service for per-tenant realm automation."""
+"""Keycloak Admin REST API service for tenant member provisioning.
+
+H3a (P2.1) — 2026-04-09: This file used to host the per-tenant realm
+automation lifecycle (`create_realm`, `delete_realm`, `create_client`,
+`enable_self_registration`, `is_available`). All of those methods were
+explicitly disabled in `routers/tenants.py` since Sprint 1 (the platform
+runs on a single shared "haven" realm) and had ZERO production callers
+— they were only kept alive by `noqa: F401` imports and a handful of
+"this method exists" assertion tests.
+
+The audit + Sprint H3 cleanup removed them. The only Keycloak Admin
+operation Haven actually performs today is `create_user` for the tenant
+member invite flow (`routers/members.py`). That, and its `_get_admin_token`
++ `_assign_realm_role` dependencies, are what remains.
+
+If per-tenant realms ever come back (Sprint 5+ for IdP federation), the
+deleted methods can be reconstructed from git history at commit be21561's
+parent — they were not load-bearing complexity, just dead code.
+"""
 
 import logging
 
@@ -10,9 +28,9 @@ logger = logging.getLogger(__name__)
 
 
 class KeycloakService:
-    """Automates Keycloak realm lifecycle via Admin REST API.
+    """Tenant member provisioning via Keycloak Admin REST API.
 
-    One realm per tenant — full SSO isolation.
+    All operations target the shared "haven" realm (settings.keycloak_realm).
     """
 
     def __init__(self) -> None:
@@ -40,119 +58,6 @@ class KeycloakService:
             )
             resp.raise_for_status()
             return resp.json()["access_token"]
-
-    # ------------------------------------------------------------------
-    # Master realm configuration
-    # ------------------------------------------------------------------
-
-    async def enable_self_registration(self, realm: str = "") -> None:
-        """Enable self-service registration on a realm.
-
-        If realm is empty, uses the platform master realm from settings.
-        """
-        target_realm = realm or settings.keycloak_realm
-        token = await self._get_admin_token()
-        async with httpx.AsyncClient(timeout=15) as client:
-            resp = await client.put(
-                f"{self._base_url}/admin/realms/{target_realm}",
-                json={"registrationAllowed": True},
-                headers={"Authorization": f"Bearer {token}"},
-            )
-            resp.raise_for_status()
-        logger.info("Enabled self-registration on realm: %s", target_realm)
-
-    # ------------------------------------------------------------------
-    # Realm lifecycle
-    # ------------------------------------------------------------------
-
-    async def create_realm(self, tenant_slug: str) -> None:
-        """Create a dedicated Keycloak realm for a tenant.
-
-        Realm name: tenant-{slug}
-        Idempotent — does not raise if realm already exists.
-        """
-        realm_name = f"tenant-{tenant_slug}"
-        token = await self._get_admin_token()
-        async with httpx.AsyncClient(timeout=15) as client:
-            resp = await client.post(
-                f"{self._base_url}/admin/realms",
-                json={
-                    "realm": realm_name,
-                    "displayName": f"Haven — {tenant_slug}",
-                    "enabled": True,
-                    "registrationAllowed": False,
-                    "loginWithEmailAllowed": True,
-                    "duplicateEmailsAllowed": False,
-                    "sslRequired": "external",
-                    "bruteForceProtected": True,
-                    "accessTokenLifespan": 3600,
-                    "ssoSessionIdleTimeout": 28800,
-                    "ssoSessionMaxLifespan": 28800,
-                    "offlineSessionMaxLifespan": 604800,
-                    "offlineSessionIdleTimeout": 172800,
-                },
-                headers={"Authorization": f"Bearer {token}"},
-            )
-            if resp.status_code == 409:
-                logger.info("Realm %s already exists — skipping", realm_name)
-                return
-            resp.raise_for_status()
-        logger.info("Created Keycloak realm: %s", realm_name)
-
-    async def delete_realm(self, tenant_slug: str) -> None:
-        """Delete the tenant's Keycloak realm.
-
-        Idempotent — does not raise if realm does not exist.
-        """
-        realm_name = f"tenant-{tenant_slug}"
-        token = await self._get_admin_token()
-        async with httpx.AsyncClient(timeout=15) as client:
-            resp = await client.delete(
-                f"{self._base_url}/admin/realms/{realm_name}",
-                headers={"Authorization": f"Bearer {token}"},
-            )
-            if resp.status_code == 404:
-                logger.info("Realm %s not found — nothing to delete", realm_name)
-                return
-            resp.raise_for_status()
-        logger.info("Deleted Keycloak realm: %s", realm_name)
-
-    # ------------------------------------------------------------------
-    # OIDC client
-    # ------------------------------------------------------------------
-
-    async def create_client(
-        self,
-        tenant_slug: str,
-        client_id: str,
-        redirect_uris: list[str],
-    ) -> None:
-        """Create an OIDC client in the tenant's realm.
-
-        Idempotent — does not raise if client already exists.
-        """
-        realm_name = f"tenant-{tenant_slug}"
-        token = await self._get_admin_token()
-        async with httpx.AsyncClient(timeout=15) as client:
-            resp = await client.post(
-                f"{self._base_url}/admin/realms/{realm_name}/clients",
-                json={
-                    "clientId": client_id,
-                    "enabled": True,
-                    "protocol": "openid-connect",
-                    "publicClient": False,
-                    "standardFlowEnabled": True,
-                    "directAccessGrantsEnabled": False,
-                    "redirectUris": redirect_uris,
-                    "webOrigins": ["+"],
-                },
-                headers={"Authorization": f"Bearer {token}"},
-            )
-            if resp.status_code == 409:
-                logger.info("Client %s in realm %s already exists — skipping", client_id, realm_name)
-                return
-            resp.raise_for_status()
-        logger.info("Created OIDC client %s in realm %s", client_id, realm_name)
 
     # ------------------------------------------------------------------
     # Users
@@ -242,19 +147,6 @@ class KeycloakService:
             assign_resp.raise_for_status()
 
         logger.info("Assigned role %s to user %s in realm %s", role_name, user_id, realm_name)
-
-    # ------------------------------------------------------------------
-    # Availability check
-    # ------------------------------------------------------------------
-
-    async def is_available(self) -> bool:
-        """Return True if the Keycloak Admin API is reachable."""
-        try:
-            async with httpx.AsyncClient(timeout=5) as client:
-                resp = await client.get(f"{self._base_url}/realms/master")
-                return resp.status_code == 200
-        except Exception:
-            return False
 
 
 # Singleton instance — same pattern as k8s_client

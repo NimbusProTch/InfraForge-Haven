@@ -129,10 +129,21 @@ async def client(db, k8s_mock):
 
 
 def _patch_externals():
-    """Patch all external service calls that would fail in test env."""
+    """Patch all external service calls that would fail in test env.
+
+    NOTE H3a (P2.1): slots [0] and [1] used to patch
+    `keycloak_service.create_realm` and `delete_realm`. Those methods were
+    deleted in Sprint H3 (single shared 'haven' realm, no per-tenant realm
+    automation). The slots are kept as `nullcontext()` no-ops to preserve
+    every callsite's positional indexing — there are ~50 places that do
+    `_patch_externals()[N]` and shifting indices would be a huge churn for
+    no benefit. The Sprint H3 cleanup doc explains why.
+    """
+    from contextlib import nullcontext
+
     return [
-        patch("app.routers.tenants.keycloak_service.create_realm", new_callable=AsyncMock),
-        patch("app.routers.tenants.keycloak_service.delete_realm", new_callable=AsyncMock),
+        nullcontext(),  # was: keycloak_service.create_realm (deleted in H3a)
+        nullcontext(),  # was: keycloak_service.delete_realm (deleted in H3a)
         patch("app.routers.tenants.gitops_scaffold.scaffold_tenant", new_callable=AsyncMock),
         patch("app.routers.tenants.gitops_scaffold.delete_tenant", new_callable=AsyncMock),
         patch("app.routers.applications.gitops_scaffold.scaffold_app", new_callable=AsyncMock),
