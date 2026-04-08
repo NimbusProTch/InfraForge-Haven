@@ -109,6 +109,16 @@ async def create_application(
         dockerfile_path=body.dockerfile_path,
         build_context=body.build_context,
         use_dockerfile=body.use_dockerfile,
+        health_check_path=body.health_check_path,
+        custom_domain=body.custom_domain,
+        auto_deploy=body.auto_deploy,
+        resource_cpu_request=body.resource_cpu_request,
+        resource_cpu_limit=body.resource_cpu_limit,
+        resource_memory_request=body.resource_memory_request,
+        resource_memory_limit=body.resource_memory_limit,
+        min_replicas=body.min_replicas,
+        max_replicas=body.max_replicas,
+        cpu_threshold=body.cpu_threshold,
     )
     db.add(app)
     try:
