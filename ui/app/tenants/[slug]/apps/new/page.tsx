@@ -864,6 +864,9 @@ export default function NewAppPage() {
                 </div>
                 <button
                   type="button"
+                  role="switch"
+                  aria-checked={useDockerfile}
+                  aria-label="Use existing Dockerfile"
                   onClick={() => {
                     setUseDockerfile(!useDockerfile);
                     if (!useDockerfile) {
