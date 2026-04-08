@@ -1084,50 +1084,12 @@ export const api = {
     billingSummary: (orgSlug: string, token?: string) =>
       apiFetch<BillingSummary>(`/organizations/${orgSlug}/billing`, {}, token),
   },
-  backup: {
-    list: (tenantSlug: string, token?: string) =>
-      apiFetch<BackupList>(`/tenants/${tenantSlug}/backup`, {}, token),
-    trigger: (tenantSlug: string, body: { resource_type: string }, token?: string) =>
-      apiFetch<BackupTriggerResult>(
-        `/tenants/${tenantSlug}/backup`,
-        { method: "POST", body: JSON.stringify(body) },
-        token
-      ),
-    setSchedule: (
-      tenantSlug: string,
-      body: { schedule: string; enabled: boolean },
-      token?: string
-    ) =>
-      apiFetch<void>(
-        `/tenants/${tenantSlug}/backup/schedule`,
-        { method: "PUT", body: JSON.stringify(body) },
-        token
-      ),
-    // Per-service backup/restore
-    listForService: (tenantSlug: string, serviceName: string, token?: string) =>
-      apiFetch<ServiceBackupList>(
-        `/tenants/${tenantSlug}/services/${serviceName}/backups`,
-        {},
-        token
-      ),
-    triggerForService: (tenantSlug: string, serviceName: string, token?: string) =>
-      apiFetch<ServiceBackupTrigger>(
-        `/tenants/${tenantSlug}/services/${serviceName}/backup`,
-        { method: "POST" },
-        token
-      ),
-    restoreForService: (
-      tenantSlug: string,
-      serviceName: string,
-      backupId: string,
-      token?: string
-    ) =>
-      apiFetch<ServiceRestoreResult>(
-        `/tenants/${tenantSlug}/services/${serviceName}/restore/${backupId}`,
-        { method: "POST" },
-        token
-      ),
-  },
+  // H3d (P2.4): The `api.backup` (singular) namespace was deleted here. It
+  // had ZERO callers in the entire UI codebase — abandoned scaffolding from
+  // an earlier sprint that the active `api.backups` (plural) replaced.
+  // The `api.backups` namespace below is still in use (BackupPanel.tsx);
+  // once Sprint H3 P2.3 lands and BackupPanel is gone, `api.backups` will
+  // also be deletable in a follow-up.
   canary: {
     status: (tenantSlug: string, appSlug: string, token?: string) =>
       apiFetch<CanaryStatus>(
@@ -1269,37 +1231,9 @@ export const api = {
     buildQueueStatus: (token?: string) =>
       apiFetch<BuildQueueStatus>("/platform/build-queue/status", {}, token),
   },
-  clusters: {
-    list: (token?: string) => apiFetch<Cluster[]>("/clusters", {}, token),
-    create: (body: { name: string; region: string; provider: string; endpoint?: string }, token?: string) =>
-      apiFetch<Cluster>("/clusters", { method: "POST", body: JSON.stringify(body) }, token),
-    get: (clusterId: string, token?: string) =>
-      apiFetch<Cluster>(`/clusters/${clusterId}`, {}, token),
-    update: (clusterId: string, body: Partial<Cluster>, token?: string) =>
-      apiFetch<Cluster>(
-        `/clusters/${clusterId}`,
-        { method: "PATCH", body: JSON.stringify(body) },
-        token
-      ),
-    delete: (clusterId: string, token?: string) =>
-      apiFetch<void>(`/clusters/${clusterId}`, { method: "DELETE" }, token),
-    healthCheck: (clusterId: string, token?: string) =>
-      apiFetch<ClusterHealthResponse>(
-        `/clusters/${clusterId}/health-check`,
-        { method: "POST" },
-        token
-      ),
-    healthCheckAll: (token?: string) =>
-      apiFetch<ClusterHealthResponse[]>("/clusters/health-check/all", { method: "POST" }, token),
-    failover: (clusterId: string, token?: string) =>
-      apiFetch<Cluster | null>(
-        `/clusters/${clusterId}/failover`,
-        { method: "POST" },
-        token
-      ),
-    routingTable: (token?: string) =>
-      apiFetch<MultiRegionRoutingResponse>("/clusters/routing/table", {}, token),
-    routingByRegion: (region: string, token?: string) =>
-      apiFetch<Cluster | null>(`/clusters/routing/region/${region}`, {}, token),
-  },
+  // H3d (P2.4): The `api.clusters` namespace was deleted here. It exposed
+  // ~10 cluster-management methods (list/create/update/delete/healthCheck/
+  // failover/routingTable/...) but had ZERO callers in the UI. The cluster
+  // multi-region failover feature was scaffolded but never wired into any
+  // page. Re-add when there's a UI that actually consumes it.
 };
