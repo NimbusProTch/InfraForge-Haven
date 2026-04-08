@@ -7,10 +7,15 @@ import httpx
 import pytest
 
 from app.models.tenant import Tenant
+from app.models.tenant_member import MemberRole, TenantMember
 from app.routers.github import _oauth_states, _resolve_token, _store_oauth_state, _validate_oauth_state
 
 
-async def _make_tenant(db):
+async def _make_tenant(db, add_test_user_owner: bool = True):
+    """Create a tenant. By default also adds the default async_client mock
+    user (sub='test-user') as OWNER so the H0-12 membership/role check on
+    /github/connect and /github/status is satisfied.
+    """
     tenant = Tenant(
         id=uuid.uuid4(),
         slug="gh-tenant",
@@ -22,6 +27,16 @@ async def _make_tenant(db):
         storage_limit="20Gi",
     )
     db.add(tenant)
+    await db.flush()
+    if add_test_user_owner:
+        db.add(
+            TenantMember(
+                tenant_id=tenant.id,
+                user_id="test-user",
+                email="test@haven.nl",
+                role=MemberRole("owner"),
+            )
+        )
     await db.commit()
     await db.refresh(tenant)
     return tenant
@@ -635,14 +650,8 @@ async def test_github_status_404_tenant(async_client):
 @pytest.mark.asyncio
 async def test_tenant_response_includes_github_connected(async_client, db_session):
     """GET /tenants/{slug} response includes github_connected field."""
-    from app.models.tenant_member import MemberRole, TenantMember
-
+    # _make_tenant default already adds test-user as owner — no extra membership needed.
     tenant = await _make_tenant(db_session)
-    # Add test-user as member (required by tenant auth)
-    db_session.add(
-        TenantMember(tenant_id=tenant.id, user_id="test-user", email="test@haven.nl", role=MemberRole("owner"))
-    )
-    await db_session.commit()
     response = await async_client.get(f"/api/v1/tenants/{tenant.slug}")
     assert response.status_code == 200
     data = response.json()
@@ -666,18 +675,8 @@ async def test_my_tenants_empty_for_new_user(async_client):
 @pytest.mark.asyncio
 async def test_my_tenants_returns_owned_tenants(async_client, db_session):
     """GET /tenants/me returns tenants where user is a member."""
-    from app.models.tenant_member import MemberRole, TenantMember
-
+    # _make_tenant default already adds test-user as owner.
     tenant = await _make_tenant(db_session)
-    # Add current user as member (mock user has sub="test-user-id")
-    member = TenantMember(
-        tenant_id=tenant.id,
-        user_id="test-user",  # matches conftest mock: {"sub": "test-user"}
-        email="test@example.com",
-        role=MemberRole.owner,
-    )
-    db_session.add(member)
-    await db_session.commit()
 
     response = await async_client.get("/api/v1/tenants/me")
     assert response.status_code == 200

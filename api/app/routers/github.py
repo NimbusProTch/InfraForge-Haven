@@ -11,6 +11,7 @@ from sqlalchemy import select
 from app.config import settings
 from app.deps import CurrentUser, DBSession
 from app.models.tenant import Tenant
+from app.models.tenant_member import MemberRole, TenantMember
 
 logger = logging.getLogger(__name__)
 
@@ -160,6 +161,47 @@ class ConnectGitHubRequest(BaseModel):
     access_token: str
 
 
+async def _get_tenant_with_member_check(
+    tenant_slug: str,
+    db: DBSession,
+    current_user: dict,
+    *,
+    require_admin: bool = False,
+) -> Tenant:
+    """Look up tenant + verify caller is a member.
+
+    H0-12: Prior to this fix, /connect/{tenant_slug} let any authenticated
+    user paste an arbitrary GitHub OAuth token onto any tenant — including
+    one they had no relationship to. The next build of that tenant would
+    clone the attacker's repo URL with the attacker-controlled token,
+    which is RCE inside the victim's namespace.
+
+    require_admin=True: caller must be owner OR admin (for token write ops)
+    require_admin=False: any membership level OK (for status read)
+    """
+    result = await db.execute(select(Tenant).where(Tenant.slug == tenant_slug))
+    tenant = result.scalar_one_or_none()
+    if tenant is None:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+
+    user_id = current_user.get("sub", "")
+    member_q = await db.execute(
+        select(TenantMember).where(
+            TenantMember.tenant_id == tenant.id,
+            TenantMember.user_id == user_id,
+        )
+    )
+    member = member_q.scalar_one_or_none()
+    if member is None:
+        raise HTTPException(status_code=403, detail="You are not a member of this tenant")
+    if require_admin and member.role not in (MemberRole.owner, MemberRole.admin):
+        raise HTTPException(
+            status_code=403,
+            detail="Only tenant owners and admins can manage the GitHub connection",
+        )
+    return tenant
+
+
 @router.post("/connect/{tenant_slug}")
 async def connect_github(
     tenant_slug: str,
@@ -168,11 +210,7 @@ async def connect_github(
     current_user: CurrentUser,
 ) -> dict:
     """Store a GitHub OAuth token for a tenant (used server-side for builds)."""
-    result = await db.execute(select(Tenant).where(Tenant.slug == tenant_slug))
-    tenant = result.scalar_one_or_none()
-    if tenant is None:
-        raise HTTPException(status_code=404, detail="Tenant not found")
-
+    tenant = await _get_tenant_with_member_check(tenant_slug, db, current_user, require_admin=True)
     tenant.github_token = body.access_token
     await db.commit()
     logger.info("Stored GitHub token for tenant %s", tenant_slug)
@@ -186,11 +224,7 @@ async def disconnect_github(
     current_user: CurrentUser,
 ) -> dict:
     """Remove a stored GitHub OAuth token for a tenant."""
-    result = await db.execute(select(Tenant).where(Tenant.slug == tenant_slug))
-    tenant = result.scalar_one_or_none()
-    if tenant is None:
-        raise HTTPException(status_code=404, detail="Tenant not found")
-
+    tenant = await _get_tenant_with_member_check(tenant_slug, db, current_user, require_admin=True)
     tenant.github_token = None
     await db.commit()
     logger.info("Removed GitHub token for tenant %s", tenant_slug)
@@ -211,10 +245,7 @@ async def github_status(
     Returns: connected (bool), github_user (login if valid), needs_reauth (if token expired).
     UI uses this to show/hide the "Connect GitHub" banner on tenant dashboard.
     """
-    result = await db.execute(select(Tenant).where(Tenant.slug == tenant_slug))
-    tenant = result.scalar_one_or_none()
-    if tenant is None:
-        raise HTTPException(status_code=404, detail="Tenant not found")
+    tenant = await _get_tenant_with_member_check(tenant_slug, db, current_user)
 
     if not tenant.github_token:
         return {"connected": False, "github_user": None, "needs_reauth": False}
