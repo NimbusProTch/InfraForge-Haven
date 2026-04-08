@@ -305,16 +305,13 @@ test.describe.serial("Deep Platform E2E", () => {
 
     // Step 3: Build — enable Dockerfile, set port
     console.log("  Step 3: Build config");
-    // Toggle Dockerfile
-    const switches = page.locator('button[role="switch"]');
-    const switchCount = await switches.count();
-    for (let i = 0; i < switchCount; i++) {
-      const sw = switches.nth(i);
-      const text = await sw.locator("..").textContent() ?? "";
-      if (text.toLowerCase().includes("dockerfile")) {
-        const checked = await sw.getAttribute("aria-checked");
-        if (checked === "false") { await sw.click(); console.log("    Dockerfile toggle: ON"); }
-        break;
+    // Toggle Dockerfile via aria-label
+    const dockerToggle = page.getByRole("switch", { name: /use existing dockerfile/i });
+    if (await dockerToggle.isVisible().catch(() => false)) {
+      const checked = await dockerToggle.getAttribute("aria-checked");
+      if (checked === "false") {
+        await dockerToggle.click();
+        console.log("    Dockerfile toggle: ON");
       }
     }
 
