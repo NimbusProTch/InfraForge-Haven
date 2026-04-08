@@ -754,4 +754,4 @@ class TenantService:
                     attempt + 1,
                     e,
                 )
-                await asyncio.sleep(2 ** attempt)  # 1s, 2s backoff
+                await asyncio.sleep(2**attempt)  # 1s, 2s backoff
