@@ -22,17 +22,28 @@ export async function login(page: Page) {
     return;
   }
 
-  // Click Keycloak button
-  await page.getByText(/Keycloak|Sign in/i).first().click();
+  // Click Keycloak button — could be "Sign in with Keycloak" or just "Keycloak"
+  const signinBtn = page.getByRole("button", { name: /sign in|keycloak/i }).first();
+  if (await signinBtn.isVisible().catch(() => false)) {
+    await signinBtn.click();
+  } else {
+    await page.getByText(/Keycloak|Sign in/i).first().click();
+  }
 
-  // Fill Keycloak form
-  await page.waitForURL(/keycloak/, { timeout: 10_000 });
-  await page.fill("#username", "admin");
-  await page.fill("#password", "HavenAdmin2026!");
-  await page.click("#kc-login");
+  // Wait for either Keycloak redirect or back to dashboard (auto-login from prior session)
+  try {
+    await page.waitForURL(/keycloak|dashboard|tenants/, { timeout: 15_000 });
+  } catch {
+    // Already on a valid page
+  }
 
-  // Wait for redirect back
-  await page.waitForURL(/dashboard|tenants/, { timeout: 15_000 });
+  // If still on Keycloak login form, fill it
+  if (page.url().includes("keycloak")) {
+    await page.fill("#username", "admin");
+    await page.fill("#password", "HavenAdmin2026!");
+    await page.click("#kc-login");
+    await page.waitForURL(/dashboard|tenants/, { timeout: 20_000 });
+  }
 }
 
 /**
