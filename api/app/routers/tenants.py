@@ -177,39 +177,74 @@ async def update_tenant(tenant_slug: str, body: TenantUpdate, db: DBSession, cur
 
 @router.delete("/{tenant_slug}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_tenant(tenant_slug: str, db: DBSession, k8s: K8sDep, current_user: CurrentUser) -> None:
+    """Delete tenant with best-effort external cleanup.
+
+    Each external cleanup step is wrapped in try/except so a single failure
+    (Harbor unreachable, ArgoCD timeout, Gitea hiccup) cannot leave the tenant
+    stuck in the DB. The DB delete ALWAYS runs after the cleanup attempts.
+    Cleanup failures are logged for ops to inspect later.
+    """
     tenant = await _get_tenant_or_404(tenant_slug, db)
     await _require_tenant_membership(tenant, current_user, db, min_role="owner")
+    cleanup_errors: list[str] = []
 
     # 1. Deprovision all managed services (Everest DBs, Redis CRDs, RabbitMQ CRDs)
-    provisioner = ManagedServiceProvisioner(k8s)
-    result = await db.execute(select(ManagedService).where(ManagedService.tenant_id == tenant.id))
-    for svc in result.scalars():
-        try:
-            await provisioner.deprovision(svc)
-        except Exception as exc:
-            logger.warning("Service deprovision failed for %s/%s: %s", tenant_slug, svc.name, exc)
+    try:
+        provisioner = ManagedServiceProvisioner(k8s)
+        result = await db.execute(select(ManagedService).where(ManagedService.tenant_id == tenant.id))
+        for svc in result.scalars():
+            try:
+                await provisioner.deprovision(svc)
+            except Exception as exc:
+                logger.warning("Service deprovision failed for %s/%s: %s", tenant_slug, svc.name, exc)
+                cleanup_errors.append(f"service:{svc.name}")
+    except Exception as exc:
+        logger.error("Service deprovision loop failed for %s: %s", tenant_slug, exc)
+        cleanup_errors.append("services")
 
     # 2. Delete ApplicationSet + K8s namespace + Harbor project
-    tenant_svc = TenantService(k8s)
-    await tenant_svc.deprovision(tenant.namespace, slug=tenant.slug)
+    try:
+        tenant_svc = TenantService(k8s)
+        await tenant_svc.deprovision(tenant.namespace, slug=tenant.slug)
+    except Exception as exc:
+        logger.error("TenantService.deprovision failed for %s: %s", tenant_slug, exc)
+        cleanup_errors.append("tenant_service")
 
     # 3. Per-tenant Keycloak realm deletion: DISABLED (shared realm model)
     # await keycloak_service.delete_realm(tenant.slug)
 
     # 4. GitOps scaffold: remove tenant directory from haven-gitops
-    await gitops_scaffold.delete_tenant(tenant.slug)
+    try:
+        await gitops_scaffold.delete_tenant(tenant.slug)
+    except Exception as exc:
+        logger.error("gitops_scaffold.delete_tenant failed for %s: %s", tenant_slug, exc)
+        cleanup_errors.append("gitops")
 
     # 5. Audit log before cascade delete
-    await audit(
-        db,
-        tenant_id=tenant.id,
-        action="tenant.delete",
-        user_id=current_user.get("sub", ""),
-        resource_type="tenant",
-        resource_id=str(tenant.id),
-        extra={"slug": tenant.slug},
-    )
+    try:
+        await audit(
+            db,
+            tenant_id=tenant.id,
+            action="tenant.delete",
+            user_id=current_user.get("sub", ""),
+            resource_type="tenant",
+            resource_id=str(tenant.id),
+            extra={"slug": tenant.slug, "cleanup_errors": cleanup_errors},
+        )
+    except Exception as exc:
+        logger.error("Audit log failed for tenant delete %s: %s", tenant_slug, exc)
 
     # 6. DB cascade delete (tenant → apps → services → deployments)
+    # ALWAYS runs, even if external cleanup partially failed.
+    # Stuck DB records are worse than orphaned external resources, which
+    # can be cleaned up by the cleanup-orphan-appsets.sh script.
     await db.delete(tenant)
     await db.commit()
+
+    if cleanup_errors:
+        logger.warning(
+            "Tenant %s deleted from DB with cleanup errors: %s. "
+            "Run scripts/cleanup-orphan-appsets.sh and check Harbor/Gitea manually.",
+            tenant_slug,
+            ", ".join(cleanup_errors),
+        )
