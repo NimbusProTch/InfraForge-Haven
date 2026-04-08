@@ -119,11 +119,32 @@ variable "monitoring_version" {
   default     = "67.4.0"
 }
 
+# H1b-1 (P4.1): operator IP allow-list — passed through to hetzner-infra
+# module for SSH 22, K8s API 6443, RKE2 supervisor 9345 firewall rules.
+# Set this in terraform.tfvars to your VPN/office egress CIDRs. Defaults
+# to "world open" temporarily so an unconfigured tofu apply doesn't lock
+# the operator out, but the H1b-1 morning task is to set it explicitly.
+variable "operator_cidrs" {
+  description = "Allow-list CIDRs for SSH, K8s API, and RKE2 supervisor (port 9345). Set in tfvars."
+  type        = list(string)
+  default     = ["0.0.0.0/0", "::/0"]
+}
+
+# H1b-1 (P4.1): hardcoded password default removed. The pre-fix value
+# `"HavenAdmin2026!"` was committed to git history (still in older
+# commits — rotate the actual password on the dev cluster as part of
+# the H1b-1 morning task). The variable is now empty-default + mandatory
+# in tfvars, matching the pattern of every other admin password in this
+# file.
 variable "grafana_admin_password" {
-  description = "Grafana admin password (set via TF_VAR_grafana_admin_password or terraform.tfvars)"
+  description = "Grafana admin password — MUST be set via TF_VAR_grafana_admin_password or terraform.tfvars"
   type        = string
   sensitive   = true
-  default     = "HavenAdmin2026!"
+  default     = ""
+  validation {
+    condition     = length(var.grafana_admin_password) >= 16 || var.grafana_admin_password == ""
+    error_message = "grafana_admin_password must be at least 16 characters when set"
+  }
 }
 
 # ===== Logging =====

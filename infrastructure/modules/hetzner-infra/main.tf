@@ -28,18 +28,24 @@ resource "hcloud_network_subnet" "haven" {
 # --- Firewall (Hardened) ---
 # Inter-node traffic flows over private network (node-ip config).
 # Only public-facing ports open: SSH, HTTP/S, K8s API.
+#
+# H1b-1 (P4.1): operator-only ports (SSH 22, K8s API 6443, RKE2
+# supervisor 9345) are restricted to var.operator_cidrs. Public web
+# ports (80, 443) remain world-open because the platform serves customer
+# tenant apps to the internet via Cilium Gateway API. Set operator_cidrs
+# in terraform.tfvars to your VPN/office egress CIDRs before applying.
 resource "hcloud_firewall" "haven" {
   name = "haven-${var.environment}"
 
-  # SSH (restricted to operator IPs in production)
+  # SSH — operator only
   rule {
     direction  = "in"
     protocol   = "tcp"
     port       = "22"
-    source_ips = ["0.0.0.0/0", "::/0"]
+    source_ips = var.operator_cidrs
   }
 
-  # HTTP (Let's Encrypt ACME + public services)
+  # HTTP — public (Let's Encrypt ACME + tenant apps via Gateway API)
   rule {
     direction  = "in"
     protocol   = "tcp"
@@ -47,7 +53,7 @@ resource "hcloud_firewall" "haven" {
     source_ips = ["0.0.0.0/0", "::/0"]
   }
 
-  # HTTPS (public services via Gateway API)
+  # HTTPS — public (tenant apps via Gateway API)
   rule {
     direction  = "in"
     protocol   = "tcp"
@@ -55,24 +61,27 @@ resource "hcloud_firewall" "haven" {
     source_ips = ["0.0.0.0/0", "::/0"]
   }
 
-  # Kubernetes API (through LB, restrict in production)
+  # Kubernetes API — operator only (via LB)
   rule {
     direction  = "in"
     protocol   = "tcp"
     port       = "6443"
-    source_ips = ["0.0.0.0/0", "::/0"]
+    source_ips = var.operator_cidrs
   }
 
   # RKE2 supervisor / remotedialer tunnel (workers → masters)
   # Required: when node-external-ip is set, RKE2 advertises public IPs as
   # server endpoints. Workers connect to masters via public IP on port 9345
   # for the remotedialer WebSocket tunnel used by kubectl logs/exec.
-  # Without this, all kubectl logs/exec calls return 502 Bad Gateway.
+  #
+  # H1b-1 SECURITY: operator-only. Pre-fix this was world-open which was
+  # a rogue worker join vector — anyone could attempt to register a node
+  # against the supervisor. The architect's H0 audit flagged it as P0.
   rule {
     direction  = "in"
     protocol   = "tcp"
     port       = "9345"
-    source_ips = ["0.0.0.0/0", "::/0"]
+    source_ips = var.operator_cidrs
   }
 
   # NOTE: VXLAN (8472), etcd (2379-2380), kubelet API (10250) remain
