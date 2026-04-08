@@ -139,3 +139,45 @@ async def test_delete_tenant(tc):
 async def test_delete_tenant_404(tc):
     resp = await tc.delete("/api/v1/tenants/ghost")
     assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_delete_tenant_db_removed_even_when_external_cleanup_fails(tc, monkeypatch):
+    """If TenantService.deprovision raises (ArgoCD/K8s issue), the DB record
+    must STILL be deleted. Stuck DB tenants cause '409 already exists' on
+    re-create and are worse than orphaned external resources."""
+    from app.services import tenant_service as ts_mod
+
+    await tc.post("/api/v1/tenants", json={"name": "Stuck", "slug": "tc-stuck"})
+
+    # Make TenantService.deprovision raise — simulates ArgoCD timeout
+    async def boom(self, *args, **kwargs):
+        raise RuntimeError("simulated ArgoCD outage")
+
+    monkeypatch.setattr(ts_mod.TenantService, "deprovision", boom)
+
+    resp = await tc.delete("/api/v1/tenants/tc-stuck")
+    assert resp.status_code == 204, f"Delete should succeed: {resp.text}"
+
+    # Verify DB record is gone
+    resp = await tc.get("/api/v1/tenants/tc-stuck")
+    assert resp.status_code == 404, "Tenant must be removed from DB even on cleanup failure"
+
+
+@pytest.mark.asyncio
+async def test_delete_tenant_db_removed_even_when_gitops_fails(tc, monkeypatch):
+    """GitOps cleanup failure should not block DB delete."""
+    from app.services import gitops_scaffold
+
+    await tc.post("/api/v1/tenants", json={"name": "Stuck2", "slug": "tc-stuck2"})
+
+    async def boom(self, slug):
+        raise RuntimeError("simulated Gitea outage")
+
+    monkeypatch.setattr(gitops_scaffold.gitops_scaffold.__class__, "delete_tenant", boom)
+
+    resp = await tc.delete("/api/v1/tenants/tc-stuck2")
+    assert resp.status_code == 204
+
+    resp = await tc.get("/api/v1/tenants/tc-stuck2")
+    assert resp.status_code == 404
