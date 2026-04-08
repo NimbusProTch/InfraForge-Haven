@@ -10,6 +10,7 @@ from sqlalchemy import func, select
 from app.deps import CurrentUser, DBSession
 from app.models.audit_log import AuditLog
 from app.models.tenant import Tenant
+from app.models.tenant_member import TenantMember
 from app.schemas.audit_log import AuditLogListResponse, AuditLogResponse
 
 logger = logging.getLogger(__name__)
@@ -17,11 +18,28 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/tenants", tags=["audit"])
 
 
-async def _get_tenant_or_404(slug: str, db: DBSession) -> Tenant:
+async def _get_tenant_or_404(slug: str, db: DBSession, current_user: dict) -> Tenant:
+    """Look up tenant by slug AND verify the caller is a member.
+
+    Raises 404 if the tenant doesn't exist, 403 if the caller is not a member.
+    """
     result = await db.execute(select(Tenant).where(Tenant.slug == slug))
     tenant = result.scalar_one_or_none()
     if tenant is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant not found")
+
+    user_id = current_user.get("sub", "")
+    member_q = await db.execute(
+        select(TenantMember).where(
+            TenantMember.tenant_id == tenant.id,
+            TenantMember.user_id == user_id,
+        )
+    )
+    if member_q.scalar_one_or_none() is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You are not a member of this tenant",
+        )
     return tenant
 
 
@@ -39,7 +57,7 @@ async def list_audit_logs(
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=200),
 ) -> AuditLogListResponse:
-    tenant = await _get_tenant_or_404(tenant_slug, db)
+    tenant = await _get_tenant_or_404(tenant_slug, db, current_user)
 
     base_q = select(AuditLog).where(AuditLog.tenant_id == tenant.id)
 
