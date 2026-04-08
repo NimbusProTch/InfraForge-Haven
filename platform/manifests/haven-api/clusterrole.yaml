@@ -10,9 +10,13 @@ rules:
     resources: ["namespaces"]
     verbs: ["get", "list", "create", "delete"]
   # ResourceQuota and LimitRange
+  # H1c (P5): added `update` verb. tenant_service.py uses
+  # replace_namespaced_resource_quota / replace_namespaced_limit_range
+  # which both map to the K8s RBAC `update` verb. Pre-fix this was
+  # masked by the rogue cluster-admin binding.
   - apiGroups: [""]
     resources: ["resourcequotas", "limitranges"]
-    verbs: ["get", "list", "create", "patch", "delete"]
+    verbs: ["get", "list", "create", "patch", "update", "delete"]
   # Core resources (pods, services, secrets, configmaps, events, endpoints, PVCs)
   - apiGroups: [""]
     resources: ["services", "pods", "pods/log", "pods/exec", "pods/portforward",
@@ -43,6 +47,21 @@ rules:
   - apiGroups: ["postgresql.cnpg.io"]
     resources: ["clusters", "backups", "scheduledbackups"]
     verbs: ["get", "list", "watch", "create", "patch", "delete"]
+  # H1c (P5): Percona Everest managed DB CRDs (PG / MySQL / MongoDB) —
+  # gap closed. Pre-fix the haven-api code called custom_objects against
+  # the everest.percona.com API group via everest_client.py /
+  # managed_service.py / backup_service.py but the role had ZERO
+  # permissions for it. The rogue cluster-admin binding masked the gap.
+  # See platform/manifests/haven-api/rbac-analysis.md for the full
+  # inventory of which methods need this.
+  - apiGroups: ["everest.percona.com"]
+    resources:
+      - databaseclusters
+      - databaseclusterbackups
+      - databaseclusterrestores
+      - databaseclusterbackupschedules
+      - databaseengines
+    verbs: ["get", "list", "watch", "create", "patch", "update", "delete"]
   # Redis CRD (OpsTree)
   - apiGroups: ["redis.redis.opstreelabs.in"]
     resources: ["redis"]
