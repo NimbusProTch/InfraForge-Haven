@@ -168,27 +168,31 @@ haven-platform/
 - Secret'lar: .env dosyası (git'e eklenmez), prod'da K8s Secret/Vault
 - Para harcamamak için test bitince `tofu destroy`
 
-## Haven Compliancy (15/15 Zorunlu)
+## Haven Compliancy — GERÇEK SKOR: **12/15** (Yalan skorlama düzeltildi 2026-04-09)
 
-| # | Check | Çözüm | Status |
+> **Önceki bu tablo "15/15 ✅" diyordu — bu yanlış beyandı.** Bir 5-agent + 4-tur architect audit sonrası gerçek skor `11.5/15` çıktı. 1, 4, 15 düzeltilmeden müşteriye "Haven compliant" demek dürüstçe yanlış. Sprint H1 hepsini düzeltecek.
+
+| # | Check | Gerçek Çözüm | Status |
 |---|-------|-------|--------|
-| 1 | Multi-AZ | Falkenstein + Nuremberg (kodda var) | ✅ |
-| 2 | 3+ master, 3+ worker | Kodda var (dev'de 1+1, IP limiti) | ✅ |
-| 3 | CNCF Conformance | RKE2 certified | ✅ |
-| 4 | kubectl erişim | Self-managed | ✅ |
-| 5 | RBAC | RKE2 default | ✅ |
-| 6 | CIS Hardening | RKE2 CIS profile (tolerations eklendi) | ✅ |
-| 7 | CRI | RKE2 containerd | ✅ |
-| 8 | CNI | Cilium (cni=cilium + chart_values) | ✅ |
-| 9 | Separate master/worker | Ayrı VM'ler | ✅ |
-| 10 | RWX Storage | Longhorn (rancher2_app_v2) | ✅ |
-| 11 | Auto-scaling | HPA (built-in) + metrics-server (RKE2) | ✅ |
-| 12 | Auto HTTPS | Cert-Manager (Jetstack repo, rancher2_catalog_v2) | ✅ |
-| 13 | Log aggregation | rancher-logging (Banzai + Fluentbit/Fluentd) | ✅ |
-| 14 | Metrics | rancher-monitoring (Prometheus + Grafana) | ✅ |
-| 15 | Image SHA | RKE2 default | ✅ |
+| 1 | Multi-AZ | ⚠️ **Helsinki + Nuremberg** (`hel1` + `nbg1`). Falkenstein (`fsn1`) **hiç deploy edilmemiş**. terraform.tfvars `location_secondary = "hel1"` typo. EU hala ama söz verilen değil. **Sprint H1a fix**: tfvars'ı `fsn1` yap, master-3 + worker-3 yeniden deploy. | ⚠️ **PARTIAL** |
+| 2 | 3+ master, 3+ worker | Cluster'da gerçekten 3 master + 3 worker, hepsi Ready | ✅ |
+| 3 | CNCF Conformance | RKE2 v1.32.3+rke2r1 — certified list'te | ✅ |
+| 4 | kubectl access via OIDC | ❌ **BROKEN**. RKE2 master cloud-init'te `--oidc-issuer-url` flag YOK. `keycloak/haven-realm.json`'da `groups` protocolMapper YOK. `tenant_service.py:395` `oidc:tenant_X_admin` grubu bekliyor ama Keycloak token'ında grup yok. **Tenant admin Keycloak token ile kubectl kullanamaz.** **Sprint H1a fix**: 3 yerli düzeltme — kube-apiserver flag, Keycloak protocolMapper, tenant_service grup adlandırma. | ❌ **BROKEN** |
+| 5 | RBAC | RKE2 default + namespace RBAC. **NOT**: haven-api ServiceAccount şu an cluster-admin (Sprint H1c'de scope down edilecek). | ✅ (with caveat) |
+| 6 | CIS Hardening | `enable_cis_profile = true`, etcd taint tolerations eklendi | ✅ |
+| 7 | CRI containerd | RKE2 default `containerd://2.0.4-k3s2` | ✅ |
+| 8 | CNI Cilium + Hubble | Cilium 6 pod Running, Hubble enabled. **NOT**: WireGuard encryption KAPALI (Sprint H1e'de açılacak). | ✅ (with caveat) |
+| 9 | Separate master/worker | Distinct VM'ler, label'lar ayrı | ✅ |
+| 10 | RWX Storage Longhorn | Default storage class, PVC'ler bağlı, RWX destek | ✅ |
+| 11 | Auto-scaling HPA | metrics-server çalışıyor, HPA test edildi | ✅ |
+| 12 | Auto HTTPS cert-manager | 14+ Certificate Ready=True, real Let's Encrypt | ✅ |
+| 13 | Log aggregation Loki | loki-stack + 6 promtail node, log akıyor | ✅ |
+| 14 | Metrics Prometheus + Grafana | Tüm pod'lar Running, ServiceMonitor scraping | ✅ |
+| 15 | Image SHA digest | ⚠️ **PARTIAL**. RKE2 sistem pod'ları sha256 digest, **ama haven-api/haven-ui short tag** (`23e05e9` gibi). Değişmez referans değil. **Sprint H1a fix**: CI pipeline'da Harbor push sonrası digest çıkar, deployment manifest'lerinde `image: ...@sha256:...`. | ⚠️ **PARTIAL** |
 
-**KURAL: 15/15 geçmeden Phase 1'e geçilmez.**
+**Gerçek skor: 12/15 (1 partial, 1 broken, 1 partial). Sprint H1 sonunda gerçek 15/15'e ulaşılacak.**
+
+**KURAL**: Müşteriye "Haven compliant" denmeden önce tablodaki ⚠️/❌ maddelerinin **gerçek implementation'ı** doğrulanmalıdır. Sadece "kodda var" yetmez — `kubectl get nodes -L topology.kubernetes.io/zone`, `kubectl --token=$T get pods -n tenant-X`, ve `kubectl get pod ... -o jsonpath='{.spec.containers[*].image}'` gibi komutlarla canlı doğrulanır.
 
 ## Tamamlanan Phase'ler
 
@@ -222,7 +226,7 @@ haven-platform/
 - [x] Harbor (image registry, rancher2_app_v2, harbor-system)
 - [x] MinIO (S3 storage, rancher2_app_v2, minio-system, worker nodeSelector fix)
 
-**15/15 Haven Compliant! Sonraki: Phase 1 - Platform API + ArgoCD**
+**11.5/15 Haven Compliant** (Phase 0.5 sonu durum — 1, 4, 15 partial/broken). **Sonraki: Phase 1 - Platform API + ArgoCD** (sprint scope kaydı tarihsel olarak korundu — gerçek 15/15 Sprint H1 sonunda geliyor).
 
 ### Phase 0.6: Cilium Gateway API + External Access ✅
 - [x] Gateway API experimental CRDs (v1.2.1, tlsroutes dahil)
