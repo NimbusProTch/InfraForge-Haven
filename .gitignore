@@ -77,3 +77,9 @@ logs/
 tsconfig.tsbuildinfo
 test-results/
 playwright-report/
+
+# ===== Sprint H2 P7: rendered Keycloak realm files =====
+# bootstrap-realm.sh -o writes secrets-rendered JSON to disk; never commit.
+keycloak/haven-realm.rendered.json
+keycloak/*.rendered.json
+*.rendered.json

@@ -32,7 +32,7 @@
         "http://localhost:3000"
       ],
       "protocol": "openid-connect",
-      "secret": "haven-ui-secret"
+      "secret": "${HAVEN_UI_CLIENT_SECRET}"
     }
   ],
   "users": [
@@ -46,7 +46,7 @@
       "credentials": [
         {
           "type": "password",
-          "value": "HavenAdmin2026!",
+          "value": "${HAVEN_REALM_ADMIN_PASSWORD}",
           "temporary": false
         }
       ],
