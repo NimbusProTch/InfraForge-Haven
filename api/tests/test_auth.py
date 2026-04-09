@@ -5,6 +5,8 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from fastapi import HTTPException
 
+from app.config import settings
+
 # ---------------------------------------------------------------------------
 # Sprint H2 P8: require_platform_admin dependency
 # ---------------------------------------------------------------------------
@@ -69,8 +71,6 @@ async def test_require_platform_admin_rejects_token_with_empty_roles():
 # ---------------------------------------------------------------------------
 # Original auth tests
 # ---------------------------------------------------------------------------
-
-from app.config import settings
 
 
 def _expected_issuer() -> str:
