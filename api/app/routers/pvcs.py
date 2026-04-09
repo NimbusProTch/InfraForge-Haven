@@ -2,6 +2,9 @@
 
 Sprint 11: PVC CRUD — create Longhorn RWO volumes for tenant applications.
 PVCs are created in the tenant's namespace and can be mounted into applications.
+
+H3e (P2.5): migrated to canonical `TenantMembership` dependency from
+`app/deps.py`. The local `_get_tenant_or_404` helper has been removed.
 """
 
 import asyncio
@@ -12,10 +15,8 @@ from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 
-from app.deps import CurrentUser, DBSession, K8sDep
+from app.deps import DBSession, K8sDep, TenantMembership
 from app.models.application import Application
-from app.models.tenant import Tenant
-from app.models.tenant_member import TenantMember
 
 logger = logging.getLogger(__name__)
 
@@ -57,22 +58,6 @@ class VolumeListResponse(BaseModel):
 # ---------------------------------------------------------------------------
 
 
-async def _get_tenant_or_404(tenant_slug: str, db: DBSession, current_user: dict) -> Tenant:
-    """H0-9: Lock PVC inventory to tenant members."""
-    result = await db.execute(select(Tenant).where(Tenant.slug == tenant_slug))
-    t = result.scalar_one_or_none()
-    if t is None:
-        raise HTTPException(status_code=404, detail="Tenant not found")
-
-    user_id = current_user.get("sub", "")
-    member_q = await db.execute(
-        select(TenantMember).where(TenantMember.tenant_id == t.id, TenantMember.user_id == user_id)
-    )
-    if member_q.scalar_one_or_none() is None:
-        raise HTTPException(status_code=403, detail="You are not a member of this tenant")
-    return t
-
-
 async def _get_app_or_404(tenant_id: uuid.UUID, app_slug: str, db: DBSession) -> Application:
     result = await db.execute(
         select(Application).where(Application.tenant_id == tenant_id, Application.slug == app_slug)
@@ -94,10 +79,13 @@ def _pvc_name(app_slug: str, volume_name: str) -> str:
 
 @router.get("", response_model=VolumeListResponse)
 async def list_volumes(
-    tenant_slug: str, app_slug: str, db: DBSession, k8s: K8sDep, current_user: CurrentUser
+    tenant_slug: str,  # noqa: ARG001 — used by TenantMembership dep, kept for OpenAPI
+    app_slug: str,
+    db: DBSession,
+    k8s: K8sDep,
+    tenant: TenantMembership,
 ) -> VolumeListResponse:
     """List PVCs attached to an application."""
-    tenant = await _get_tenant_or_404(tenant_slug, db, current_user)
     app = await _get_app_or_404(tenant.id, app_slug, db)
 
     if not k8s.is_available():
@@ -142,19 +130,18 @@ async def list_volumes(
 
 @router.post("", response_model=VolumeItem, status_code=status.HTTP_201_CREATED)
 async def create_volume(
-    tenant_slug: str,
+    tenant_slug: str,  # noqa: ARG001 — used by TenantMembership dep, kept for OpenAPI
     app_slug: str,
     body: VolumeCreate,
     db: DBSession,
     k8s: K8sDep,
-    current_user: CurrentUser,
+    tenant: TenantMembership,
 ) -> VolumeItem:
     """Create a PVC and attach it to an application.
 
     The volume spec is persisted in the Application.volumes JSON field.
     A PVC is created in K8s when the cluster is available.
     """
-    tenant = await _get_tenant_or_404(tenant_slug, db, current_user)
     app = await _get_app_or_404(tenant.id, app_slug, db)
 
     # Check for duplicate volume name
@@ -218,15 +205,14 @@ async def create_volume(
 
 @router.delete("/{volume_name}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_volume(
-    tenant_slug: str,
+    tenant_slug: str,  # noqa: ARG001 — used by TenantMembership dep, kept for OpenAPI
     app_slug: str,
     volume_name: str,
     db: DBSession,
     k8s: K8sDep,
-    current_user: CurrentUser,
+    tenant: TenantMembership,
 ) -> None:
     """Delete a PVC and remove it from the application's volume list."""
-    tenant = await _get_tenant_or_404(tenant_slug, db, current_user)
     app = await _get_app_or_404(tenant.id, app_slug, db)
 
     existing_volumes = list(app.volumes or [])

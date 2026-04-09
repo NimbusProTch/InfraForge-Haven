@@ -1,4 +1,8 @@
-"""Observability endpoints: pod status, resource metrics, and K8s events."""
+"""Observability endpoints: pod status, resource metrics, and K8s events.
+
+H3e (P2.5): migrated to canonical `TenantMembership` dependency from
+`app/deps.py`. The local `_get_tenant_or_404` helper has been removed.
+"""
 
 import asyncio
 import logging
@@ -9,9 +13,8 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import select
 
-from app.deps import CurrentUser, DBSession, K8sDep
+from app.deps import DBSession, K8sDep, TenantMembership
 from app.models.application import Application
-from app.models.tenant import Tenant
 
 router = APIRouter(prefix="/tenants/{tenant_slug}/apps/{app_slug}", tags=["observability"])
 logger = logging.getLogger(__name__)
@@ -110,25 +113,6 @@ def _bytes_to_mib(n: int) -> str:
     return f"{round(n / (1024**2))}Mi"
 
 
-async def _get_tenant_or_404(tenant_slug: str, db: DBSession, current_user: dict) -> Tenant:
-    """H0-9: Lock pod/log/metric data to tenant members."""
-    # Local import to avoid widening the file's import set unnecessarily.
-    from app.models.tenant_member import TenantMember
-
-    result = await db.execute(select(Tenant).where(Tenant.slug == tenant_slug))
-    tenant = result.scalar_one_or_none()
-    if tenant is None:
-        raise HTTPException(status_code=404, detail="Tenant not found")
-
-    user_id = current_user.get("sub", "")
-    member_q = await db.execute(
-        select(TenantMember).where(TenantMember.tenant_id == tenant.id, TenantMember.user_id == user_id)
-    )
-    if member_q.scalar_one_or_none() is None:
-        raise HTTPException(status_code=403, detail="You are not a member of this tenant")
-    return tenant
-
-
 async def _get_app_or_404(tenant_id: uuid.UUID, app_slug: str, db: DBSession) -> Application:
     result = await db.execute(
         select(Application).where(
@@ -149,11 +133,11 @@ async def _get_app_or_404(tenant_id: uuid.UUID, app_slug: str, db: DBSession) ->
 
 @router.get("/pods", response_model=PodsResponse)
 async def get_pods(
-    tenant_slug: str,
+    tenant_slug: str,  # noqa: ARG001 — used by TenantMembership dep, kept for OpenAPI
     app_slug: str,
     db: DBSession,
     k8s: K8sDep,
-    current_user: CurrentUser,
+    tenant: TenantMembership,
 ) -> PodsResponse:
     """Return pod status and resource metrics for an application.
 
@@ -162,7 +146,6 @@ async def get_pods(
     is unavailable the response still returns successfully with an empty
     pod list and ``k8s_available=False``.
     """
-    tenant = await _get_tenant_or_404(tenant_slug, db, current_user)
     app = await _get_app_or_404(tenant.id, app_slug, db)
     namespace = tenant.namespace
     label_selector = f"app={app.slug}"
@@ -266,11 +249,11 @@ async def get_pods(
 
 @router.get("/events", response_model=EventsResponse)
 async def get_events(
-    tenant_slug: str,
+    tenant_slug: str,  # noqa: ARG001 — used by TenantMembership dep, kept for OpenAPI
     app_slug: str,
     db: DBSession,
     k8s: K8sDep,
-    current_user: CurrentUser,
+    tenant: TenantMembership,
     limit: int = 20,
 ) -> EventsResponse:
     """Return recent K8s events for an application (pods + deployment).
@@ -279,7 +262,6 @@ async def get_events(
     starts with the app slug.  Returns the most recent ``limit`` events,
     newest first.
     """
-    tenant = await _get_tenant_or_404(tenant_slug, db, current_user)
     app = await _get_app_or_404(tenant.id, app_slug, db)
     namespace = tenant.namespace
 
