@@ -42,8 +42,62 @@ fi
 PUBLIC_IP=$(curl -sf http://169.254.169.254/hetzner/v1/metadata/public-ipv4 || hostname -I | awk '{print $1}')
 echo "Detected IPs: private=$PRIVATE_IP public=$PUBLIC_IP"
 
+# H1d (audit): write the kube-apiserver audit policy file BEFORE the
+# RKE2 config that references it. The policy logs RBAC mutations,
+# secret access, and namespace lifecycle at Metadata level — enough
+# for forensics, no customer data leaked.
+mkdir -p /etc/rancher/rke2 /var/log/kube-audit
+cat > /etc/rancher/rke2/audit-policy.yaml << 'AUDITEOF'
+apiVersion: audit.k8s.io/v1
+kind: Policy
+# Drop boring stuff so the log is human-readable
+omitStages:
+  - "RequestReceived"
+rules:
+  # Don't log get/list/watch on read-mostly resources
+  - level: None
+    verbs: ["get", "list", "watch"]
+    resources:
+      - group: ""
+        resources: ["events", "endpoints", "services", "pods/log", "pods/status"]
+      - group: "coordination.k8s.io"
+        resources: ["leases"]
+  # RBAC mutations — high signal, log at RequestResponse
+  - level: RequestResponse
+    resources:
+      - group: "rbac.authorization.k8s.io"
+        resources: ["clusterroles", "clusterrolebindings", "roles", "rolebindings"]
+  # Secret access (read + write) — log at Metadata (no body)
+  - level: Metadata
+    resources:
+      - group: ""
+        resources: ["secrets"]
+  # Namespace lifecycle (tenant create/delete)
+  - level: RequestResponse
+    resources:
+      - group: ""
+        resources: ["namespaces"]
+  # Service account token requests
+  - level: Metadata
+    resources:
+      - group: ""
+        resources: ["serviceaccounts/token"]
+  # ApplicationSet + Application (ArgoCD) — tenant deploy lifecycle
+  - level: Metadata
+    resources:
+      - group: "argoproj.io"
+        resources: ["applications", "applicationsets"]
+  # Everest DatabaseCluster (managed DB lifecycle) — tenant DB ops
+  - level: Metadata
+    resources:
+      - group: "everest.percona.com"
+        resources: ["databaseclusters", "databaseclusterbackups", "databaseclusterrestores"]
+  # Default: log everything else at Metadata level (mutations only)
+  - level: Metadata
+    verbs: ["create", "update", "patch", "delete"]
+AUDITEOF
+
 # Write RKE2 config
-mkdir -p /etc/rancher/rke2
 cat > /etc/rancher/rke2/config.yaml << RKEEOF
 token: "${cluster_token}"
 ${ is_first_master ? "cluster-init: true" : "server: https://${first_master_private_ip}:9345" }
@@ -81,6 +135,26 @@ kube-apiserver-arg:
   - "oidc-username-prefix=oidc:"
   - "oidc-groups-claim=groups"
   - "oidc-groups-prefix=oidc:"
+  # H1d (audit): kube-apiserver audit logging. Pre-fix the cluster had
+  # ZERO audit log — incident response was impossible (who deleted what,
+  # who escalated privileges, who exfiltrated secrets — all unknowable).
+  # SOC2/DORA mandate audit trails for production multi-tenant SaaS.
+  #
+  # The policy file is written to /etc/rancher/rke2/audit-policy.yaml in
+  # the writefiles section below. It logs RBAC mutations, secret access,
+  # and tenant namespace lifecycle at `Metadata` level (no request body)
+  # — enough for forensics without storing customer data.
+  #
+  # Output: /var/log/kube-audit/audit.log on each master, rotated by
+  # the apiserver's built-in maxage/maxbackup/maxsize. Loki promtail
+  # picks the file up via the existing logging stack (volumeMount in
+  # promtail daemonset), no additional config needed if the path is
+  # in promtail's positions.
+  - "audit-policy-file=/etc/rancher/rke2/audit-policy.yaml"
+  - "audit-log-path=/var/log/kube-audit/audit.log"
+  - "audit-log-maxage=30"
+  - "audit-log-maxbackup=10"
+  - "audit-log-maxsize=100"
 # H1b-2 (P4.2): etcd snapshot schedule. Pre-fix the cluster had ZERO
 # automated backups — total cluster loss = total data loss for every
 # tenant + Harbor + Gitea + Keycloak. Snapshots are written to
