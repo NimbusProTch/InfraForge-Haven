@@ -74,15 +74,30 @@ module "hetzner_infra" {
 module "rke2_cluster" {
   source = "../../modules/rke2-cluster"
 
-  cluster_name            = var.cluster_name
-  kubernetes_version      = var.kubernetes_version
-  cluster_token           = random_password.cluster_token.result
-  first_master_private_ip = local.first_master_private_ip
-  lb_ip                   = module.hetzner_infra.load_balancer_ip
-  enable_hubble           = true
+  cluster_name             = var.cluster_name
+  kubernetes_version       = var.kubernetes_version
+  cluster_token            = random_password.cluster_token.result
+  first_master_private_ip  = local.first_master_private_ip
+  lb_ip                    = module.hetzner_infra.load_balancer_ip
+  enable_hubble            = true
   cilium_operator_replicas = 1
-  disable_kube_proxy      = true
-  enable_cis_profile      = true
+  disable_kube_proxy       = true
+  enable_cis_profile       = true
+
+  # H1b-2 (P4.2): etcd snapshot config. Defaults snapshot daily 02:00 UTC,
+  # keep 30 locally. Off-cluster S3 upload (etcd_s3_enabled) is OFF by
+  # default — morning operator must set it true and provide R2 / off-host
+  # MinIO credentials in tfvars before applying. With it OFF, snapshots
+  # exist only on each master's local disk and die with the master.
+  etcd_snapshot_schedule  = var.etcd_snapshot_schedule
+  etcd_snapshot_retention = var.etcd_snapshot_retention
+  etcd_s3_enabled         = var.etcd_s3_enabled
+  etcd_s3_endpoint        = var.etcd_s3_endpoint
+  etcd_s3_bucket          = var.etcd_s3_bucket
+  etcd_s3_folder          = var.etcd_s3_folder
+  etcd_s3_region          = var.etcd_s3_region
+  etcd_s3_access_key      = var.etcd_s3_access_key
+  etcd_s3_secret_key      = var.etcd_s3_secret_key
 }
 
 # --- 4. Master Nodes ---

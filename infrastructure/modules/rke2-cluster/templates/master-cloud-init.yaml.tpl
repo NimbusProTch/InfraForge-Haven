@@ -59,6 +59,30 @@ disable:
 ${ disable_kube_proxy ? "disable-kube-proxy: true" : "" }
 ${ enable_cis_profile ? "profile: cis\nprotect-kernel-defaults: true" : "" }
 write-kubeconfig-mode: "0644"
+# H1b-2 (P4.2): etcd snapshot schedule. Pre-fix the cluster had ZERO
+# automated backups — total cluster loss = total data loss for every
+# tenant + Harbor + Gitea + Keycloak. Snapshots are written to
+# /var/lib/rancher/rke2/server/db/snapshots and (if etcd-s3 is enabled
+# below) shipped to an off-cluster S3-compatible bucket.
+#
+# Defaults: daily at 02:00 UTC, keep 30 most recent snapshots locally.
+# Override via the cluster module variables.
+etcd-snapshot-schedule-cron: "${etcd_snapshot_schedule}"
+etcd-snapshot-retention: ${etcd_snapshot_retention}
+etcd-snapshot-dir: /var/lib/rancher/rke2/server/db/snapshots
+%{ if etcd_s3_enabled ~}
+# H1b-2: off-cluster snapshot upload. The S3 endpoint MUST be off the
+# Hetzner cluster — uploading to in-cluster MinIO defeats the purpose
+# (cluster dies → MinIO dies → snapshots lost). Recommended: Cloudflare
+# R2 (free 10 GB tier) or a dedicated VPS-hosted MinIO.
+etcd-s3: true
+etcd-s3-endpoint: "${etcd_s3_endpoint}"
+etcd-s3-bucket: "${etcd_s3_bucket}"
+etcd-s3-folder: "${etcd_s3_folder}"
+etcd-s3-region: "${etcd_s3_region}"
+etcd-s3-access-key: "${etcd_s3_access_key}"
+etcd-s3-secret-key: "${etcd_s3_secret_key}"
+%{ endif ~}
 RKEEOF
 
 # Write Cilium HelmChartConfig
