@@ -1,3 +1,12 @@
+"""Deployment + build/deploy/rollback + log streaming endpoints.
+
+H3e (P2.5 / P20 batch 4): migrated to canonical `TenantMembership`
+dependency from `app/deps.py`. The local `_get_tenant_or_404` helper has
+been removed. Endpoints that write audit log entries (build, deploy,
+deploy-image) still take `CurrentUser` so they can stamp `user_id` onto
+the audit row.
+"""
+
 import asyncio
 import logging
 import uuid
@@ -8,10 +17,9 @@ from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select
 
 from app.config import settings
-from app.deps import ArgoCDDep, CurrentUser, DBSession, GitOpsDep, K8sDep, get_session_factory
+from app.deps import ArgoCDDep, CurrentUser, DBSession, GitOpsDep, K8sDep, TenantMembership, get_session_factory
 from app.models.application import Application
 from app.models.deployment import Deployment, DeploymentStatus
-from app.models.tenant import Tenant
 from app.schemas.deployment import DeploymentResponse
 from app.services.audit_service import audit
 from app.services.deploy_service import DeployService, get_service_secret_names
@@ -19,22 +27,6 @@ from app.services.pipeline import run_pipeline
 
 router = APIRouter(prefix="/tenants/{tenant_slug}/apps/{app_slug}", tags=["deployments"])
 logger = logging.getLogger(__name__)
-
-
-async def _get_tenant_or_404(tenant_slug: str, db: DBSession, current_user: dict) -> Tenant:
-    """H0-10: current_user is now MANDATORY (was fail-open `dict | None = None`)."""
-    from app.models.tenant_member import TenantMember
-
-    result = await db.execute(select(Tenant).where(Tenant.slug == tenant_slug))
-    tenant = result.scalar_one_or_none()
-    if tenant is None:
-        raise HTTPException(status_code=404, detail="Tenant not found")
-
-    uid = current_user.get("sub", "")
-    mem = await db.execute(select(TenantMember).where(TenantMember.tenant_id == tenant.id, TenantMember.user_id == uid))
-    if mem.scalar_one_or_none() is None:
-        raise HTTPException(status_code=403, detail="You are not a member of this tenant")
-    return tenant
 
 
 async def _get_app_or_404(tenant_id: uuid.UUID, app_slug: str, db: DBSession) -> Application:
@@ -52,14 +44,13 @@ async def _get_app_or_404(tenant_id: uuid.UUID, app_slug: str, db: DBSession) ->
 
 @router.get("/deployments", response_model=list[DeploymentResponse])
 async def list_deployments(
-    tenant_slug: str,
+    tenant_slug: str,  # noqa: ARG001 — used by TenantMembership dep, kept for OpenAPI
     app_slug: str,
     db: DBSession,
-    current_user: CurrentUser,
+    tenant: TenantMembership,
     limit: int = 20,
 ) -> list[Deployment]:
     """List recent deployments for an application (newest first)."""
-    tenant = await _get_tenant_or_404(tenant_slug, db, current_user)
     app = await _get_app_or_404(tenant.id, app_slug, db)
 
     result = await db.execute(
@@ -73,14 +64,13 @@ async def list_deployments(
 
 @router.get("/deployments/{deployment_id}", response_model=DeploymentResponse)
 async def get_deployment(
-    tenant_slug: str,
+    tenant_slug: str,  # noqa: ARG001 — used by TenantMembership dep, kept for OpenAPI
     app_slug: str,
     deployment_id: uuid.UUID,
     db: DBSession,
-    current_user: CurrentUser,
+    tenant: TenantMembership,
 ) -> Deployment:
     """Get a single deployment by ID."""
-    tenant = await _get_tenant_or_404(tenant_slug, db, current_user)
     app = await _get_app_or_404(tenant.id, app_slug, db)
 
     result = await db.execute(
@@ -97,18 +87,17 @@ async def get_deployment(
 
 @router.get("/build-status")
 async def get_build_status(
-    tenant_slug: str,
+    tenant_slug: str,  # noqa: ARG001 — used by TenantMembership dep, kept for OpenAPI
     app_slug: str,
     db: DBSession,
     k8s: K8sDep,
-    current_user: CurrentUser,
+    tenant: TenantMembership,
 ) -> dict:
     """Get per-container build status for the latest deployment's build job.
 
     Returns status of each init container (git-clone, nixpacks, buildctl)
     so the UI can show granular pipeline step progress.
     """
-    tenant = await _get_tenant_or_404(tenant_slug, db, current_user)
     app = await _get_app_or_404(tenant.id, app_slug, db)
 
     # Find latest deployment with a build job
@@ -221,6 +210,7 @@ async def trigger_build(
     gitops: GitOpsDep,
     argocd: ArgoCDDep,
     background_tasks: BackgroundTasks,
+    tenant: TenantMembership,
     current_user: CurrentUser,
     body: BuildRequest | None = None,
     deploy: bool = Query(True, description="If false, build only without deploying (status=BUILT)"),
@@ -230,7 +220,6 @@ async def trigger_build(
     - deploy=true (default): Full build + deploy pipeline.
     - deploy=false: Build only — image pushed to Harbor, status set to BUILT. Use POST /deploy-image to deploy later.
     """
-    tenant = await _get_tenant_or_404(tenant_slug, db, current_user)
     app = await _get_app_or_404(tenant.id, app_slug, db)
 
     branch = (body.branch if body and body.branch else None) or app.branch
@@ -323,6 +312,7 @@ async def trigger_deploy(
     app_slug: str,
     db: DBSession,
     k8s: K8sDep,
+    tenant: TenantMembership,
     current_user: CurrentUser,
     body: DeployRequest | None = None,
 ) -> Deployment:
@@ -330,7 +320,6 @@ async def trigger_deploy(
 
     Accepts optional replicas and resource limit overrides.
     """
-    tenant = await _get_tenant_or_404(tenant_slug, db, current_user)
     app = await _get_app_or_404(tenant.id, app_slug, db)
 
     if not app.image_tag:
@@ -411,6 +400,7 @@ async def deploy_built_image(
     gitops: GitOpsDep,
     argocd: ArgoCDDep,
     background_tasks: BackgroundTasks,
+    tenant: TenantMembership,
     current_user: CurrentUser,
     deployment_id: uuid.UUID | None = Query(None, description="Specific BUILT deployment ID. Uses latest if omitted."),
 ) -> Deployment:
@@ -420,7 +410,6 @@ async def deploy_built_image(
     """
     from sqlalchemy import select
 
-    tenant = await _get_tenant_or_404(tenant_slug, db, current_user)
     app = await _get_app_or_404(tenant.id, app_slug, db)
 
     if deployment_id:
@@ -502,15 +491,14 @@ async def deploy_built_image(
     status_code=status.HTTP_202_ACCEPTED,
 )
 async def rollback_deployment(
-    tenant_slug: str,
+    tenant_slug: str,  # noqa: ARG001 — used by TenantMembership dep, kept for OpenAPI
     app_slug: str,
     deployment_id: uuid.UUID,
     db: DBSession,
     k8s: K8sDep,
-    current_user: CurrentUser,
+    tenant: TenantMembership,
 ) -> Deployment:
     """Roll back to a specific past deployment's image."""
-    tenant = await _get_tenant_or_404(tenant_slug, db, current_user)
     app = await _get_app_or_404(tenant.id, app_slug, db)
 
     result = await db.execute(
@@ -583,11 +571,10 @@ async def sync_app(
     app_slug: str,
     db: DBSession,
     argocd: ArgoCDDep,
-    current_user: CurrentUser,
+    tenant: TenantMembership,
     body: SyncOptions | None = None,
 ) -> dict:
     """Trigger an ArgoCD sync for this application with configurable options."""
-    tenant = await _get_tenant_or_404(tenant_slug, db, current_user)
     await _get_app_or_404(tenant.id, app_slug, db)
 
     app_name = f"{tenant_slug}-{app_slug}"
@@ -607,10 +594,9 @@ async def get_sync_diff(
     app_slug: str,
     db: DBSession,
     argocd: ArgoCDDep,
-    current_user: CurrentUser,
+    tenant: TenantMembership,
 ) -> list[dict]:
     """Get resource diff between live and target state for ArgoCD sync modal."""
-    tenant = await _get_tenant_or_404(tenant_slug, db, current_user)
     await _get_app_or_404(tenant.id, app_slug, db)
 
     app_name = f"{tenant_slug}-{app_slug}"
@@ -623,10 +609,9 @@ async def get_sync_status(
     app_slug: str,
     db: DBSession,
     argocd: ArgoCDDep,
-    current_user: CurrentUser,
+    tenant: TenantMembership,
 ) -> dict:
     """Get ArgoCD sync and health status for this application."""
-    tenant = await _get_tenant_or_404(tenant_slug, db, current_user)
     await _get_app_or_404(tenant.id, app_slug, db)
 
     app_name = f"{tenant_slug}-{app_slug}"
@@ -639,10 +624,9 @@ async def get_deploy_history(
     app_slug: str,
     db: DBSession,
     argocd: ArgoCDDep,
-    current_user: CurrentUser,
+    tenant: TenantMembership,
 ) -> list[dict]:
     """Get ArgoCD deployment history for this application."""
-    tenant = await _get_tenant_or_404(tenant_slug, db, current_user)
     await _get_app_or_404(tenant.id, app_slug, db)
 
     app_name = f"{tenant_slug}-{app_slug}"
@@ -656,10 +640,9 @@ async def argocd_rollback(
     revision: int,
     db: DBSession,
     argocd: ArgoCDDep,
-    current_user: CurrentUser,
+    tenant: TenantMembership,
 ) -> dict:
     """Trigger ArgoCD rollback to a specific history revision ID."""
-    tenant = await _get_tenant_or_404(tenant_slug, db, current_user)
     await _get_app_or_404(tenant.id, app_slug, db)
 
     app_name = f"{tenant_slug}-{app_slug}"
@@ -671,11 +654,11 @@ async def argocd_rollback(
 
 @router.get("/logs")
 async def stream_logs(
-    tenant_slug: str,
+    tenant_slug: str,  # noqa: ARG001 — used by TenantMembership dep, kept for OpenAPI
     app_slug: str,
     db: DBSession,
     k8s: K8sDep,
-    current_user: CurrentUser,
+    tenant: TenantMembership,
     tail_lines: int = 100,
     pod: str | None = None,
     token: str | None = None,  # noqa: ARG001 — accepted for EventSource auth (validated upstream)
@@ -685,7 +668,6 @@ async def stream_logs(
     Accepts an optional `token` query param so that browser EventSource
     (which cannot set custom headers) can authenticate.
     """
-    tenant = await _get_tenant_or_404(tenant_slug, db, current_user)
     app = await _get_app_or_404(tenant.id, app_slug, db)
     namespace = tenant.namespace
     selector = f"app={app.slug}"
