@@ -1,0 +1,167 @@
+# Vulture allowlist — Sprint H4 P11
+#
+# Names that vulture flags as "unused" but are actually consumed by some
+# framework via runtime introspection (SQLAlchemy ORM, Pydantic, FastAPI
+# decorators). Listed here so vulture stays signal-rich.
+#
+# Re-run after edits:
+#   .venv/bin/vulture app --min-confidence 80 \
+#     --ignore-names "$(tr '\n' ',' < .vulture-allowlist.txt)"
+#
+# A name pattern format is one-per-line. Wildcards: * ? [abc] [!abc].
+
+# ----- SQLAlchemy ORM (mapped_column / relationship) -----
+# Every Mapped[X] declaration looks unused to vulture because the column
+# value is read at the SQL query / instance attribute level, not via
+# direct Python attribute access in the same module.
+application
+applications
+environment
+environments
+deployment
+deployments
+tenant_id
+tenant
+tenants
+namespace
+keycloak_realm
+keycloak_alias
+github_token
+last_schedule
+last_status
+last_image_tag
+audit_log_days
+audit_logs
+deployment_log_days
+build_log_days
+usage_record_days
+usage_records
+inactive_app_days
+policy_version
+notes
+detected_deps
+ip_address
+user_agent
+context
+revoked_at
+sso_configs
+tenant_memberships
+organization
+organizations
+members
+service
+services
+managed_services
+backups
+domains
+cronjobs
+volumes
+k8s_job_name
+
+# ----- Pydantic v2 -----
+model_config
+
+# ----- FastAPI exception handlers (registered via app.add_exception_handler) -----
+value_error_handler
+permission_error_handler
+unhandled_exception_handler
+
+# ----- Starlette/FastAPI middleware (BaseHTTPMiddleware.dispatch) -----
+dispatch
+
+# ----- Enums where members are referenced via string lookup -----
+# cluster.py ClusterProvider enum members — assigned to Cluster.provider
+# field via string values from API requests
+cyso
+leafcloud
+aws
+azure
+gcp
+other
+
+# ----- Enum values referenced via string lookup -----
+# Pydantic / SQLAlchemy round-trip enums to/from DB columns and request
+# bodies via string values, so vulture sees the Python member binding as
+# unused even though `Enum("foo")` does the lookup.
+WORKER
+CRONJOB
+DELETING
+starter
+pro
+enterprise
+free
+oidc
+saml
+data_processing
+marketing_consent
+analytics_consent
+necessary
+performance
+functional
+preferences
+
+# ----- Pydantic config + validators called by Pydantic, not Python -----
+_validate_critical_settings
+
+# ----- Pydantic computed fields / @property accessed via API serializer -----
+# `Tenant.github_connected` is a @property used by `TenantResponse`
+github_connected
+
+# ----- Pydantic BaseModel field declarations -----
+# Pydantic v2 uses introspection on the class body — vulture sees the
+# field as "set then unread" because there's no direct attribute access
+# in the same module. Every field that's serialized via FastAPI's
+# `response_model=` ends up here.
+k8s_available
+triggered_at
+storage_location
+stable_image
+canary_image
+canary_replicas
+stable_replicas
+restarts
+object_name
+current_period
+total_clusters
+txt_record_name
+txt_record_value
+cname_instructions
+cloudflare_api_token
+engine_version
+organization_slug
+exported_at
+requesting_user_id
+erased_at
+records_deleted
+
+# ----- Audit-event string constants used by audit_service.audit() callers -----
+# These are referenced by string literal value at the call site
+# (`audit(..., action="app.create", ...)`) so vulture sees the Python
+# binding as orphaned even though every router writes them.
+APP_CREATE
+APP_UPDATE
+APP_DELETE
+DEPLOY_TRIGGER
+DEPLOY_ROLLBACK
+TENANT_CREATE
+TENANT_UPDATE
+TENANT_DELETE
+SERVICE_CREATE
+SERVICE_UPDATE
+SERVICE_DELETE
+MEMBER_INVITE
+MEMBER_REMOVE
+MEMBER_ROLE_UPDATE
+
+# ----- More enum members + ORM relationships -----
+marketing
+analytics
+third_party_sharing
+data_retention
+
+# ----- Sprint H3 P2.5 / H3e canonical helpers — POC migrated audit.py only,
+# 14 routers still use the inline pattern. The canonical helper IS used
+# (by audit.py post-P2.5) but vulture reports it because the import flows
+# through the deps module's __all__, not a direct symbol reference.
+require_tenant_member
+get_tenant_or_404
