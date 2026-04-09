@@ -135,6 +135,7 @@ PROBE_ENDPOINTS: list[tuple[str, str, str, str]] = [
     # H0-11 group: events.py SSE streams had NO authentication AT ALL — anyone
     # on the network could subscribe to any tenant's lifecycle bus
     ("events-tenant", "GET", "/api/v1/tenants/{slug}/events", "H0-11"),
+    ("events-service", "GET", "/api/v1/tenants/{slug}/services/test-svc/events", "H0-11"),
     ("events-app-lifecycle", "GET", "/api/v1/tenants/{slug}/apps/{app}/lifecycle-events", "H0-11"),
     # H0-12 group: github.py /connect was an RCE vector — any authenticated user
     # could paste an OAuth token onto any tenant, then the next build would
@@ -284,3 +285,88 @@ async def test_viewer_cannot_delete_other_member(
     assert response.status_code == 403, (
         f"viewer must not be able to delete other members: got {response.status_code} {response.text[:200]}"
     )
+
+
+# ---------------------------------------------------------------------------
+# P1.2 nice-to-haves: explicit attack-narrative tests beyond the parametrised sweep
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_viewer_cannot_inject_github_token(
+    viewer_client: AsyncClient,
+    viewer_tenant: tuple[Tenant, str],
+) -> None:
+    """H0-12 RCE narrative: a viewer-role member must NOT be able to POST
+    a GitHub OAuth token onto the tenant's `/github/connect/{slug}` endpoint.
+
+    Pre-fix attack:
+      1. Attacker (viewer-user) generates a GitHub OAuth token under their own
+         attacker-controlled GitHub account
+      2. POST /api/v1/github/connect/{victim-tenant}
+         with body {"access_token": "ghp_attacker_owned"}
+      3. Tenant.github_token row is silently overwritten
+      4. Next time the victim's app is built, the build pipeline clones the
+         victim's repo URL using the ATTACKER's token
+      5. The attacker swaps the repo URL to a private attacker repo, code runs
+         inside the victim namespace with BuildKit's privileges -> RCE
+
+    Post-fix: POST /github/connect requires `require_admin=True` -> 403 for
+    a viewer-role member.
+
+    The parametrised sweep covers DELETE /connect transitively (same helper
+    with require_admin=True) but POST is the actual RCE vector and deserves
+    a direct, body-carrying assertion.
+    """
+    tenant, _ = viewer_tenant
+    response = await viewer_client.post(
+        f"/api/v1/github/connect/{tenant.slug}",
+        json={"access_token": "ghp_ATTACKER_OWNED_TOKEN"},
+    )
+    assert response.status_code == 403, (
+        f"viewer must not be able to POST github_token: got {response.status_code} {response.text[:200]}"
+    )
+    body = response.json()
+    detail = (body.get("detail") or "").lower()
+    # Either "owner or admin" (role-mismatch path) or "not a member"
+    # (membership path) — both are correct rejection reasons.
+    assert "owner" in detail or "admin" in detail or "not a member" in detail, (
+        f"unexpected rejection detail: {detail!r}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_internal_gitea_health_requires_auth() -> None:
+    """H0-14: GET /api/v1/internal/gitea/health must reject unauthenticated.
+
+    Pre-fix: no auth dep, returned 200 + leaked the internal Gitea base URL
+    in the response body. Now requires JWT via router-level
+    `dependencies=[Depends(verify_token)]`.
+
+    NOTE: This test deliberately does NOT use the async_client fixture
+    (which mocks verify_token to always return a user). It builds a fresh
+    AsyncClient with NO dependency overrides so the real verify_token
+    runs and rejects the missing-Authorization-header request.
+    """
+    from app.deps import get_db, get_k8s
+
+    async def _no_db():
+        # Should never be called — auth check runs first.
+        raise RuntimeError("DB session was reached — auth check did not run")
+
+    async def _no_k8s():
+        raise RuntimeError("K8s client was reached — auth check did not run")
+
+    # Build a client that has the SAME db/k8s overrides as async_client
+    # (to avoid hitting real services if auth is somehow bypassed) but
+    # leaves verify_token unmocked.
+    app.dependency_overrides[get_db] = _no_db
+    app.dependency_overrides[get_k8s] = _no_k8s
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as unauth:
+            response = await unauth.get("/api/v1/internal/gitea/health")
+        assert response.status_code == 401, (
+            f"unauthenticated /internal/gitea/health must return 401, got {response.status_code} {response.text[:200]}"
+        )
+    finally:
+        app.dependency_overrides.clear()
