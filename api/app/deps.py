@@ -5,7 +5,7 @@ import redis.asyncio as aioredis
 from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from app.auth.jwt import verify_token
+from app.auth.jwt import verify_token_not_revoked
 from app.config import settings
 from app.k8s.client import K8sClient, k8s_client
 from app.services.argocd_service import ArgoCDService
@@ -83,7 +83,20 @@ GitQueueDep = Annotated[GitQueueService | None, Depends(get_git_queue)]
 # ---------------------------------------------------------------------------
 # Auth
 # ---------------------------------------------------------------------------
-CurrentUser = Annotated[dict[str, Any], Depends(verify_token)]
+# Sprint H2 P9 (#24): CurrentUser now flows through `verify_token_not_revoked`
+# which (a) does the original JWT signature/audience/issuer/expiration
+# checks via `verify_token` and (b) ALSO checks the `token_revocations`
+# table for the user's reauth watermark. Members removed via the admin
+# API see their existing tokens stop working on the next request (within
+# a 60s in-memory cache TTL — see token_revocation_service for the
+# tradeoff explanation).
+#
+# Tests that previously stubbed `verify_token` via `dependency_overrides`
+# continue to work because `verify_token` is the underlying dep — the
+# stub returns a user dict without going through the DB lookup. Tests
+# that specifically want to exercise the revocation flow override
+# `verify_token_not_revoked` OR insert a TokenRevocation row directly.
+CurrentUser = Annotated[dict[str, Any], Depends(verify_token_not_revoked)]
 
 
 # ---------------------------------------------------------------------------
