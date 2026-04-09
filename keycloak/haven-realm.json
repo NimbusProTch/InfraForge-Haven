@@ -32,9 +32,19 @@
         "http://localhost:3000"
       ],
       "protocol": "openid-connect",
-      "secret": "haven-ui-secret"
+      "secret": "${HAVEN_UI_CLIENT_SECRET}"
     }
   ],
+  "roles": {
+    "realm": [
+      {
+        "name": "platform-admin",
+        "description": "Haven SRE / operator role — grants access to cross-tenant admin endpoints (audit search, tenant enumeration, platform-wide ops). Sprint H2 P8.",
+        "composite": false,
+        "clientRole": false
+      }
+    ]
+  },
   "users": [
     {
       "username": "admin",
@@ -46,11 +56,11 @@
       "credentials": [
         {
           "type": "password",
-          "value": "HavenAdmin2026!",
+          "value": "${HAVEN_REALM_ADMIN_PASSWORD}",
           "temporary": false
         }
       ],
-      "realmRoles": ["default-roles-haven"]
+      "realmRoles": ["default-roles-haven", "platform-admin"]
     }
   ]
 }

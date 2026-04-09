@@ -101,3 +101,65 @@ def require_role(*allowed_roles: str) -> Callable:
         return membership
 
     return _check
+
+
+# ---------------------------------------------------------------------------
+# Sprint H2 P8 (#22): platform-admin realm-role check
+# ---------------------------------------------------------------------------
+#
+# `require_platform_admin` is a route-level dependency for cross-tenant
+# operations that should only be reachable by Haven SRE / operators —
+# things like "list all tenants in the system", "audit log search across
+# tenants", "deploy a platform-wide hotfix". The H0 audit found
+# `GET /tenants` was leaking the entire customer list to any authenticated
+# user (fixed in H0-4 by user-scoping it). Once this dependency is in
+# place, the operator-only flavor of `GET /tenants` can come back as
+# `GET /admin/tenants` with this guard.
+#
+# The check reads `realm_access.roles` from the JWT (Keycloak's standard
+# claim shape for realm-level roles). Pre-fix the haven-realm.json had no
+# `platform-admin` role at all — Sprint H2 P8 will add it. Until then,
+# this dependency rejects EVERY request because no token can carry the
+# role; that's intentionally fail-closed.
+#
+# To grant: in the Keycloak admin console (or via JSON), assign the
+# `platform-admin` realm role to the user account that needs cross-tenant
+# access. Then their next-issued token will carry it in
+# `realm_access.roles`.
+
+PLATFORM_ADMIN_ROLE = "platform-admin"
+
+
+async def require_platform_admin(
+    current_user: dict[str, Any] = Depends(verify_token),  # noqa: B008
+) -> dict[str, Any]:
+    """FastAPI dependency: require the JWT to carry the `platform-admin`
+    realm role.
+
+    Returns the decoded JWT payload (so handlers can still read `sub`,
+    `email`, etc. from the dependency injection result).
+
+    Raises 403 if:
+      - the token has no `realm_access.roles` claim at all (rare —
+        Keycloak always emits this for authenticated users)
+      - the token's realm roles do not include `platform-admin`
+
+    Usage::
+
+        @router.get("/admin/tenants", dependencies=[Depends(require_platform_admin)])
+        async def list_all_tenants_admin(...):
+            ...
+    """
+    realm_access = current_user.get("realm_access") or {}
+    roles = realm_access.get("roles") or []
+    if PLATFORM_ADMIN_ROLE not in roles:
+        logger.warning(
+            "platform-admin denied: sub=%s roles=%s",
+            current_user.get("sub", "?"),
+            roles,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"This endpoint requires the '{PLATFORM_ADMIN_ROLE}' realm role",
+        )
+    return current_user
