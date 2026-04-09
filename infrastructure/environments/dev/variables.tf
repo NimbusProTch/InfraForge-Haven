@@ -321,9 +321,38 @@ variable "domain" {
 
 # ===== Encryption =====
 variable "enable_wireguard_encryption" {
-  description = "Enable Cilium WireGuard pod-to-pod encryption (IS3-03, kernel 5.6+ required)"
+  description = <<-EOT
+    Enable Cilium WireGuard pod-to-pod encryption.
+
+    H1d (production-grade SaaS gap closure): default flipped to `true` on
+    2026-04-09. Pre-fix the dev cluster ran with all pod-to-pod traffic in
+    PLAINTEXT. On a shared node, a compromised pod could sniff every other
+    tenant's traffic on the same host. WireGuard adds AEAD encryption at
+    the Cilium datapath level, transparent to the workload.
+
+    Requirements:
+      - Kernel >= 5.6 (the dev cluster runs Ubuntu 22.04 / kernel 5.15 → OK)
+      - `userspaceFallback: true` is set in the helm values for the rare
+        case where a node lacks the kernel module — Cilium falls back to
+        userspace WireGuard rather than failing closed.
+
+    Trade-off:
+      - CPU overhead ~10-20% per node depending on traffic volume
+      - Latency +0.1-0.3 ms intra-cluster (negligible for HTTP/REST)
+      - In our dev cluster (low traffic) the overhead is in the noise
+
+    Activation requires `tofu apply` (Cilium HelmChartConfig is rewritten
+    via the master cloud-init template). The change is rolling — Cilium
+    pods restart node-by-node and re-establish encrypted tunnels.
+    Existing flows are interrupted briefly during pod restart but
+    application connections re-establish automatically.
+
+    To disable for a particular environment (e.g. an extremely
+    latency-sensitive prod that audits this differently): override to
+    `false` in the env tfvars.
+  EOT
   type        = bool
-  default     = false
+  default     = true
 }
 
 # ===== OIDC / Keycloak Integration =====
