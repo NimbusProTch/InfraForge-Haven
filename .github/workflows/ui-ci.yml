@@ -60,6 +60,9 @@ jobs:
     runs-on: ubuntu-latest
     needs: lint-and-build
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
+      short_sha: ${{ steps.sha.outputs.short }}
     steps:
       - uses: actions/checkout@v4
 
@@ -78,17 +81,21 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Build and push
+        id: build
         uses: docker/build-push-action@v6
         with:
           context: ui
           file: ui/Dockerfile
           platforms: linux/amd64
           push: true
+          # Tag is still pushed for human browsing in Harbor; the deployment
+          # manifest references the immutable digest below (Haven check #15).
           tags: |
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.sha.outputs.short }}
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          provenance: false
           build-args: |
             NEXT_PUBLIC_API_URL=${{ secrets.NEXT_PUBLIC_API_URL }}
 
@@ -102,14 +109,18 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract git SHA (short)
-        id: sha
-        run: echo "short=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
-
-      - name: Update image tag in deployment manifest
+      - name: Update image digest in deployment manifest
+        # H1a-3 (HAVEN_COMPLIANCE_PLAN.md): pin by sha256 digest, NOT tag.
+        # See api-ci.yml for the rationale comment block.
         run: |
-          IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.sha.outputs.short }}"
-          sed -i "s|image: .*haven-ui:.*|image: ${IMAGE}|g" \
+          DIGEST="${{ needs.build-and-push.outputs.digest }}"
+          if [ -z "$DIGEST" ]; then
+            echo "::error::Empty digest from build-and-push job — refusing to write a broken manifest"
+            exit 1
+          fi
+          IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${DIGEST}"
+          echo "Pinning manifest to: ${IMAGE}"
+          sed -i -E "s|image: .*haven-ui[:@][^[:space:]]+|image: ${IMAGE}|g" \
             platform/manifests/haven-ui/deployment.yaml
 
       - name: Commit updated manifest
@@ -117,6 +128,6 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add platform/manifests/haven-ui/deployment.yaml
-          git diff --cached --quiet || git commit -m "ci: update haven-ui image to ${{ steps.sha.outputs.short }} [skip ci]"
+          git diff --cached --quiet || git commit -m "ci: pin haven-ui to ${{ needs.build-and-push.outputs.short_sha }} (digest) [skip ci]"
           git pull --rebase origin main
           git push
