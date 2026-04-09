@@ -4,7 +4,7 @@ from app.models.base import Base
 from app.models.cluster import Cluster, ClusterProvider, ClusterStatus
 from app.models.cronjob import CronJob
 from app.models.data_retention_policy import DataRetentionPolicy
-from app.models.deployment import BuildJob, Deployment
+from app.models.deployment import Deployment
 from app.models.domain import DomainVerification
 from app.models.environment import Environment
 from app.models.managed_service import ManagedService
@@ -21,7 +21,6 @@ __all__ = [
     "Application",
     "AppType",
     "Deployment",
-    "BuildJob",
     "CronJob",
     "Environment",
     "ManagedService",

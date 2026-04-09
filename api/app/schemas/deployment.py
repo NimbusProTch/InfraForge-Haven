@@ -20,13 +20,5 @@ class DeploymentResponse(BaseModel):
     updated_at: datetime
 
 
-class BuildJobResponse(BaseModel):
-    model_config = {"from_attributes": True}
-
-    id: uuid.UUID
-    deployment_id: uuid.UUID
-    k8s_job_name: str
-    status: str
-    logs: str | None
-    created_at: datetime
-    updated_at: datetime
+# H3b (P2.2): BuildJobResponse removed alongside the deleted BuildJob model.
+# It was dead code with zero callers — pipeline reads K8s Jobs directly.
