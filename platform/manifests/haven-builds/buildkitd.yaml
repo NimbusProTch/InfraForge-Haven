@@ -1,0 +1,135 @@
+# H1d (BuildKit hardening — DRIFT CONTROL): live cluster state of buildkitd.
+#
+# This manifest is the EXACT shape of the buildkitd Deployment + Service +
+# PVC that's currently running in `haven-builds` namespace. It was created
+# out-of-band (no manifest in repo) on 2026-03-27 by `kubectl apply` from a
+# session that has since been lost. Committing it here puts the live state
+# under version control so future operators can see what's actually
+# deployed.
+#
+# ⚠️ NOT AUTO-SYNCED BY ARGOCD ⚠️
+#
+# `haven-builds` is intentionally NOT tracked by any ArgoCD Application.
+# Adding an Application that points at `platform/manifests/haven-builds/`
+# would auto-sync this file AND `harbor-docker-config.yaml` (next door),
+# which is fine for a steady state — but the rootless migration in
+# `platform/manifests/haven-builds-rootless-migration/` MUST stay outside
+# any ArgoCD source path so the operator can apply it manually with
+# rollback control. See post-#117 incident in NIGHT_STATUS_2.md.
+#
+# Current security posture (UNHARDENED — see migration dir for the fix):
+#   - securityContext.privileged = true   ← H1d gap
+#   - runs as root (uid 0)                ← H1d gap
+#   - no seccomp profile                  ← H1d gap
+#   - no capabilities drop                ← H1d gap
+#   - haven-builds namespace PSA = privileged (because of the above)
+#
+# Why this matters: any tenant Dockerfile that exploits a kernel bug or
+# BuildKit CVE has CAP_SYS_ADMIN on the host. We've already scope-down'd
+# the haven-api ServiceAccount (#89/#106), so BuildKit is now the largest
+# remaining cluster compromise vector for haven-system.
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: buildkitd-cache
+  namespace: haven-builds
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 20Gi
+  storageClassName: longhorn
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: buildkitd
+  namespace: haven-builds
+  labels:
+    app: buildkitd
+spec:
+  selector:
+    app: buildkitd
+  ports:
+    - name: buildkitd
+      port: 1234
+      targetPort: 1234
+      protocol: TCP
+  type: ClusterIP
+  sessionAffinity: None
+  ipFamilyPolicy: SingleStack
+  internalTrafficPolicy: Cluster
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: buildkitd
+  namespace: haven-builds
+  labels:
+    app: buildkitd
+spec:
+  replicas: 1
+  revisionHistoryLimit: 10
+  progressDeadlineSeconds: 600
+  selector:
+    matchLabels:
+      app: buildkitd
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 25%
+  template:
+    metadata:
+      labels:
+        app: buildkitd
+    spec:
+      restartPolicy: Always
+      dnsPolicy: ClusterFirst
+      schedulerName: default-scheduler
+      terminationGracePeriodSeconds: 30
+      tolerations:
+        - operator: Exists
+      containers:
+        - name: buildkitd
+          image: moby/buildkit:v0.19.0
+          imagePullPolicy: IfNotPresent
+          args:
+            - --addr
+            - tcp://0.0.0.0:1234
+          ports:
+            - name: buildkitd
+              containerPort: 1234
+              protocol: TCP
+          resources:
+            requests:
+              cpu: 200m
+              memory: 256Mi
+            limits:
+              cpu: "2"
+              memory: 2Gi
+          # ⚠️ UNHARDENED — privileged: true gives container CAP_SYS_ADMIN
+          # on host. The rootless migration variant lives at
+          # platform/manifests/haven-builds-rootless-migration/buildkitd-rootless.yaml
+          securityContext:
+            privileged: true
+          readinessProbe:
+            tcpSocket:
+              port: 1234
+            initialDelaySeconds: 5
+            periodSeconds: 30
+          livenessProbe:
+            tcpSocket:
+              port: 1234
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          volumeMounts:
+            - name: cache
+              mountPath: /var/lib/buildkit
+      volumes:
+        - name: cache
+          persistentVolumeClaim:
+            claimName: buildkitd-cache

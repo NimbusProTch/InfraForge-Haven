@@ -1,0 +1,202 @@
+# ⚠️ NOT AUTO-SYNCED BY ARGOCD ⚠️
+#
+# H1d (BuildKit hardening — ROOTLESS migration variant). Apply ONLY via the
+# manual cutover runbook in `scripts/h1d-buildkit-rootless-migration.sh`,
+# AFTER you have verified:
+#
+#   1. The current `platform/manifests/haven-builds/buildkitd.yaml`
+#      privileged version is healthy (`kubectl -n haven-builds get pods`)
+#   2. No tenant builds are in flight (check the build queue / haven-api
+#      logs for active build jobs)
+#   3. You have a rollback path ready (the unhardened manifest is one
+#      `kubectl apply -f` away in `platform/manifests/haven-builds/`)
+#   4. ⚠️ THE EXISTING `buildkitd-cache` PVC HAS BEEN RECREATED ⚠️
+#      The current cache is owned by uid 0 (root) at /var/lib/buildkit
+#      because the privileged container runs as root. The rootless
+#      container runs as uid 1000 and would hit `EACCES: permission
+#      denied` on first write. fsGroup does NOT reliably retro-chown
+#      Longhorn PVC contents — only `delete pvc` + recreate works.
+#      Cost: first build after cutover is slow (~3-5 min cold cache)
+#      instead of cached (~30s). Worth it for clean ownership. The
+#      runbook script handles this in pre-flight Step 4.
+#
+# This file is INTENTIONALLY located OUTSIDE platform/manifests/haven-builds/
+# (which COULD become an ArgoCD source path in the future). If you put it
+# back inside that directory, ArgoCD might auto-sync it before you're
+# ready, mid-tenant-build, and break every tenant deploy pipeline at once.
+# We've already burned this with PR #117 (ESO) → fixed by #118. Don't
+# burn the same lesson on BuildKit. See feedback_argocd_manual_cutover.md
+# in memory.
+#
+# ─────────────────────────────────────────────────────────────────────────
+#
+# What's hardened vs the privileged baseline:
+#
+# | Field                                    | Privileged | Rootless |
+# |------------------------------------------|------------|----------|
+# | securityContext.privileged               | true       | false    |
+# | runAsUser                                | 0 (root)   | 1000     |
+# | runAsGroup                               | 0 (root)   | 1000     |
+# | runAsNonRoot                             | (unset)    | true     |
+# | image                                    | :v0.19.0   | :v0.19.0-rootless |
+# | --oci-worker-no-process-sandbox arg      | (no)       | yes      |
+# | seccompProfile.type                      | (default)  | Unconfined¹ |
+# | apparmor profile                         | (default)  | unconfined¹ |
+# | capabilities.drop                        | (none)     | ALL      |
+# | capabilities.add                         | (all)      | (none)   |
+#
+# ¹ The seccomp/apparmor relaxations are required because rootless BuildKit
+#   uses unprivileged user namespaces + clone() syscalls that the default
+#   seccomp profile blocks. Even with these relaxations, the container is
+#   STILL much safer than `privileged: true` because:
+#     - No CAP_SYS_ADMIN
+#     - No /dev/* host access
+#     - No host PID/IPC/network namespace
+#     - No raw block device access
+#     - No mount namespace escape via /proc
+#     - Container processes run as uid 1000 inside AND outside the userns
+#
+# A future hardening step would be a custom seccomp profile that allows
+# only the specific syscalls BuildKit needs (clone, unshare, mount with
+# bind, etc.), reducing the kernel attack surface further. That's a Sprint
+# H1f follow-up — out of scope here.
+#
+# PSA compatibility:
+#   - Admits under PSA `privileged` ✅
+#   - Admits under PSA `baseline`   ✅
+#   - Fails  PSA `restricted`       ❌ — because seccompProfile.type AND
+#       appArmorProfile.type are both `Unconfined`. PSA `restricted`
+#       requires `RuntimeDefault` or `Localhost`. The Sprint H1f custom
+#       Localhost seccomp profile mentioned above closes this gap.
+#   - The haven-builds namespace currently has PSA enforce=privileged,
+#     so this manifest admits cleanly. Tightening the namespace label is
+#     a separate sprint and would need the H1f profile first.
+#
+# ─────────────────────────────────────────────────────────────────────────
+#
+# Compatibility notes — what we're depending on holding true:
+#
+#   - haven-api `build_service.py` submits jobs via `buildctl build` over
+#     tcp://buildkitd.haven-builds.svc:1234 — protocol is unchanged
+#   - The buildkitd cache PVC (longhorn 20Gi) is reused — content is
+#     compatible between privileged and rootless variants because BuildKit
+#     stores cache as plain content-addressed blobs
+#   - The harbor-docker-config.yaml ConfigMap secret mount is unchanged
+#   - Tenant Dockerfiles that need privileged operations (e.g. iptables,
+#     mount, kernel module load) WILL break under rootless — this is the
+#     expected behavior. Most municipal tenant images are stock language
+#     base images (python, node, go) and won't be affected.
+#
+# Test plan after manual cutover (operator runs):
+#   1. kubectl -n haven-builds get pods --watch
+#      (wait for new pod Ready, ~30-60s)
+#   2. kubectl -n haven-builds logs deploy/buildkitd --tail=20
+#      (look for "rootless" mentions, no permission errors)
+#   3. Trigger a debora test build via UI or:
+#      curl -X POST -H "Authorization: Bearer $TOKEN" \
+#        https://api.46.225.42.2.sslip.io/api/v1/apps/{app-slug}/build
+#   4. Watch the build job logs in haven-builds namespace
+#   5. Verify the resulting image lands in Harbor (`harbor.46.225.42.2.sslip.io/library/...`)
+#
+# Rollback (if anything is wrong):
+#   kubectl --kubeconfig=$KC apply -f platform/manifests/haven-builds/buildkitd.yaml
+#   (restores the privileged baseline, ~10s)
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: buildkitd
+  namespace: haven-builds
+  labels:
+    app: buildkitd
+    haven.io/hardened: "true"
+    haven.io/security-mode: rootless
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: buildkitd
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 25%
+  template:
+    metadata:
+      labels:
+        app: buildkitd
+        haven.io/hardened: "true"
+    spec:
+      tolerations:
+        - operator: Exists
+      securityContext:
+        # Pod-level fsGroup ensures the longhorn PVC mount is owned by gid
+        # 1000 for any newly-created files. Note: this does NOT retroactively
+        # chown existing cache content from the privileged baseline — the
+        # runbook deletes the PVC entirely before cutover for clean state.
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+      containers:
+        - name: buildkitd
+          image: moby/buildkit:v0.19.0-rootless
+          imagePullPolicy: IfNotPresent
+          args:
+            - --addr
+            - tcp://0.0.0.0:1234
+            # Disable BuildKit's own subprocess sandbox (seccomp/apparmor) since
+            # we're already running rootless inside an unprivileged container.
+            # Without this, the inner sandbox tries to apply restrictions that
+            # require capabilities we no longer have.
+            - --oci-worker-no-process-sandbox
+          ports:
+            - name: buildkitd
+              containerPort: 1234
+              protocol: TCP
+          resources:
+            requests:
+              cpu: 200m
+              memory: 256Mi
+            limits:
+              cpu: "2"
+              memory: 2Gi
+          securityContext:
+            privileged: false
+            runAsNonRoot: true
+            runAsUser: 1000
+            runAsGroup: 1000
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            seccompProfile:
+              # Unconfined required for unshare(CLONE_NEWUSER) + clone() with
+              # CLONE_NEWNS. A custom profile is the future-better path.
+              type: Unconfined
+            # AppArmor unconfined is required for rootless BuildKit user namespace
+            # setup. See https://github.com/moby/buildkit/blob/master/docs/rootless.md
+            # k8s 1.30+: use container-level appArmorProfile (the older
+            # container.apparmor.security.beta.kubernetes.io/<container>=unconfined
+            # annotation is deprecated since 1.30).
+            appArmorProfile:
+              type: Unconfined
+          readinessProbe:
+            tcpSocket:
+              port: 1234
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          livenessProbe:
+            tcpSocket:
+              port: 1234
+            initialDelaySeconds: 15
+            periodSeconds: 30
+          volumeMounts:
+            - name: cache
+              mountPath: /home/user/.local/share/buildkit
+      volumes:
+        - name: cache
+          persistentVolumeClaim:
+            claimName: buildkitd-cache
