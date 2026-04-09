@@ -68,6 +68,10 @@ module "hetzner_infra" {
   ssh_public_key   = tls_private_key.global_key.public_key_openssh
   network_cidr     = var.network_cidr
   subnet_cidr      = var.subnet_cidr
+  # H1b-1 (P4.1): operator IP allow-list for SSH 22, K8s API 6443, RKE2
+  # supervisor 9345. Pre-fix all three were 0.0.0.0/0. Set this in
+  # terraform.tfvars (NOT here) to your VPN/office egress CIDRs.
+  operator_cidrs = var.operator_cidrs
 }
 
 # --- 3. RKE2 Cluster Config (cloud-init generation) ---
