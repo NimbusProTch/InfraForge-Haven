@@ -1,16 +1,49 @@
 "use client";
 
 import { signIn, getProviders } from "next-auth/react";
-import { Anchor, Github, Shield, Globe, Lock } from "lucide-react";
-import { useEffect, useState } from "react";
+import { Anchor, Github, Shield, Globe, Lock, AlertCircle } from "lucide-react";
+import { useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useState } from "react";
 
 interface Providers {
   keycloak?: { id: string; name: string };
   github?: { id: string; name: string };
 }
 
-export default function SignInPage() {
+// P10 (Sprint H2 #25): the middleware redirects here with `?reason=`
+// when a token-refresh failure invalidates the session. We surface the
+// reason as a banner so the user understands why they're being asked to
+// log in again instead of just bouncing them silently.
+function SessionExpiredBanner() {
+  const params = useSearchParams();
+  const reason = params.get("reason");
+
+  if (!reason) return null;
+
+  const message =
+    reason === "session_expired"
+      ? "Your session has expired. Please sign in again."
+      : reason === "session_error"
+        ? "We couldn't refresh your session. Please sign in again."
+        : null;
+
+  if (!message) return null;
+
+  return (
+    <div className="mb-4 flex items-start gap-2.5 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-700/50 dark:bg-amber-950/40 dark:text-amber-300">
+      <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
+      <span>{message}</span>
+    </div>
+  );
+}
+
+function SignInInner() {
   const [providers, setProviders] = useState<Providers>({});
+  const params = useSearchParams();
+  // After successful signin, return the user to the page they were
+  // trying to view when the middleware redirected them. The middleware
+  // sets `callbackUrl` alongside `reason`.
+  const callbackUrl = params.get("callbackUrl") || "/dashboard";
 
   useEffect(() => {
     getProviders().then((p) => {
@@ -40,10 +73,13 @@ export default function SignInPage() {
             </p>
           </div>
 
+          {/* P10: surface session-expired reason from middleware */}
+          <SessionExpiredBanner />
+
           <div className="space-y-3">
             {/* SSO / Keycloak — primary */}
             <button
-              onClick={() => signIn("keycloak", { callbackUrl: "/dashboard" })}
+              onClick={() => signIn("keycloak", { callbackUrl })}
               className="w-full inline-flex items-center justify-center gap-2.5 px-4 py-3 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-sm font-semibold transition-all shadow-lg shadow-emerald-500/20 hover:shadow-emerald-500/30"
             >
               <Lock className="w-4 h-4" />
@@ -59,7 +95,7 @@ export default function SignInPage() {
                   <div className="flex-1 h-px bg-gray-200 dark:bg-zinc-800" />
                 </div>
                 <button
-                  onClick={() => signIn("github", { callbackUrl: "/dashboard" })}
+                  onClick={() => signIn("github", { callbackUrl })}
                   className="w-full inline-flex items-center justify-center gap-2.5 px-4 py-2.5 rounded-xl bg-gray-100 dark:bg-zinc-800 hover:bg-gray-200 dark:hover:bg-zinc-700 border border-gray-300 dark:border-zinc-700 text-gray-700 dark:text-zinc-300 hover:text-gray-900 dark:hover:text-white text-sm font-medium transition-all"
                 >
                   <Github className="w-4 h-4" />
@@ -94,11 +130,26 @@ export default function SignInPage() {
               </div>
             </div>
             <p className="text-center text-xs text-gray-400 dark:text-zinc-700 mt-2">
-              GDPR Compliant · Haven 15/15 Infrastructure
+              GDPR Compliant · Haven 12/15 Infrastructure
             </p>
           </div>
         </div>
       </div>
     </div>
+  );
+}
+
+// useSearchParams() requires a Suspense boundary in Next.js 14 App Router.
+export default function SignInPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-[#09090b]">
+          <div className="animate-pulse text-gray-400">Loading…</div>
+        </div>
+      }
+    >
+      <SignInInner />
+    </Suspense>
   );
 }
