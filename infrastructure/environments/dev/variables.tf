@@ -216,6 +216,71 @@ variable "minio_storage_size" {
   default     = "20Gi"
 }
 
+# ===== H1e: MinIO Server-Side Encryption (SSE) =====
+# Pre-fix MinIO had no encryption-at-rest config. Backup data (CNPG WAL,
+# Loki chunks, Harbor blobs if MinIO was wired as the registry storage)
+# was written to disk in plaintext. A Longhorn volume snapshot or a
+# compromised node = plaintext recovery of every backup.
+#
+# Strategy (dev cluster, single-node MinIO): use MinIO's built-in
+# `MINIO_KMS_SECRET_KEY` (a 32-byte symmetric key in base64) plus
+# `MINIO_KMS_AUTO_ENCRYPTION=on` so every NEW write is transparently
+# AES-256-GCM encrypted. Existing objects stay plaintext until rewritten;
+# a separate migration script (`mc admin encrypt`) is needed to retro-fit
+# the existing buckets.
+#
+# Production cluster should use Vault transit + MINIO_KMS_KES_* (HashiCorp
+# KES sidecar) instead of a standalone KMS secret. Defer to a
+# post-Vault-migration sprint.
+
+variable "minio_kms_auto_encryption" {
+  description = "Enable MinIO server-side auto-encryption for all new writes (AES-256-GCM via KMS_SECRET_KEY)"
+  type        = bool
+  default     = true
+}
+
+variable "minio_kms_secret_key" {
+  description = <<-EOT
+    MinIO KMS key in the format `<key-name>:<base64-32-bytes>`.
+
+    Example value (DO NOT use this one in production — generate your own):
+
+      haven-dev:6/MJP6sDywZxbcGOJjaH7N7l0sB+yVzqgzDzwK7Tx9w=
+
+    To generate a fresh key:
+
+      KEY=$(openssl rand 32 | base64)
+      echo "haven-dev:$KEY"
+
+    ## CRITICAL: back up the key BEFORE pasting into tfvars
+
+    Losing this key = permanently losing every encrypted object. The key
+    will live in two places:
+      1. `terraform.tfvars` (gitignored, on the operator's machine)
+      2. Tofu state backend (S3 / R2, encrypted at rest if SSE is on)
+
+    Both copies can be lost (laptop dies + state corruption). BEFORE you
+    paste the generated key into tfvars:
+
+      a. Save it to a real password manager (1Password / Bitwarden)
+         under "Haven dev MinIO KMS key"
+      b. Verify you can read it back from the password manager
+      c. THEN paste into tfvars and `tofu apply`
+
+    Without step (a), an unrecoverable state corruption + a laptop loss
+    is irrecoverable: every CNPG WAL backup, every Loki chunk, every
+    encrypted Harbor blob is permanently unreadable.
+
+    Set in `terraform.tfvars` (gitignored). Default empty string disables
+    auto-encryption (the helm template skips the env var when blank).
+    Once set, every NEW MinIO write is AES-256-GCM encrypted with this
+    key.
+  EOT
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
 # ===== ArgoCD =====
 variable "enable_argocd" {
   description = "Enable ArgoCD GitOps"
