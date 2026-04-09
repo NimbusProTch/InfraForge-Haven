@@ -8,6 +8,11 @@ Routes:
   DELETE /tenants/{tenant_slug}/apps/{app_slug}/domains/{domain} — remove domain
 
   POST   /domains/wildcard — issue wildcard cert for platform (admin)
+
+H3e (P2.5 / P18 batch 2): migrated to canonical `TenantMembership`
+dependency from `app/deps.py`. The local `_get_tenant_or_404` helper has
+been removed. The platform-level wildcard cert route still uses
+`current_user` because it has no tenant_slug path param.
 """
 
 import logging
@@ -15,11 +20,9 @@ import logging
 from fastapi import APIRouter, HTTPException, status
 from sqlalchemy import select
 
-from app.deps import CurrentUser, DBSession, K8sDep
+from app.deps import CurrentUser, DBSession, K8sDep, TenantMembership
 from app.models.application import Application
 from app.models.domain import CertificateStatus, DomainVerification
-from app.models.tenant import Tenant
-from app.models.tenant_member import TenantMember
 from app.schemas.domain import DomainCreate, DomainResponse, DomainVerifyResponse, WildcardCertRequest
 from app.services.domain_service import (
     CertManagerService,
@@ -38,22 +41,6 @@ router = APIRouter(tags=["domains"])
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-
-async def _get_tenant_or_404(tenant_slug: str, db: DBSession, current_user: dict) -> Tenant:
-    """H0-9: Lock custom-domain configuration to tenant members."""
-    result = await db.execute(select(Tenant).where(Tenant.slug == tenant_slug))
-    tenant = result.scalar_one_or_none()
-    if tenant is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant not found")
-
-    user_id = current_user.get("sub", "")
-    member_q = await db.execute(
-        select(TenantMember).where(TenantMember.tenant_id == tenant.id, TenantMember.user_id == user_id)
-    )
-    if member_q.scalar_one_or_none() is None:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You are not a member of this tenant")
-    return tenant
 
 
 async def _get_app_or_404(tenant_id: object, app_slug: str, db: DBSession) -> Application:
@@ -99,15 +86,14 @@ async def add_domain(
     app_slug: str,
     body: DomainCreate,
     db: DBSession,
-    k8s: K8sDep,
-    current_user: CurrentUser,
+    k8s: K8sDep,  # noqa: ARG001 — kept on signature for parity with other routes; cert issuance happens via verify
+    tenant: TenantMembership,
 ) -> DomainResponse:
     """Add a custom domain to an application.
 
     Returns the DNS verification instructions the user needs to follow.
     The domain is NOT yet active — the user must verify DNS ownership first.
     """
-    tenant = await _get_tenant_or_404(tenant_slug, db, current_user)
     app = await _get_app_or_404(tenant.id, app_slug, db)
 
     # Check for duplicates across all applications (domain must be globally unique)
@@ -129,14 +115,13 @@ async def add_domain(
 
 @app_domains_router.get("", response_model=list[DomainResponse])
 async def list_domains(
-    tenant_slug: str,
+    tenant_slug: str,  # noqa: ARG001 — used by TenantMembership dep, kept for OpenAPI
     app_slug: str,
     db: DBSession,
-    k8s: K8sDep,
-    current_user: CurrentUser,
+    k8s: K8sDep,  # noqa: ARG001 — kept for parity with mutating routes
+    tenant: TenantMembership,
 ) -> list[DomainResponse]:
     """List all custom domains for an application."""
-    tenant = await _get_tenant_or_404(tenant_slug, db, current_user)
     app = await _get_app_or_404(tenant.id, app_slug, db)
 
     result = await db.execute(
@@ -150,15 +135,14 @@ async def list_domains(
 
 @app_domains_router.get("/{domain}", response_model=DomainResponse)
 async def get_domain(
-    tenant_slug: str,
+    tenant_slug: str,  # noqa: ARG001 — used by TenantMembership dep, kept for OpenAPI
     app_slug: str,
     domain: str,
     db: DBSession,
-    k8s: K8sDep,
-    current_user: CurrentUser,
+    k8s: K8sDep,  # noqa: ARG001 — kept for parity
+    tenant: TenantMembership,
 ) -> DomainResponse:
     """Get details for a specific custom domain."""
-    tenant = await _get_tenant_or_404(tenant_slug, db, current_user)
     app = await _get_app_or_404(tenant.id, app_slug, db)
     domain_record = await _get_domain_or_404(app.id, domain, db)
     return _to_response(domain_record)
@@ -171,14 +155,13 @@ async def verify_domain(
     domain: str,
     db: DBSession,
     k8s: K8sDep,
-    current_user: CurrentUser,
+    tenant: TenantMembership,
 ) -> DomainVerifyResponse:
     """Trigger DNS ownership verification for a domain.
 
     Checks the TXT record `_haven-verify.{domain}` = `{verification_token}`.
     If verified, kicks off cert-manager certificate issuance and updates the HTTPRoute.
     """
-    tenant = await _get_tenant_or_404(tenant_slug, db, current_user)
     app = await _get_app_or_404(tenant.id, app_slug, db)
     domain_record = await _get_domain_or_404(app.id, domain, db)
 
@@ -223,15 +206,14 @@ async def verify_domain(
 
 @app_domains_router.post("/{domain}/sync-cert", response_model=DomainResponse)
 async def sync_cert_status(
-    tenant_slug: str,
+    tenant_slug: str,  # noqa: ARG001 — used by TenantMembership dep, kept for OpenAPI
     app_slug: str,
     domain: str,
     db: DBSession,
     k8s: K8sDep,
-    current_user: CurrentUser,
+    tenant: TenantMembership,
 ) -> DomainResponse:
     """Sync the cert-manager Certificate status from the cluster into the DB."""
-    tenant = await _get_tenant_or_404(tenant_slug, db, current_user)
     app = await _get_app_or_404(tenant.id, app_slug, db)
     domain_record = await _get_domain_or_404(app.id, domain, db)
 
@@ -254,14 +236,13 @@ async def delete_domain(
     domain: str,
     db: DBSession,
     k8s: K8sDep,
-    current_user: CurrentUser,
+    tenant: TenantMembership,
 ) -> None:
     """Remove a custom domain from an application.
 
     Deletes the cert-manager Certificate, removes the hostname from HTTPRoute,
     then deletes the DB record.
     """
-    tenant = await _get_tenant_or_404(tenant_slug, db, current_user)
     app = await _get_app_or_404(tenant.id, app_slug, db)
     domain_record = await _get_domain_or_404(app.id, domain, db)
 
