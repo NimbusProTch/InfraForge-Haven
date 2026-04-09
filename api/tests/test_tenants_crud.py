@@ -184,6 +184,72 @@ async def test_delete_tenant_db_removed_even_when_gitops_fails(tc, monkeypatch):
 
 
 # ---------------------------------------------------------------------------
+# H3f: tenant deprovision orphan Everest sweep
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_delete_tenant_calls_orphan_sweep(tc, monkeypatch):
+    """delete_tenant must call ManagedServiceProvisioner.cleanup_orphans_by_prefix
+    after the normal deprovision loop, with the tenant slug as the prefix.
+
+    This is the second line of defense against orphan Everest DBs left
+    behind by out-of-band ManagedService row deletions. See the
+    cleanup_orphans_by_prefix() docstring for context.
+    """
+    from app.services import managed_service as ms_mod
+
+    await tc.post("/api/v1/tenants", json={"name": "Sweep", "slug": "tc-sweep"})
+
+    sweep_called_with: list[str] = []
+
+    async def fake_sweep(self, slug: str) -> list[str]:
+        sweep_called_with.append(slug)
+        return ["tc-sweep-app-pg"]
+
+    monkeypatch.setattr(
+        ms_mod.ManagedServiceProvisioner,
+        "cleanup_orphans_by_prefix",
+        fake_sweep,
+    )
+
+    resp = await tc.delete("/api/v1/tenants/tc-sweep")
+    assert resp.status_code == 204, f"delete should succeed: {resp.text}"
+
+    assert sweep_called_with == ["tc-sweep"], "cleanup_orphans_by_prefix must be called once with the tenant slug"
+
+    # DB row gone
+    resp = await tc.get("/api/v1/tenants/tc-sweep")
+    assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_delete_tenant_continues_if_orphan_sweep_raises(tc, monkeypatch):
+    """If the defensive sweep raises, the rest of the cleanup chain MUST continue.
+    The DB delete still runs. Best-effort guarantee.
+    """
+    from app.services import managed_service as ms_mod
+
+    await tc.post("/api/v1/tenants", json={"name": "SweepFail", "slug": "tc-sweep-fail"})
+
+    async def boom(self, slug: str) -> list[str]:
+        raise RuntimeError("simulated everest API outage during sweep")
+
+    monkeypatch.setattr(
+        ms_mod.ManagedServiceProvisioner,
+        "cleanup_orphans_by_prefix",
+        boom,
+    )
+
+    resp = await tc.delete("/api/v1/tenants/tc-sweep-fail")
+    assert resp.status_code == 204, "Sweep failure must NOT block tenant delete"
+
+    # DB row still removed
+    resp = await tc.get("/api/v1/tenants/tc-sweep-fail")
+    assert resp.status_code == 404
+
+
+# ---------------------------------------------------------------------------
 # H0-3: github_token PATCH guard
 # ---------------------------------------------------------------------------
 
