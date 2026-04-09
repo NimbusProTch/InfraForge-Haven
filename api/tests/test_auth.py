@@ -362,3 +362,157 @@ async def test_jwks_cache_fetched_at_reset_on_failure():
 
     assert jwt_module._jwks_cache is None
     assert jwt_module._jwks_cache_fetched_at == 0.0
+
+
+# ---------------------------------------------------------------------------
+# Sprint H2 P12 (#23): tenant_memberships JWT claim helpers
+# ---------------------------------------------------------------------------
+
+
+def test_extract_tenant_memberships_missing_returns_none():
+    """No `tenant_memberships` key → return None so caller falls back to DB."""
+    from app.auth.jwt import extract_tenant_memberships
+
+    assert extract_tenant_memberships({"sub": "u1"}) is None
+
+
+def test_extract_tenant_memberships_empty_list_returns_empty():
+    """Claim present but empty → return [] (NOT None) — user belongs to zero tenants."""
+    from app.auth.jwt import extract_tenant_memberships
+
+    result = extract_tenant_memberships({"sub": "u1", "tenant_memberships": []})
+    assert result == []
+
+
+def test_extract_tenant_memberships_slug_only_shape():
+    """Slug-only list → normalized to [{slug, role: None}, ...]."""
+    from app.auth.jwt import extract_tenant_memberships
+
+    result = extract_tenant_memberships({"tenant_memberships": ["rotterdam", "amsterdam"]})
+    assert result == [
+        {"slug": "rotterdam", "role": None},
+        {"slug": "amsterdam", "role": None},
+    ]
+
+
+def test_extract_tenant_memberships_rich_shape():
+    """Rich list with slug+role passes through normalized."""
+    from app.auth.jwt import extract_tenant_memberships
+
+    payload = {
+        "tenant_memberships": [
+            {"slug": "rotterdam", "role": "owner"},
+            {"slug": "amsterdam", "role": "viewer"},
+        ]
+    }
+    assert extract_tenant_memberships(payload) == [
+        {"slug": "rotterdam", "role": "owner"},
+        {"slug": "amsterdam", "role": "viewer"},
+    ]
+
+
+def test_extract_tenant_memberships_mixed_shape():
+    """Mixed shapes are tolerated (slug-only and rich entries in same claim)."""
+    from app.auth.jwt import extract_tenant_memberships
+
+    payload = {
+        "tenant_memberships": [
+            "rotterdam",
+            {"slug": "amsterdam", "role": "owner"},
+        ]
+    }
+    assert extract_tenant_memberships(payload) == [
+        {"slug": "rotterdam", "role": None},
+        {"slug": "amsterdam", "role": "owner"},
+    ]
+
+
+def test_extract_tenant_memberships_not_a_list_returns_none():
+    """Malformed claim (string instead of list) → None + warning."""
+    from app.auth.jwt import extract_tenant_memberships
+
+    assert extract_tenant_memberships({"tenant_memberships": "rotterdam"}) is None
+    assert extract_tenant_memberships({"tenant_memberships": {"slug": "x"}}) is None
+
+
+def test_extract_tenant_memberships_skips_malformed_entries():
+    """Garbage entries inside the list are skipped, valid ones kept."""
+    from app.auth.jwt import extract_tenant_memberships
+
+    payload = {
+        "sub": "u1",
+        "tenant_memberships": [
+            "rotterdam",
+            42,  # not a str/dict
+            {"role": "owner"},  # missing slug
+            {"slug": "amsterdam", "role": "viewer"},
+        ],
+    }
+    assert extract_tenant_memberships(payload) == [
+        {"slug": "rotterdam", "role": None},
+        {"slug": "amsterdam", "role": "viewer"},
+    ]
+
+
+def test_check_tenant_membership_in_claim_no_claim_returns_none():
+    """No claim → 3-state None so caller falls back to DB."""
+    from app.auth.jwt import check_tenant_membership_in_claim
+
+    assert check_tenant_membership_in_claim({}, "rotterdam") is None
+
+
+def test_check_tenant_membership_in_claim_member_returns_true():
+    """Slug in claim → True."""
+    from app.auth.jwt import check_tenant_membership_in_claim
+
+    payload = {"tenant_memberships": ["rotterdam", "amsterdam"]}
+    assert check_tenant_membership_in_claim(payload, "rotterdam") is True
+    assert check_tenant_membership_in_claim(payload, "amsterdam") is True
+
+
+def test_check_tenant_membership_in_claim_not_member_returns_false():
+    """Claim present but slug NOT in it → False (NOT None — explicit deny)."""
+    from app.auth.jwt import check_tenant_membership_in_claim
+
+    payload = {"tenant_memberships": ["rotterdam"]}
+    assert check_tenant_membership_in_claim(payload, "amsterdam") is False
+
+
+def test_check_tenant_membership_in_claim_role_hierarchy():
+    """min_role is enforced when role info is present in the claim."""
+    from app.auth.jwt import check_tenant_membership_in_claim
+
+    payload = {
+        "tenant_memberships": [
+            {"slug": "rotterdam", "role": "viewer"},
+            {"slug": "amsterdam", "role": "owner"},
+        ]
+    }
+    # Viewer can act as viewer but NOT as admin
+    assert check_tenant_membership_in_claim(payload, "rotterdam", min_role="viewer") is True
+    assert check_tenant_membership_in_claim(payload, "rotterdam", min_role="member") is False
+    assert check_tenant_membership_in_claim(payload, "rotterdam", min_role="admin") is False
+    assert check_tenant_membership_in_claim(payload, "rotterdam", min_role="owner") is False
+    # Owner satisfies every level
+    assert check_tenant_membership_in_claim(payload, "amsterdam", min_role="viewer") is True
+    assert check_tenant_membership_in_claim(payload, "amsterdam", min_role="admin") is True
+    assert check_tenant_membership_in_claim(payload, "amsterdam", min_role="owner") is True
+
+
+def test_check_tenant_membership_in_claim_slug_only_ignores_min_role():
+    """Slug-only claim has no role info — min_role is ignored, any membership counts."""
+    from app.auth.jwt import check_tenant_membership_in_claim
+
+    payload = {"tenant_memberships": ["rotterdam"]}
+    # Even with min_role=owner, membership is granted because the claim
+    # carries no role info (operator can opt into rich shape later).
+    assert check_tenant_membership_in_claim(payload, "rotterdam", min_role="owner") is True
+
+
+def test_check_tenant_membership_in_claim_unknown_role_treated_as_zero():
+    """Unknown role string in claim ranks at 0 — fails any positive min_role."""
+    from app.auth.jwt import check_tenant_membership_in_claim
+
+    payload = {"tenant_memberships": [{"slug": "rotterdam", "role": "intruder"}]}
+    assert check_tenant_membership_in_claim(payload, "rotterdam") is True  # no min_role → ok
+    assert check_tenant_membership_in_claim(payload, "rotterdam", min_role="viewer") is False
