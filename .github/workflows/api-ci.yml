@@ -87,6 +87,9 @@ jobs:
     needs: [lint, test]
     # Only push on main branch
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
+      short_sha: ${{ steps.sha.outputs.short }}
     steps:
       - uses: actions/checkout@v4
 
@@ -105,17 +108,21 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Build and push
+        id: build
         uses: docker/build-push-action@v6
         with:
           context: api
           file: api/Dockerfile
           platforms: linux/amd64
           push: true
+          # Tag is still pushed for human browsing in Harbor; the
+          # deployment manifest references the immutable digest below.
           tags: |
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.sha.outputs.short }}
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          provenance: false
 
   update-manifest:
     name: Update Deployment Manifest
@@ -127,14 +134,24 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract git SHA (short)
-        id: sha
-        run: echo "short=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
-
-      - name: Update image tag in deployment manifests
+      - name: Update image digest in deployment manifests
+        # H1a-3 (HAVEN_COMPLIANCE_PLAN.md): pin by sha256 digest, NOT tag.
+        # Tags are mutable; an attacker (or a slip-up) can re-push the same tag
+        # with different content. Digests are content-addressable and immutable,
+        # which is exactly what Haven check #15 wants. The tag is still pushed
+        # for human browsing in Harbor — the deployment just references the
+        # digest URI form: `repo/image@sha256:abc123...`.
         run: |
-          IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.sha.outputs.short }}"
-          sed -i "s|image: .*haven-api:.*|image: ${IMAGE}|g" \
+          DIGEST="${{ needs.build-and-push.outputs.digest }}"
+          if [ -z "$DIGEST" ]; then
+            echo "::error::Empty digest from build-and-push job — refusing to write a broken manifest"
+            exit 1
+          fi
+          IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${DIGEST}"
+          echo "Pinning manifests to: ${IMAGE}"
+          # Match BOTH the legacy tag form (`...:abc1234`) and the new digest
+          # form (`...@sha256:...`) so re-runs after this PR work cleanly.
+          sed -i -E "s|image: .*haven-api[:@][^[:space:]]+|image: ${IMAGE}|g" \
             platform/manifests/haven-api/deployment.yaml \
             platform/manifests/haven-api/git-worker-deployment.yaml
 
@@ -143,6 +160,6 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add platform/manifests/haven-api/deployment.yaml platform/manifests/haven-api/git-worker-deployment.yaml
-          git diff --cached --quiet || git commit -m "ci: update haven-api image to ${{ steps.sha.outputs.short }} [skip ci]"
+          git diff --cached --quiet || git commit -m "ci: pin haven-api to ${{ needs.build-and-push.outputs.short_sha }} (digest) [skip ci]"
           git pull --rebase origin main
           git push
