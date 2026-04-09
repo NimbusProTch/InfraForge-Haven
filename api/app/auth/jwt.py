@@ -38,16 +38,35 @@ _ACCEPTED_AUDIENCES = {"haven-portal", "haven-api", "haven-ui", "account"}
 
 
 def _expected_issuer() -> str:
-    """Return the issuer URL we expect every valid token to carry.
+    """Return the canonical issuer URL we expect every valid token to carry.
 
     Currently only the shared 'haven' realm is in use, so this is a single
     string. When per-tenant realms are introduced (Sprint 5+ for IdP
     federation), this becomes a per-token check that parses `iss` and
     confirms it matches the tenant's `keycloak_realm` field on the Tenant
-    model. The H0/H1 sprints intentionally don't ship that — see
-    `tooling-baseline.md` for the H2 follow-up.
+    model.
     """
     return f"{settings.keycloak_url.rstrip('/')}/realms/{settings.keycloak_realm}"
+
+
+def _normalize_issuer(iss: str) -> str:
+    """Strip the URL scheme so http://… and https://… compare equal.
+
+    Why this exists: in dev, Keycloak's `frontendUrl` is sometimes left at
+    `http://...` even though external traffic flows over HTTPS via Cilium
+    Gateway. The token's `iss` claim then carries `http://...` but
+    `settings.keycloak_url` is the public HTTPS URL. Strict string
+    comparison would reject every token even though host+realm match.
+
+    The security relevance of the scheme is zero here: the JWT signature
+    is already verified against the Keycloak JWKS (cryptographic proof
+    that the token came from this exact Keycloak instance). The `iss`
+    check is a *defense in depth* binding the token to the expected
+    realm path — host + realm is what matters, not the URL scheme.
+    """
+    if "://" in iss:
+        return iss.split("://", 1)[1]
+    return iss
 
 
 async def _fetch_jwks() -> dict[str, Any]:
@@ -118,8 +137,12 @@ async def verify_token(
         # Manual issuer validation (Sprint H2 P6): the token MUST come from
         # the configured Keycloak realm. Any other issuer is a token from a
         # foreign IdP / wrong realm and must be rejected.
+        # Scheme-tolerant: strip http://...|https://... so dev Keycloak's
+        # http frontendUrl matches the api's https keycloak_url config.
+        # See _normalize_issuer() docstring — JWT signature already proves
+        # provenance, this check binds the token to the expected realm path.
         token_iss = payload.get("iss")
-        if token_iss != expected_iss:
+        if not token_iss or _normalize_issuer(token_iss) != _normalize_issuer(expected_iss):
             raise JWTError(f"Invalid issuer: expected {expected_iss!r}, got {token_iss!r}")
 
         logger.debug("Token verified: sub=%s iss=%s", payload.get("sub"), token_iss)
