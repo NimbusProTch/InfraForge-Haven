@@ -135,3 +135,120 @@ async def verify_token(
         _jwks_cache = None
         _jwks_cache_fetched_at = 0.0
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token") from e
+
+
+# ---------------------------------------------------------------------------
+# Sprint H2 P12 (#23): tenant_memberships JWT claim
+# ---------------------------------------------------------------------------
+#
+# Optimization: instead of doing a DB lookup on every authenticated
+# request to determine which tenants the user belongs to, embed the
+# membership list as a custom claim in the JWT itself. The Keycloak
+# protocol mapper that emits this claim is documented in
+# `keycloak/haven-realm.json` (commented-out, operator activates).
+#
+# Claim shape (expected):
+#
+#   "tenant_memberships": [
+#     {"slug": "rotterdam", "role": "owner"},
+#     {"slug": "amsterdam", "role": "viewer"}
+#   ]
+#
+# OR the simpler shape that just emits slugs (no role info):
+#
+#   "tenant_memberships": ["rotterdam", "amsterdam"]
+#
+# Both shapes are accepted by `extract_tenant_memberships()` below; the
+# caller decides whether the role info matters for their use case.
+#
+# Migration plan: routers progressively opt in to claim-first lookup
+# via the `check_tenant_membership_in_claim()` helper. The DB lookup
+# remains as the fallback for tokens issued before the mapper was
+# active (Keycloak SSO Session Max default = 8h, so the transition
+# window is at most 8 hours after the realm reimport).
+
+
+def extract_tenant_memberships(payload: dict[str, Any]) -> list[dict[str, str]] | None:
+    """Parse the `tenant_memberships` claim from a decoded JWT payload.
+
+    Returns a normalized list of `{"slug": str, "role": str | None}` dicts,
+    or `None` if the claim is missing entirely (caller should fall back
+    to the DB lookup).
+
+    Accepts both shapes:
+
+      - Rich: `[{"slug": "rotterdam", "role": "owner"}, ...]`
+      - Slug-only: `["rotterdam", "amsterdam"]`
+
+    For the slug-only shape, `role` is set to `None`.
+
+    Returns an empty list `[]` (NOT None) if the claim is present but
+    empty — that's a positive "user belongs to ZERO tenants" signal,
+    not a "no claim" signal.
+    """
+    claim = payload.get("tenant_memberships")
+    if claim is None:
+        return None
+    if not isinstance(claim, list):
+        logger.warning(
+            "Malformed tenant_memberships claim (not a list): sub=%s type=%s",
+            payload.get("sub", "?"),
+            type(claim).__name__,
+        )
+        return None
+
+    normalized: list[dict[str, str]] = []
+    for entry in claim:
+        if isinstance(entry, str):
+            normalized.append({"slug": entry, "role": None})
+        elif isinstance(entry, dict) and "slug" in entry:
+            normalized.append({"slug": entry["slug"], "role": entry.get("role")})
+        else:
+            logger.warning(
+                "Skipping malformed tenant_memberships entry: sub=%s entry=%r",
+                payload.get("sub", "?"),
+                entry,
+            )
+    return normalized
+
+
+def check_tenant_membership_in_claim(
+    payload: dict[str, Any],
+    tenant_slug: str,
+    *,
+    min_role: str | None = None,
+) -> bool | None:
+    """Check if the JWT claim says the user is a member of `tenant_slug`.
+
+    Returns:
+      - `True`  → claim says yes (member of the tenant, role >= min_role if set)
+      - `False` → claim says no (claim present, slug not in list, OR role too low)
+      - `None`  → claim is missing entirely (caller should fall back to DB)
+
+    The 3-state return is intentional: callers MUST distinguish "claim
+    says no" from "no claim at all". Without the distinction, a missing
+    claim would silently grant access (or silently deny it).
+
+    Role hierarchy (when min_role is given):
+      owner > admin > member > viewer
+
+    If the claim is in the slug-only shape (no role info), `min_role`
+    is ignored and any membership counts.
+    """
+    memberships = extract_tenant_memberships(payload)
+    if memberships is None:
+        return None  # No claim → caller falls back
+
+    role_hierarchy = {"owner": 4, "admin": 3, "member": 2, "viewer": 1}
+    min_rank = role_hierarchy.get(min_role or "", 0)
+
+    for entry in memberships:
+        if entry["slug"] != tenant_slug:
+            continue
+        # Found the tenant in the claim
+        if min_role is None or entry.get("role") is None:
+            return True
+        rank = role_hierarchy.get(entry["role"], 0)
+        return rank >= min_rank
+
+    return False  # Claim was present, slug not in it
