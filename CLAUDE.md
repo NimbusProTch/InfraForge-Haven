@@ -181,7 +181,7 @@ haven-platform/
 | 5 | RBAC | **DÜZELTİLDİ (#89 + #106)**. Rogue `haven-api-admin → cluster-admin` binding silindi. ClusterRole privilege escalation gap (clusterrolebindings full verbs) kapatıldı. `kubectl auth can-i '*' '*' --as=...haven-api` → **no** (canlı verified). | ✅ |
 | 6 | CIS Hardening | `enable_cis_profile = true`, etcd taint tolerations eklendi | ✅ |
 | 7 | CRI containerd | RKE2 default `containerd://2.0.4-k3s2` | ✅ |
-| 8 | CNI Cilium + Hubble | Cilium 6 pod Running, Hubble enabled. **NOT**: WireGuard encryption KAPALI (Sprint H1e'de açılacak). | ✅ (with caveat) |
+| 8 | CNI Cilium + Hubble | Cilium 6 pod Running, Hubble enabled. **NOT**: WireGuard encryption kod-default `true` yapıldı (#112), tofu apply ile aktive olur. | ✅ (with caveat) |
 | 9 | Separate master/worker | Distinct VM'ler, label'lar ayrı | ✅ |
 | 10 | RWX Storage Longhorn | Default storage class, PVC'ler bağlı, RWX destek | ✅ |
 | 11 | Auto-scaling HPA | metrics-server çalışıyor, HPA test edildi | ✅ |
@@ -193,7 +193,7 @@ haven-platform/
 **Gerçek skor: 13/15 ✅ + 1 kod-hazır-apply-bekliyor + 1 kırık.** Sprint H1a-1 (Multi-AZ tofu apply) tamamlanırsa 14/15. Sprint H1a-2 (kubectl OIDC) tamamlanırsa 15/15.
 
 **Bu sprint'te canlı cluster'a inen güvenlik katmanları** (önceden yoktu):
-- JWT issuer doğrulaması (`verify_iss=True`) + JWKS TTL 1h cache (#86)
+- JWT issuer doğrulaması (`verify_iss=True`) + JWKS TTL 1h cache (#86) + http/https scheme tolerance (#109/#110)
 - Token revocation (per-user reauth watermark, alembic 0023) (#95)
 - JWT `tenant_memberships` claim helpers (#96)
 - `platform-admin` realm role + `require_platform_admin` dep (#92)
@@ -201,9 +201,12 @@ haven-platform/
 - haven-api ClusterRole scope-down + privilege escalation gap kapatıldı (#89, #106)
 - haven-api/ui image immutable digest pinning (#99, #105)
 - haven-realm.json hardcoded credential temizliği (#91)
+- kubectl OIDC integration (RKE2 + Keycloak haven-kubectl client + tenant_service group provisioning) (#108)
 - BuildJob model + dead table silindi (#80)
 - Static analysis baseline (bandit + vulture + xenon + mypy) + GitHub Security tab SARIF upload (#83, #84)
 - Pre-commit hook (gitleaks + ruff format) (#85)
+- **Sprint H1d (PSA / WireGuard / audit log)**: PSA `restricted` profile yeni tenant ns'lerinde aktif (#111); Cilium WireGuard kod-default `true` (#112, apply bekliyor); kube-apiserver audit policy file + flags kod-hazır (#113, apply bekliyor)
+- **Sprint H1e (encryption / vault hibrit kapatma)**: Tenant deprovision orphan Everest sweep (#114); Harbor TLS externalURL https + BuildKit secure docker config (#115); MinIO server-side encryption KMS auto-encryption kod-hazır (#116, apply bekliyor + key gen); Vault → ESO migration plan + ExternalSecret CRD for haven-api-secrets (#117 → relocated by #118, manual cutover bekliyor)
 
 **KURAL**: Müşteriye "Haven compliant" denmeden önce tablodaki ⚠️/❌ maddelerinin **gerçek implementation'ı** doğrulanmalıdır. Sadece "kodda var" yetmez — `kubectl get nodes -L topology.kubernetes.io/zone`, `kubectl --token=$T get pods -n tenant-X`, ve `kubectl get pod ... -o jsonpath='{.spec.containers[*].image}'` gibi komutlarla canlı doğrulanır.
 
