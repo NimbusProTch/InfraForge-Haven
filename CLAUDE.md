@@ -168,17 +168,17 @@ haven-platform/
 - Secret'lar: .env dosyası (git'e eklenmez), prod'da K8s Secret/Vault
 - Para harcamamak için test bitince `tofu destroy`
 
-## Haven Compliancy — GERÇEK SKOR: **12/15** (Yalan skorlama düzeltildi 2026-04-09)
+## Haven Compliancy — GERÇEK SKOR: **13/15** (canlı doğrulanmış 2026-04-09 sabah)
 
-> **Önceki bu tablo "15/15 ✅" diyordu — bu yanlış beyandı.** Bir 5-agent + 4-tur architect audit sonrası gerçek skor `11.5/15` çıktı. 1, 4, 15 düzeltilmeden müşteriye "Haven compliant" demek dürüstçe yanlış. Sprint H1 hepsini düzeltecek.
+> **Tarihçe**: Bu tablo bir zamanlar "15/15 ✅" diyordu ama 5-agent + 4-tur audit gerçek skoru `11.5/15` çıkardı. Sprint H0 → H4 ve sonraki devam round'larından sonra **şu an 13/15** — kalan 2 maddeden biri hâlâ tofu apply bekliyor (kod hazır, lokal tfvars'ta), diğeri yeni kod gerektiriyor.
 
-| # | Check | Gerçek Çözüm | Status |
+| # | Check | Gerçek Durum (canlı doğrulanmış) | Status |
 |---|-------|-------|--------|
-| 1 | Multi-AZ | ⚠️ **Helsinki + Nuremberg** (`hel1` + `nbg1`). Falkenstein (`fsn1`) **hiç deploy edilmemiş**. terraform.tfvars `location_secondary = "hel1"` typo. EU hala ama söz verilen değil. **Sprint H1a fix**: tfvars'ı `fsn1` yap, master-3 + worker-3 yeniden deploy. | ⚠️ **PARTIAL** |
-| 2 | 3+ master, 3+ worker | Cluster'da gerçekten 3 master + 3 worker, hepsi Ready | ✅ |
+| 1 | Multi-AZ | Cluster hâlâ `nbg1+hel1` (Helsinki). **Kod hazır**: `terraform.tfvars` `location_secondary = "fsn1"` yapıldı (lokal, gitignored). **Kalan iş**: operatör tarafından `tofu apply` (~60 dk node rebuild + 3 tenant eviction). | ⚠️ **KOD HAZIR, APPLY BEKLİYOR** |
+| 2 | 3+ master, 3+ worker | 3 master + 3 worker, hepsi Ready (canlı verified) | ✅ |
 | 3 | CNCF Conformance | RKE2 v1.32.3+rke2r1 — certified list'te | ✅ |
-| 4 | kubectl access via OIDC | ❌ **BROKEN**. RKE2 master cloud-init'te `--oidc-issuer-url` flag YOK. `keycloak/haven-realm.json`'da `groups` protocolMapper YOK. `tenant_service.py:395` `oidc:tenant_X_admin` grubu bekliyor ama Keycloak token'ında grup yok. **Tenant admin Keycloak token ile kubectl kullanamaz.** **Sprint H1a fix**: 3 yerli düzeltme — kube-apiserver flag, Keycloak protocolMapper, tenant_service grup adlandırma. | ❌ **BROKEN** |
-| 5 | RBAC | RKE2 default + namespace RBAC. **NOT**: haven-api ServiceAccount şu an cluster-admin (Sprint H1c'de scope down edilecek). | ✅ (with caveat) |
+| 4 | kubectl access via OIDC | ❌ **HÂLÂ BROKEN**. RKE2 master cloud-init'te `--oidc-issuer-url` flag YOK. `keycloak/haven-realm.json`'da `groups` protocolMapper YOK. **Kalan iş (en karmaşık)**: 3 yerli kod fix + Keycloak realm reimport + master rolling restart. PR henüz yok. | ❌ **BROKEN** |
+| 5 | RBAC | **DÜZELTİLDİ (#89 + #106)**. Rogue `haven-api-admin → cluster-admin` binding silindi. ClusterRole privilege escalation gap (clusterrolebindings full verbs) kapatıldı. `kubectl auth can-i '*' '*' --as=...haven-api` → **no** (canlı verified). | ✅ |
 | 6 | CIS Hardening | `enable_cis_profile = true`, etcd taint tolerations eklendi | ✅ |
 | 7 | CRI containerd | RKE2 default `containerd://2.0.4-k3s2` | ✅ |
 | 8 | CNI Cilium + Hubble | Cilium 6 pod Running, Hubble enabled. **NOT**: WireGuard encryption KAPALI (Sprint H1e'de açılacak). | ✅ (with caveat) |
@@ -188,9 +188,22 @@ haven-platform/
 | 12 | Auto HTTPS cert-manager | 14+ Certificate Ready=True, real Let's Encrypt | ✅ |
 | 13 | Log aggregation Loki | loki-stack + 6 promtail node, log akıyor | ✅ |
 | 14 | Metrics Prometheus + Grafana | Tüm pod'lar Running, ServiceMonitor scraping | ✅ |
-| 15 | Image SHA digest | ⚠️ **PARTIAL**. RKE2 sistem pod'ları sha256 digest, **ama haven-api/haven-ui short tag** (`23e05e9` gibi). Değişmez referans değil. **Sprint H1a fix**: CI pipeline'da Harbor push sonrası digest çıkar, deployment manifest'lerinde `image: ...@sha256:...`. | ⚠️ **PARTIAL** |
+| 15 | Image SHA digest | **DÜZELTİLDİ (#99 + #105)**. haven-api/haven-ui artık `@sha256:341a3844…` ve `@sha256:908f50b…` formatında deploy ediliyor. CI pipeline `docker/build-push-action@v6` digest output'unu yakalayıp deployment manifest'lerine yazıyor. (Canlı verified) | ✅ |
 
-**Gerçek skor: 12/15 (1 partial, 1 broken, 1 partial). Sprint H1 sonunda gerçek 15/15'e ulaşılacak.**
+**Gerçek skor: 13/15 ✅ + 1 kod-hazır-apply-bekliyor + 1 kırık.** Sprint H1a-1 (Multi-AZ tofu apply) tamamlanırsa 14/15. Sprint H1a-2 (kubectl OIDC) tamamlanırsa 15/15.
+
+**Bu sprint'te canlı cluster'a inen güvenlik katmanları** (önceden yoktu):
+- JWT issuer doğrulaması (`verify_iss=True`) + JWKS TTL 1h cache (#86)
+- Token revocation (per-user reauth watermark, alembic 0023) (#95)
+- JWT `tenant_memberships` claim helpers (#96)
+- `platform-admin` realm role + `require_platform_admin` dep (#92)
+- 14 router'da `_get_tenant_or_404` → tek canonical `TenantMembership` dep (#90, #97, #100, #101, #102, #103)
+- haven-api ClusterRole scope-down + privilege escalation gap kapatıldı (#89, #106)
+- haven-api/ui image immutable digest pinning (#99, #105)
+- haven-realm.json hardcoded credential temizliği (#91)
+- BuildJob model + dead table silindi (#80)
+- Static analysis baseline (bandit + vulture + xenon + mypy) + GitHub Security tab SARIF upload (#83, #84)
+- Pre-commit hook (gitleaks + ruff format) (#85)
 
 **KURAL**: Müşteriye "Haven compliant" denmeden önce tablodaki ⚠️/❌ maddelerinin **gerçek implementation'ı** doğrulanmalıdır. Sadece "kodda var" yetmez — `kubectl get nodes -L topology.kubernetes.io/zone`, `kubectl --token=$T get pods -n tenant-X`, ve `kubectl get pod ... -o jsonpath='{.spec.containers[*].image}'` gibi komutlarla canlı doğrulanır.
 
