@@ -4,7 +4,6 @@ from fastapi import APIRouter, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
-from app.auth.rbac import require_role  # noqa: F401 — available for future use
 from app.deps import CurrentUser, DBSession, K8sDep
 from app.models.managed_service import ManagedService
 from app.models.tenant import Tenant
@@ -12,7 +11,6 @@ from app.models.tenant_member import MemberRole, TenantMember
 from app.schemas.tenant import TenantCreate, TenantResponse, TenantUpdate
 from app.services.audit_service import audit
 from app.services.gitops_scaffold import gitops_scaffold
-from app.services.keycloak_service import keycloak_service  # noqa: F401 — used by test mocks
 from app.services.managed_service import ManagedServiceProvisioner
 from app.services.tenant_service import TenantService
 
@@ -124,11 +122,11 @@ async def create_tenant(body: TenantCreate, db: DBSession, k8s: K8sDep, current_
         logger.exception("K8s provisioning failed for tenant %s — rolling back", body.slug)
         raise HTTPException(status_code=500, detail=f"Tenant provisioning failed: {exc}") from exc
 
-    # Per-tenant Keycloak realm: DISABLED in Sprint 1 (shared "haven" realm used).
-    # Tenant isolation is DB-based (TenantMember table + RBAC).
-    # Per-tenant realms will be activated in Sprint 5+ for IdP federation (Azure AD, SAML).
-    # Code preserved but not called:
-    # await keycloak_service.create_realm(body.slug)
+    # NOTE: Tenant isolation is DB-based (TenantMember table + RBAC), not
+    # per-tenant Keycloak realm. The platform uses a single shared "haven"
+    # realm. Per-tenant realm support was removed in Sprint H3 (P2.1) along
+    # with the dead KeycloakService methods. If IdP federation requires it
+    # in a future sprint, see git history at the H3a commit.
 
     # GitOps scaffold: create tenant directory in haven-gitops (non-blocking)
     await gitops_scaffold.scaffold_tenant(body.slug)
@@ -226,10 +224,10 @@ async def delete_tenant(tenant_slug: str, db: DBSession, k8s: K8sDep, current_us
         logger.error("TenantService.deprovision failed for %s: %s", tenant_slug, exc)
         cleanup_errors.append("tenant_service")
 
-    # 3. Per-tenant Keycloak realm deletion: DISABLED (shared realm model)
-    # await keycloak_service.delete_realm(tenant.slug)
+    # NOTE: Per-tenant Keycloak realm deletion removed in Sprint H3 (P2.1).
+    # Shared "haven" realm — nothing to delete here. See git history at H3a.
 
-    # 4. GitOps scaffold: remove tenant directory from haven-gitops
+    # 3. GitOps scaffold: remove tenant directory from haven-gitops
     try:
         await gitops_scaffold.delete_tenant(tenant.slug)
     except Exception as exc:

@@ -705,30 +705,7 @@ async def test_create_tenant_adds_creator_as_owner(async_client):
     assert any(t["slug"] == slug for t in my_tenants)
 
 
-@pytest.mark.asyncio
-async def test_keycloak_enable_self_registration():
-    """enable_self_registration calls correct Keycloak API."""
-    from unittest.mock import AsyncMock, MagicMock, patch
-
-    from app.services.keycloak_service import KeycloakService
-
-    svc = KeycloakService()
-    mock_response = MagicMock()
-    mock_response.status_code = 200
-    mock_response.raise_for_status = MagicMock()
-
-    with (
-        patch.object(svc, "_get_admin_token", new_callable=AsyncMock, return_value="admin-token"),
-        patch("app.services.keycloak_service.httpx.AsyncClient") as mock_httpx,
-    ):
-        mock_http = AsyncMock()
-        mock_http.put = AsyncMock(return_value=mock_response)
-        mock_httpx.return_value.__aenter__ = AsyncMock(return_value=mock_http)
-        mock_httpx.return_value.__aexit__ = AsyncMock(return_value=False)
-
-        await svc.enable_self_registration("haven")
-
-        mock_http.put.assert_called_once()
-        call_args = mock_http.put.call_args
-        assert "haven" in call_args.args[0]
-        assert call_args.kwargs["json"]["registrationAllowed"] is True
+# H3a (P2.1): Removed `test_keycloak_enable_self_registration`. The
+# `enable_self_registration` method on KeycloakService was dead code with
+# zero production callers — only this test referenced it. Sprint H3 deleted
+# the method.

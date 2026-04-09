@@ -202,13 +202,14 @@ async def test_b2_10_delete_tenant(db_session):
 
 @pytest.mark.asyncio
 async def test_b2_11_no_keycloak_realm():
-    """Per-tenant realm creation is disabled in code."""
+    """Per-tenant realm creation removed in Sprint H3 (P2.1)."""
     import inspect
 
     from app.routers import tenants
 
     source = inspect.getsource(tenants.create_tenant)
-    assert "DISABLED" in source or "# await keycloak_service.create_realm" in source
+    assert "create_realm" not in source
+    assert "Sprint H3" in source
 
 
 @pytest.mark.asyncio
