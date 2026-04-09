@@ -5,6 +5,11 @@ Provides per-service backup operations:
 - Backup listing
 - Restore from backup
 - Scheduled backup configuration (CNPG only)
+
+H3e (P2.5 / P19 batch 3): migrated to canonical `TenantMembership`
+dependency from `app/deps.py`. The local `_get_tenant_or_404` helper has
+been removed. The `_get_service_or_404` helper now takes the resolved
+Tenant directly instead of doing its own tenant+membership lookup.
 """
 
 import logging
@@ -14,11 +19,10 @@ from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy import select
 
-from app.deps import CurrentUser, DBSession, K8sDep
+from app.deps import DBSession, K8sDep, TenantMembership
 from app.models.managed_service import ManagedService
 from app.models.managed_service import ServiceType as ModelServiceType
 from app.models.tenant import Tenant
-from app.models.tenant_member import TenantMember
 from app.services.backup_service import BackupService, RestoreRequest
 from app.services.backup_service import ServiceType as BackupServiceType
 
@@ -82,36 +86,19 @@ class BackupScheduleConfig(BaseModel):
 # ---------------------------------------------------------------------------
 
 
-async def _get_tenant_or_404(tenant_slug: str, db: DBSession, current_user: dict) -> Tenant:
-    """Look up tenant by slug AND verify the caller is a member.
+async def _get_service_or_404(tenant: Tenant, service_name: str, db: DBSession) -> ManagedService:
+    """Look up a managed service inside a Tenant.
 
-    Raises 404 if the tenant doesn't exist, 403 if the caller is not a member.
+    The Tenant must already be resolved + membership-verified by the route's
+    `TenantMembership` dependency. This helper only does the service lookup
+    and the backup-supported check; it does NOT re-check membership (that's
+    redundant and would couple this helper to current_user).
     """
-    result = await db.execute(select(Tenant).where(Tenant.slug == tenant_slug))
-    tenant = result.scalar_one_or_none()
-    if tenant is None:
-        raise HTTPException(status_code=404, detail="Tenant not found")
-
-    user_id = current_user.get("sub", "")
-    member_q = await db.execute(
-        select(TenantMember).where(
-            TenantMember.tenant_id == tenant.id,
-            TenantMember.user_id == user_id,
-        )
-    )
-    if member_q.scalar_one_or_none() is None:
-        raise HTTPException(status_code=403, detail="You are not a member of this tenant")
-    return tenant
-
-
-async def _get_service_or_404(tenant_slug: str, service_name: str, db: DBSession, current_user: dict) -> ManagedService:
-    # Membership check first — prevents disclosure of which services exist for foreign tenants.
-    await _get_tenant_or_404(tenant_slug, db, current_user)
-
     result = await db.execute(
-        select(ManagedService)
-        .join(Tenant, ManagedService.tenant_id == Tenant.id)
-        .where(Tenant.slug == tenant_slug, ManagedService.name == service_name)
+        select(ManagedService).where(
+            ManagedService.tenant_id == tenant.id,
+            ManagedService.name == service_name,
+        )
     )
     svc = result.scalar_one_or_none()
     if svc is None:
@@ -140,10 +127,10 @@ async def list_service_backups(
     service_name: str,
     db: DBSession,
     k8s: K8sDep,
-    current_user: CurrentUser,
+    tenant: TenantMembership,
 ) -> BackupListResponse:
     """List backups for a specific managed service."""
-    svc = await _get_service_or_404(tenant_slug, service_name, db, current_user)
+    svc = await _get_service_or_404(tenant, service_name, db)
     backup_svc = BackupService(k8s)
     cluster_name = svc.everest_name or _everest_name(tenant_slug, service_name)
 
@@ -180,10 +167,10 @@ async def trigger_service_backup(
     service_name: str,
     db: DBSession,
     k8s: K8sDep,
-    current_user: CurrentUser,
+    tenant: TenantMembership,
 ) -> BackupTriggerResponse:
     """Trigger an on-demand backup for a specific managed service."""
-    svc = await _get_service_or_404(tenant_slug, service_name, db, current_user)
+    svc = await _get_service_or_404(tenant, service_name, db)
 
     if not k8s.is_available():
         raise HTTPException(status_code=503, detail="Kubernetes cluster not available")
@@ -214,11 +201,11 @@ async def restore_service_backup(
     backup_id: str,
     db: DBSession,
     k8s: K8sDep,
-    current_user: CurrentUser,
+    tenant: TenantMembership,
     body: RestoreRequestBody | None = None,
 ) -> RestoreResponse:
     """Restore a managed service from a specific backup."""
-    svc = await _get_service_or_404(tenant_slug, service_name, db, current_user)
+    svc = await _get_service_or_404(tenant, service_name, db)
 
     if not k8s.is_available():
         raise HTTPException(status_code=503, detail="Kubernetes cluster not available")
@@ -260,10 +247,12 @@ class LegacyBackupListResponse(BaseModel):
 
 @router.get("/tenants/{tenant_slug}/backup", response_model=LegacyBackupListResponse)
 async def list_tenant_backups(
-    tenant_slug: str, db: DBSession, k8s: K8sDep, current_user: CurrentUser
+    tenant_slug: str,  # noqa: ARG001 — used by TenantMembership dep, kept for OpenAPI
+    db: DBSession,
+    k8s: K8sDep,
+    tenant: TenantMembership,
 ) -> LegacyBackupListResponse:
     """List CNPG backups for the tenant's platform database (legacy)."""
-    tenant = await _get_tenant_or_404(tenant_slug, db, current_user)
     backup_svc = BackupService(k8s)
     cluster_name = f"haven-{tenant.slug}"
 
@@ -294,11 +283,11 @@ async def list_tenant_backups(
     status_code=status.HTTP_202_ACCEPTED,
 )
 async def trigger_tenant_backup(
-    tenant_slug: str, db: DBSession, k8s: K8sDep, current_user: CurrentUser
+    tenant_slug: str,  # noqa: ARG001 — used by TenantMembership dep, kept for OpenAPI
+    k8s: K8sDep,
+    tenant: TenantMembership,
 ) -> BackupTriggerResponse:
     """Trigger an on-demand CNPG backup for the tenant's platform database (legacy)."""
-    tenant = await _get_tenant_or_404(tenant_slug, db, current_user)
-
     if not k8s.is_available():
         raise HTTPException(status_code=503, detail="Kubernetes cluster not available")
 
@@ -319,16 +308,13 @@ async def trigger_tenant_backup(
 
 @router.put("/tenants/{tenant_slug}/backup/schedule", status_code=status.HTTP_200_OK)
 async def configure_backup_schedule(
-    tenant_slug: str,
+    tenant_slug: str,  # noqa: ARG001 — used by TenantMembership dep, kept for OpenAPI
     config: BackupScheduleConfig,
-    db: DBSession,
     k8s: K8sDep,
-    current_user: CurrentUser,
+    tenant: TenantMembership,
 ) -> dict:
     """Configure the CNPG scheduled backup for a tenant's database cluster."""
     import asyncio
-
-    tenant = await _get_tenant_or_404(tenant_slug, db, current_user)
 
     if not k8s.is_available():
         raise HTTPException(status_code=503, detail="Kubernetes cluster not available")

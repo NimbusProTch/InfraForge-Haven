@@ -1,3 +1,11 @@
+"""Managed-service CRUD endpoints.
+
+H3e (P2.5 / P19 batch 3): migrated to canonical `TenantMembership`
+dependency from `app/deps.py`. The local `_get_tenant_or_404` helper has
+been removed. Endpoints that write audit log entries still take
+`CurrentUser` so they can stamp `user_id` onto the audit row.
+"""
+
 import base64
 import logging
 
@@ -5,10 +13,9 @@ from fastapi import APIRouter, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
-from app.deps import CurrentUser, DBSession, K8sDep
+from app.deps import CurrentUser, DBSession, K8sDep, TenantMembership
 from app.models.application import Application
 from app.models.managed_service import ManagedService, ServiceStatus, ServiceTier
-from app.models.tenant import Tenant
 from app.schemas.managed_service import (
     ConnectedAppSummary,
     ManagedServiceCreate,
@@ -31,31 +38,12 @@ router = APIRouter(
 )
 
 
-async def _get_tenant_or_404(tenant_slug: str, db: DBSession, current_user: dict) -> Tenant:
-    """H0-10: current_user is now MANDATORY (was fail-open `dict | None = None`).
-
-    Prior signature accepted None and silently skipped the membership check
-    when callers omitted the arg — a trap for any future endpoint that
-    forgets to wire CurrentUser. Removing the default raises TypeError at
-    call time instead of leaking cross-tenant data at request time.
-    """
-    from app.models.tenant_member import TenantMember
-
-    result = await db.execute(select(Tenant).where(Tenant.slug == tenant_slug))
-    tenant = result.scalar_one_or_none()
-    if tenant is None:
-        raise HTTPException(status_code=404, detail="Tenant not found")
-
-    uid = current_user.get("sub", "")
-    mem = await db.execute(select(TenantMember).where(TenantMember.tenant_id == tenant.id, TenantMember.user_id == uid))
-    if mem.scalar_one_or_none() is None:
-        raise HTTPException(status_code=403, detail="You are not a member of this tenant")
-    return tenant
-
-
 @router.get("", response_model=list[ManagedServiceResponse])
-async def list_services(tenant_slug: str, db: DBSession, current_user: CurrentUser) -> list[dict]:
-    tenant = await _get_tenant_or_404(tenant_slug, db, current_user)
+async def list_services(
+    tenant_slug: str,  # noqa: ARG001 — used by TenantMembership dep, kept for OpenAPI
+    db: DBSession,
+    tenant: TenantMembership,
+) -> list[dict]:
     result = await db.execute(
         select(ManagedService).where(ManagedService.tenant_id == tenant.id).order_by(ManagedService.created_at.desc())
     )
@@ -86,14 +74,13 @@ async def list_services(tenant_slug: str, db: DBSession, current_user: CurrentUs
 
 @router.post("", response_model=ManagedServiceResponse, status_code=status.HTTP_201_CREATED)
 async def create_service(
-    tenant_slug: str,
+    tenant_slug: str,  # noqa: ARG001 — used by TenantMembership dep, kept for OpenAPI
     body: ManagedServiceCreate,
     db: DBSession,
     k8s: K8sDep,
+    tenant: TenantMembership,
     current_user: CurrentUser,
 ) -> ManagedService:
-    tenant = await _get_tenant_or_404(tenant_slug, db, current_user)
-
     # Check name uniqueness within tenant
     existing = await db.execute(
         select(ManagedService).where(
@@ -148,9 +135,12 @@ async def create_service(
 
 @router.get("/{service_name}", response_model=ManagedServiceDetailResponse)
 async def get_service(
-    tenant_slug: str, service_name: str, db: DBSession, k8s: K8sDep, current_user: CurrentUser
+    tenant_slug: str,  # noqa: ARG001 — used by TenantMembership dep, kept for OpenAPI
+    service_name: str,
+    db: DBSession,
+    k8s: K8sDep,
+    tenant: TenantMembership,
 ) -> ManagedServiceDetailResponse:
-    tenant = await _get_tenant_or_404(tenant_slug, db, current_user)
     result = await db.execute(
         select(ManagedService).where(
             ManagedService.tenant_id == tenant.id,
@@ -214,15 +204,14 @@ _DEV_DEFAULTS: dict[str, dict[str, int | str]] = {
 
 @router.patch("/{service_name}", response_model=ManagedServiceResponse)
 async def update_service(
-    tenant_slug: str,
+    tenant_slug: str,  # noqa: ARG001 — used by TenantMembership dep, kept for OpenAPI
     service_name: str,
     body: ManagedServiceUpdate,
     db: DBSession,
     k8s: K8sDep,
-    current_user: CurrentUser,
+    tenant: TenantMembership,
 ) -> ManagedService:
     """Update a managed service (replicas, storage, cpu, memory, tier)."""
-    tenant = await _get_tenant_or_404(tenant_slug, db, current_user)
     result = await db.execute(
         select(ManagedService).where(
             ManagedService.tenant_id == tenant.id,
@@ -278,9 +267,13 @@ async def update_service(
 
 @router.delete("/{service_name}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_service(
-    tenant_slug: str, service_name: str, db: DBSession, k8s: K8sDep, current_user: CurrentUser
+    tenant_slug: str,  # noqa: ARG001 — used by TenantMembership dep, kept for OpenAPI
+    service_name: str,
+    db: DBSession,
+    k8s: K8sDep,
+    tenant: TenantMembership,
+    current_user: CurrentUser,
 ) -> None:
-    tenant = await _get_tenant_or_404(tenant_slug, db, current_user)
     result = await db.execute(
         select(ManagedService).where(
             ManagedService.tenant_id == tenant.id,
@@ -328,10 +321,13 @@ async def delete_service(
 
 @router.post("/{service_name}/retry", response_model=ManagedServiceResponse)
 async def retry_service(
-    tenant_slug: str, service_name: str, db: DBSession, k8s: K8sDep, current_user: CurrentUser
+    tenant_slug: str,  # noqa: ARG001 — used by TenantMembership dep, kept for OpenAPI
+    service_name: str,
+    db: DBSession,
+    k8s: K8sDep,
+    tenant: TenantMembership,
 ) -> ManagedService:
     """Retry provisioning a failed service."""
-    tenant = await _get_tenant_or_404(tenant_slug, db, current_user)
     result = await db.execute(
         select(ManagedService).where(
             ManagedService.tenant_id == tenant.id,
@@ -360,10 +356,13 @@ async def retry_service(
 
 @router.get("/{service_name}/credentials", response_model=ServiceCredentials)
 async def get_service_credentials(
-    tenant_slug: str, service_name: str, db: DBSession, k8s: K8sDep, current_user: CurrentUser
+    tenant_slug: str,  # noqa: ARG001 — used by TenantMembership dep, kept for OpenAPI
+    service_name: str,
+    db: DBSession,
+    k8s: K8sDep,
+    tenant: TenantMembership,
 ) -> ServiceCredentials:
     """Return decoded K8s secret credentials for a managed service."""
-    tenant = await _get_tenant_or_404(tenant_slug, db, current_user)
     result = await db.execute(
         select(ManagedService).where(
             ManagedService.tenant_id == tenant.id,

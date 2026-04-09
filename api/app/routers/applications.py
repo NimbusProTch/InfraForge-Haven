@@ -1,3 +1,11 @@
+"""Application CRUD + secrets + service-connection endpoints.
+
+H3e (P2.5 / P19 batch 3): migrated to canonical `TenantMembership`
+dependency from `app/deps.py`. The local `_get_tenant_or_404` helper has
+been removed. Endpoints that write audit log entries still take
+`CurrentUser` so they can stamp `user_id` onto the audit row.
+"""
+
 import logging
 from datetime import UTC
 
@@ -8,10 +16,9 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
 from app.config import settings
-from app.deps import CurrentUser, DBSession, GitQueueDep, K8sDep
+from app.deps import CurrentUser, DBSession, GitQueueDep, K8sDep, TenantMembership
 from app.models.application import Application
 from app.models.managed_service import ManagedService, ServiceStatus, ServiceTier, ServiceType
-from app.models.tenant import Tenant
 from app.schemas.application import ApplicationCreate, ApplicationResponse, ApplicationUpdate
 from app.services.audit_service import audit
 from app.services.deploy_service import DeployService
@@ -53,31 +60,12 @@ async def _enqueue_app_values_update(
         logger.exception("Failed to enqueue gitops update for %s/%s", tenant_slug, app.slug)
 
 
-async def _get_tenant_or_404(tenant_slug: str, db: DBSession, current_user: dict) -> Tenant:
-    """H0-10: current_user is now MANDATORY (was fail-open `dict | None = None`).
-
-    Removing the default + the `if current_user:` gate guarantees the
-    membership check ALWAYS runs. Any future caller that forgets to pass
-    current_user gets a TypeError at call time, not a silent cross-tenant
-    leak at request time.
-    """
-    from app.models.tenant_member import TenantMember
-
-    result = await db.execute(select(Tenant).where(Tenant.slug == tenant_slug))
-    tenant = result.scalar_one_or_none()
-    if tenant is None:
-        raise HTTPException(status_code=404, detail="Tenant not found")
-
-    uid = current_user.get("sub", "")
-    mem = await db.execute(select(TenantMember).where(TenantMember.tenant_id == tenant.id, TenantMember.user_id == uid))
-    if mem.scalar_one_or_none() is None:
-        raise HTTPException(status_code=403, detail="You are not a member of this tenant")
-    return tenant
-
-
 @router.get("", response_model=list[ApplicationResponse])
-async def list_applications(tenant_slug: str, db: DBSession, current_user: CurrentUser) -> list[Application]:
-    tenant = await _get_tenant_or_404(tenant_slug, db, current_user)
+async def list_applications(
+    tenant_slug: str,  # noqa: ARG001 — used by TenantMembership dep, kept for OpenAPI
+    db: DBSession,
+    tenant: TenantMembership,
+) -> list[Application]:
     result = await db.execute(
         select(Application).where(Application.tenant_id == tenant.id).order_by(Application.created_at.desc())
     )
@@ -86,10 +74,13 @@ async def list_applications(tenant_slug: str, db: DBSession, current_user: Curre
 
 @router.post("", response_model=ApplicationResponse, status_code=status.HTTP_201_CREATED)
 async def create_application(
-    tenant_slug: str, body: ApplicationCreate, db: DBSession, k8s: K8sDep, current_user: CurrentUser
+    tenant_slug: str,
+    body: ApplicationCreate,
+    db: DBSession,
+    k8s: K8sDep,
+    tenant: TenantMembership,
+    current_user: CurrentUser,
 ) -> Application:
-    tenant = await _get_tenant_or_404(tenant_slug, db, current_user)
-
     # Check slug uniqueness within tenant
     existing = await db.execute(
         select(Application).where(Application.tenant_id == tenant.id, Application.slug == body.slug)
@@ -265,8 +256,12 @@ async def create_application(
 
 
 @router.get("/{app_slug}", response_model=ApplicationResponse)
-async def get_application(tenant_slug: str, app_slug: str, db: DBSession, current_user: CurrentUser) -> Application:
-    tenant = await _get_tenant_or_404(tenant_slug, db, current_user)
+async def get_application(
+    tenant_slug: str,  # noqa: ARG001 — used by TenantMembership dep, kept for OpenAPI
+    app_slug: str,
+    db: DBSession,
+    tenant: TenantMembership,
+) -> Application:
     result = await db.execute(
         select(Application).where(Application.tenant_id == tenant.id, Application.slug == app_slug)
     )
@@ -282,10 +277,10 @@ async def update_application(
     app_slug: str,
     body: ApplicationUpdate,
     db: DBSession,
+    tenant: TenantMembership,
     current_user: CurrentUser,
     queue: GitQueueDep,
 ) -> Application:
-    tenant = await _get_tenant_or_404(tenant_slug, db, current_user)
     result = await db.execute(
         select(Application).where(Application.tenant_id == tenant.id, Application.slug == app_slug)
     )
@@ -348,18 +343,17 @@ class _SecretVarsBody(BaseModel):
 
 @router.put("/{app_slug}/secrets", response_model=dict)
 async def upsert_secrets(
-    tenant_slug: str,
+    tenant_slug: str,  # noqa: ARG001 — used by TenantMembership dep, kept for OpenAPI
     app_slug: str,
     body: _SecretVarsBody,
     db: DBSession,
     k8s: K8sDep,
-    current_user: CurrentUser,
+    tenant: TenantMembership,
 ) -> dict:
     """Write sensitive env vars to Vault (or K8s Secret fallback).
 
     These are injected into the pod via envFrom.secretRef and never stored in GitOps.
     """
-    tenant = await _get_tenant_or_404(tenant_slug, db, current_user)
     app = await _get_app_or_404(tenant.id, app_slug, db)
 
     from app.services.secret_service import SecretService
@@ -376,14 +370,13 @@ async def upsert_secrets(
 
 @router.get("/{app_slug}/secrets", response_model=dict)
 async def list_secret_keys(
-    tenant_slug: str,
+    tenant_slug: str,  # noqa: ARG001 — used by TenantMembership dep, kept for OpenAPI
     app_slug: str,
     db: DBSession,
     k8s: K8sDep,
-    current_user: CurrentUser,
+    tenant: TenantMembership,
 ) -> dict:
     """List sensitive env var keys (values never returned via API)."""
-    tenant = await _get_tenant_or_404(tenant_slug, db, current_user)
     app = await _get_app_or_404(tenant.id, app_slug, db)
 
     from app.services.secret_service import SecretService
@@ -400,10 +393,14 @@ async def list_secret_keys(
 
 @router.post("/{app_slug}/restart", status_code=status.HTTP_202_ACCEPTED)
 async def restart_application(
-    tenant_slug: str, app_slug: str, db: DBSession, k8s: K8sDep, current_user: CurrentUser
+    tenant_slug: str,  # noqa: ARG001 — used by TenantMembership dep, kept for OpenAPI
+    app_slug: str,
+    db: DBSession,
+    k8s: K8sDep,
+    tenant: TenantMembership,
+    current_user: CurrentUser,
 ) -> dict:
     """Restart all pods of an application via rollout restart."""
-    tenant = await _get_tenant_or_404(tenant_slug, db, current_user)
     app = await _get_app_or_404(tenant.id, app_slug, db)
 
     if not k8s.is_available():
@@ -450,9 +447,13 @@ async def restart_application(
 
 @router.delete("/{app_slug}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_application(
-    tenant_slug: str, app_slug: str, db: DBSession, k8s: K8sDep, current_user: CurrentUser
+    tenant_slug: str,
+    app_slug: str,
+    db: DBSession,
+    k8s: K8sDep,
+    tenant: TenantMembership,
+    current_user: CurrentUser,
 ) -> None:
-    tenant = await _get_tenant_or_404(tenant_slug, db, current_user)
     result = await db.execute(
         select(Application).where(Application.tenant_id == tenant.id, Application.slug == app_slug)
     )
@@ -521,11 +522,10 @@ async def connect_service(
     app_slug: str,
     body: _ConnectServiceBody,
     db: DBSession,
-    current_user: CurrentUser,
+    tenant: TenantMembership,
     queue: GitQueueDep,
 ) -> Application:
     """Attach a managed service secret to an app's envFrom list."""
-    tenant = await _get_tenant_or_404(tenant_slug, db, current_user)
     app = await _get_app_or_404(tenant.id, app_slug, db)
 
     result = await db.execute(
@@ -577,16 +577,15 @@ async def connect_service(
 
 @router.get("/{app_slug}/services")
 async def get_app_services(
-    tenant_slug: str,
+    tenant_slug: str,  # noqa: ARG001 — used by TenantMembership dep, kept for OpenAPI
     app_slug: str,
     db: DBSession,
-    current_user: CurrentUser,
+    tenant: TenantMembership,
 ) -> list[dict]:
     """Get all services connected to or pending for this app.
 
     Returns enriched list with current service status for the app detail page.
     """
-    tenant = await _get_tenant_or_404(tenant_slug, db, current_user)
     app = await _get_app_or_404(tenant.id, app_slug, db)
 
     result: list[dict] = []
@@ -650,11 +649,10 @@ async def disconnect_service(
     app_slug: str,
     service_name: str,
     db: DBSession,
-    current_user: CurrentUser,
+    tenant: TenantMembership,
     queue: GitQueueDep,
 ) -> None:
     """Remove a managed service secret from an app's envFrom list."""
-    tenant = await _get_tenant_or_404(tenant_slug, db, current_user)
     app = await _get_app_or_404(tenant.id, app_slug, db)
 
     existing: list[dict] = list(app.env_from_secrets or [])

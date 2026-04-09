@@ -1,4 +1,11 @@
-"""Tenant membership management endpoints."""
+"""Tenant membership management endpoints.
+
+H3e (P2.5 / P19 batch 3): migrated to canonical `TenantMembership`
+dependency from `app/deps.py`. The local `_get_tenant_or_404` helper has
+been removed. Role enforcement (`require_role(\"owner\", \"admin\")`) on
+PATCH and DELETE remains via `dependencies=[Depends(...)]` — that path
+is orthogonal to the membership check.
+"""
 
 import logging
 import uuid
@@ -7,8 +14,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 
 from app.auth.rbac import require_role
-from app.deps import CurrentUser, DBSession
-from app.models.tenant import Tenant
+from app.deps import CurrentUser, DBSession, TenantMembership
 from app.models.tenant_member import MemberRole, TenantMember
 from app.schemas.tenant_member import TenantMemberInvite, TenantMemberResponse, TenantMemberUpdate
 from app.services.audit_service import audit
@@ -17,20 +23,6 @@ from app.services.keycloak_service import keycloak_service
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/tenants/{tenant_slug}/members", tags=["members"])
-
-
-async def _get_tenant_or_404(tenant_slug: str, db: DBSession, current_user: dict) -> Tenant:
-    """H0-10: current_user is now MANDATORY (was fail-open `dict | None = None`)."""
-    result = await db.execute(select(Tenant).where(Tenant.slug == tenant_slug))
-    tenant = result.scalar_one_or_none()
-    if tenant is None:
-        raise HTTPException(status_code=404, detail="Tenant not found")
-
-    uid = current_user.get("sub", "")
-    mem = await db.execute(select(TenantMember).where(TenantMember.tenant_id == tenant.id, TenantMember.user_id == uid))
-    if mem.scalar_one_or_none() is None:
-        raise HTTPException(status_code=403, detail="You are not a member of this tenant")
-    return tenant
 
 
 async def _get_member_or_404(tenant_id: uuid.UUID, user_id: str, db: DBSession) -> TenantMember:
@@ -47,8 +39,11 @@ async def _get_member_or_404(tenant_id: uuid.UUID, user_id: str, db: DBSession) 
 
 
 @router.get("", response_model=list[TenantMemberResponse])
-async def list_members(tenant_slug: str, db: DBSession, current_user: CurrentUser) -> list[TenantMember]:
-    tenant = await _get_tenant_or_404(tenant_slug, db, current_user)
+async def list_members(
+    tenant_slug: str,  # noqa: ARG001 — used by TenantMembership dep, kept for OpenAPI
+    db: DBSession,
+    tenant: TenantMembership,
+) -> list[TenantMember]:
     result = await db.execute(
         select(TenantMember).where(TenantMember.tenant_id == tenant.id).order_by(TenantMember.created_at)
     )
@@ -62,10 +57,12 @@ async def list_members(tenant_slug: str, db: DBSession, current_user: CurrentUse
     dependencies=[Depends(require_role("owner", "admin"))],
 )
 async def add_member(
-    tenant_slug: str, body: TenantMemberInvite, db: DBSession, current_user: CurrentUser
+    tenant_slug: str,
+    body: TenantMemberInvite,
+    db: DBSession,
+    tenant: TenantMembership,
+    current_user: CurrentUser,
 ) -> TenantMember:
-    tenant = await _get_tenant_or_404(tenant_slug, db, current_user)
-
     # Prevent duplicate membership
     existing = await db.execute(
         select(TenantMember).where(
@@ -127,14 +124,17 @@ async def add_member(
     dependencies=[Depends(require_role("owner", "admin"))],
 )
 async def update_member_role(
-    tenant_slug: str, user_id: str, body: TenantMemberUpdate, db: DBSession, current_user: CurrentUser
+    tenant_slug: str,  # noqa: ARG001 — used by TenantMembership dep, kept for OpenAPI
+    user_id: str,
+    body: TenantMemberUpdate,
+    db: DBSession,
+    tenant: TenantMembership,
 ) -> TenantMember:
     """H0-13: PATCH was previously a vertical privilege escalation vector.
     Without `require_role("owner","admin")` any tenant member — including a
     viewer — could promote themselves to owner or demote the actual owner.
     The H0-10 fix made membership mandatory but did not enforce role.
     """
-    tenant = await _get_tenant_or_404(tenant_slug, db, current_user)
     member = await _get_member_or_404(tenant.id, user_id, db)
 
     # Cannot downgrade the last owner
@@ -159,13 +159,18 @@ async def update_member_role(
     status_code=status.HTTP_204_NO_CONTENT,
     dependencies=[Depends(require_role("owner", "admin"))],
 )
-async def remove_member(tenant_slug: str, user_id: str, db: DBSession, current_user: CurrentUser) -> None:
+async def remove_member(
+    tenant_slug: str,  # noqa: ARG001 — used by TenantMembership dep, kept for OpenAPI
+    user_id: str,
+    db: DBSession,
+    tenant: TenantMembership,
+    current_user: CurrentUser,
+) -> None:
     """H0-13: DELETE was previously a member-nuking vector. Without role
     enforcement any tenant member could remove other members. The "last
     owner" guard at the bottom prevents total wipe but a viewer could
     still remove every admin and (combined with the PATCH bug) take over.
     """
-    tenant = await _get_tenant_or_404(tenant_slug, db, current_user)
     member = await _get_member_or_404(tenant.id, user_id, db)
 
     # Cannot remove the last owner
