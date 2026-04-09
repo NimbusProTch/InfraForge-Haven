@@ -362,9 +362,7 @@ def test_normalize_issuer_strips_scheme():
     # No scheme → return as-is (defensive)
     assert _normalize_issuer("kc.example/realms/haven") == "kc.example/realms/haven"
     # Both http and https variants compare equal after normalization
-    assert _normalize_issuer("https://kc.example/realms/haven") == _normalize_issuer(
-        "http://kc.example/realms/haven"
-    )
+    assert _normalize_issuer("https://kc.example/realms/haven") == _normalize_issuer("http://kc.example/realms/haven")
 
 
 # ---------------------------------------------------------------------------
