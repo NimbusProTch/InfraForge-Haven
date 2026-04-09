@@ -1,0 +1,47 @@
+# H1e (Harbor TLS): existing harbor HTTPRoute committed to git for drift control.
+#
+# This HTTPRoute was created out-of-band (no manifest in repo) at
+# 2026-03-27. Committing it now so any future tofu apply / ArgoCD
+# reconcile knows about it. Pre-existing live spec — no behavior change.
+#
+# Listener attachment: NO sectionName → attaches to BOTH http (port 80)
+# AND https (port 443) listeners. The Cilium Gateway TLS termination
+# (per-SAN cert in `gateway-api-wildcard-cert.yaml`) handles HTTPS at
+# the gateway level; this route forwards to the internal Service `harbor:80`
+# (plaintext intra-cluster).
+#
+# Future hardening: split into a `harbor` (https-only) + `harbor-redirect`
+# (http→https 301) pair. NOT done in this PR because BuildKit (the only
+# in-cluster client) uses Docker registry protocol POST/PUT for push,
+# which does NOT follow 3xx redirects. A 301 strategy requires BuildKit
+# to talk HTTPS first (insecureRegistries removed in
+# `harbor-docker-config.yaml`), and then we can flip the redirect on
+# in a follow-up sprint after a smoke test.
+
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: harbor
+  namespace: harbor-system
+  labels:
+    haven.io/managed: "true"
+    haven.io/component: harbor
+spec:
+  parentRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: haven-gateway
+      namespace: haven-gateway
+  hostnames:
+    - harbor.46.225.42.2.sslip.io
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - group: ""
+          kind: Service
+          name: harbor
+          port: 80
+          weight: 1

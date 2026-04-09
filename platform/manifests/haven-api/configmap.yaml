@@ -6,7 +6,7 @@ metadata:
 data:
   KEYCLOAK_URL: "https://keycloak.46.225.42.2.sslip.io"
   KEYCLOAK_REALM: "haven"
-  HARBOR_URL: "http://harbor.46.225.42.2.sslip.io"
+  HARBOR_URL: "https://harbor.46.225.42.2.sslip.io"
   HARBOR_PROJECT: "library"
   LB_IP: "46.225.42.2"
   BUILD_NAMESPACE: "haven-builds"

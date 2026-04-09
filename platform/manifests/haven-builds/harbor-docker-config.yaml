@@ -1,0 +1,57 @@
+# H1e (Harbor TLS): BuildKit docker config — HTTPS-only (no insecureRegistries)
+#
+# Pre-fix: this ConfigMap was created out-of-band with
+# `"insecureRegistries": ["harbor.46.225.42.2.sslip.io"]` which forced
+# BuildKit to push and pull image layers over plaintext HTTP. With Harbor
+# now exposed via TLS at the Cilium Gateway (`externalURL: https://...`),
+# the insecure registry directive is no longer needed AND it
+# specifically prevents the redirect strategy below from being safe.
+#
+# Why no `insecureRegistries`:
+#   - The registry IS reachable via HTTPS (Cilium Gateway, valid cert)
+#   - BuildKit's docker push/pull POST/PUT requests do NOT follow 3xx
+#     redirects (Docker registry protocol). If we left HTTP open and
+#     added an HTTP→HTTPS 301 (e.g. on the gateway), BuildKit would
+#     receive 301 on POST and FAIL mid-upload.
+#   - HTTPS-only is the only safe long-term direction.
+#
+# The auth blob is the admin:HavenHarbor2026! base64 string. This is the
+# dev cluster's well-known credential. Production overrides via tofu
+# variable `harbor_admin_password`.
+#
+# Operator action required after merge:
+#
+#   KC=infrastructure/environments/dev/kubeconfig
+#
+#   # 1. Apply this manifest (replaces the out-of-band ConfigMap)
+#   kubectl --kubeconfig=$KC apply -f platform/manifests/haven-builds/harbor-docker-config.yaml
+#
+#   # 2. Restart BuildKit so it picks up the new mounted config
+#   kubectl --kubeconfig=$KC rollout restart deployment/buildkitd -n haven-builds
+#
+#   # 3. Wait for rollout
+#   kubectl --kubeconfig=$KC rollout status deployment/buildkitd -n haven-builds
+#
+#   # 4. Smoke: trigger a tenant build via the API and check for HTTPS push
+#   #    in the buildctl pod logs (look for "https://harbor..." in the
+#   #    init container logs of the build job)
+#
+# Rollback: re-apply with `"insecureRegistries":["..."]` back in.
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: harbor-docker-config
+  namespace: haven-builds
+  labels:
+    haven.io/managed: "true"
+    haven.io/component: buildkit
+data:
+  config.json: |
+    {
+      "auths": {
+        "harbor.46.225.42.2.sslip.io": {
+          "auth": "YWRtaW46SGF2ZW5IYXJib3IyMDI2IQ=="
+        }
+      }
+    }
