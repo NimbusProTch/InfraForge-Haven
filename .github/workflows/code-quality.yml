@@ -1,0 +1,198 @@
+name: Code Quality
+
+# Sprint H4 (P3.2 / H4b): non-blocking code quality workflow.
+# Runs bandit, vulture, xenon, mypy, semgrep, trufflehog, trivy, tflint
+# in parallel and uploads SARIF to the GitHub Security tab where supported.
+#
+# IMPORTANT: every job is currently `continue-on-error: true`. The goal of
+# this initial revision is to STAND UP the pipeline and capture findings
+# without breaking any merges. Once the baseline is acknowledged (see
+# api/tooling-baseline.md), the gates will be tightened in a follow-up:
+#
+#   1. Block on NEW bandit B501/B7xx findings (not the existing 11)
+#   2. Block on NEW vulture --min-confidence 80 findings (currently 0)
+#   3. Block on NEW xenon E/D rank functions
+#   4. Block on trufflehog verified secrets (any new ones)
+#
+# Until then this workflow is informational. Reviewers can read the SARIF
+# in the Security tab and the per-job step output in the Actions UI.
+
+on:
+  push:
+    branches: [main, "feature/**"]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+  security-events: write   # Required to upload SARIF to Security tab
+
+jobs:
+  python-quality:
+    name: Python (bandit + vulture + xenon + mypy)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: api
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install quality extras
+        run: |
+          pip install -e .[quality]
+          # Plus tools that are run separately:
+          pip install bandit[sarif]
+
+      - name: Bandit (HIGH only, SARIF for Security tab)
+        continue-on-error: true
+        run: bandit -r app -lll -f sarif -o bandit.sarif
+
+      - name: Bandit summary (visible in Actions log)
+        continue-on-error: true
+        run: bandit -r app -lll || true
+
+      - name: Vulture --min-confidence 80 (gate must stay 0)
+        continue-on-error: true
+        run: vulture app --min-confidence 80
+
+      - name: Vulture --min-confidence 60 (informational)
+        continue-on-error: true
+        run: vulture app --min-confidence 60
+
+      - name: Xenon (cyclomatic complexity)
+        continue-on-error: true
+        run: xenon app --max-absolute B --max-modules B --max-average A
+
+      - name: Mypy (auth + models + schemas — gated)
+        continue-on-error: true
+        run: |
+          mypy app/auth app/models app/schemas
+
+      - name: Mypy --strict app/ (informational, 361 baseline)
+        continue-on-error: true
+        run: mypy app --strict || true
+
+      - name: Upload Bandit SARIF to Security tab
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: api/bandit.sarif
+          category: bandit
+
+  ts-quality:
+    name: TypeScript (knip dead code)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ui
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+
+      - name: Install ui deps
+        run: npm ci
+
+      - name: Knip (dead exports / files / deps)
+        continue-on-error: true
+        run: |
+          npx knip --reporter compact || true
+
+  security-scan:
+    name: Security (semgrep + trufflehog + trivy)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0    # trufflehog needs git history
+
+      - name: Semgrep (Python + FastAPI + TypeScript + Terraform + Dockerfile)
+        continue-on-error: true
+        uses: returntocorp/semgrep-action@v1
+        with:
+          config: >-
+            p/default
+            p/python
+            p/fastapi
+            p/typescript
+            p/terraform
+            p/dockerfile
+          generateSarif: "1"
+
+      - name: Upload Semgrep SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: semgrep.sarif
+          category: semgrep
+        continue-on-error: true
+
+      - name: TruffleHog (verified secrets in git history)
+        continue-on-error: true
+        uses: trufflesecurity/trufflehog@main
+        with:
+          path: ./
+          base: main
+          head: HEAD
+          extra_args: --only-verified
+
+      - name: Trivy (filesystem scan — IaC + Dockerfile + deps)
+        continue-on-error: true
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: fs
+          scan-ref: .
+          format: sarif
+          output: trivy.sarif
+          severity: CRITICAL,HIGH
+
+      - name: Upload Trivy SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy.sarif
+          category: trivy
+        continue-on-error: true
+
+  iac-quality:
+    name: IaC (tflint + trivy config)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup tflint
+        continue-on-error: true
+        uses: terraform-linters/setup-tflint@v4
+
+      - name: tflint --recursive
+        continue-on-error: true
+        run: tflint --recursive --chdir=infrastructure || true
+
+      - name: Trivy IaC misconfig
+        continue-on-error: true
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: config
+          scan-ref: infrastructure
+          format: sarif
+          output: trivy-iac.sarif
+          severity: CRITICAL,HIGH
+
+      - name: Upload Trivy IaC SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-iac.sarif
+          category: trivy-iac
+        continue-on-error: true
