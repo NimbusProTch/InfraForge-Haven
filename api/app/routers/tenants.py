@@ -226,8 +226,9 @@ async def delete_tenant(
     cleanup_errors: list[str] = []
 
     # 1. Deprovision all managed services (Everest DBs, Redis CRDs, RabbitMQ CRDs)
+    # Reuse the provisioner instance for the orphan-sweep below.
+    provisioner = ManagedServiceProvisioner(k8s)
     try:
-        provisioner = ManagedServiceProvisioner(k8s)
         result = await db.execute(select(ManagedService).where(ManagedService.tenant_id == tenant.id))
         for svc in result.scalars():
             try:
@@ -238,6 +239,20 @@ async def delete_tenant(
     except Exception as exc:
         logger.error("Service deprovision loop failed for %s: %s", tenant_slug, exc)
         cleanup_errors.append("services")
+
+    # 1b. DEFENSIVE: sweep any orphan Everest DatabaseClusters whose name
+    # starts with `{tenant_slug}-`. The 2026-04-09 cluster audit found 7
+    # orphan DBs that the normal deprovision loop skipped because their
+    # ManagedService rows had been deleted out-of-band. This sweep is the
+    # second line of defense — best-effort, never raises.
+    # See ManagedServiceProvisioner.cleanup_orphans_by_prefix() docstring.
+    try:
+        swept = await provisioner.cleanup_orphans_by_prefix(tenant.slug)
+        if swept:
+            logger.info("Tenant %s deprovision swept %d orphan Everest DB(s): %s", tenant_slug, len(swept), swept)
+    except Exception as exc:
+        logger.warning("Orphan Everest sweep failed for %s (non-fatal): %s", tenant_slug, exc)
+        cleanup_errors.append("orphan_sweep")
 
     # 2. Delete ApplicationSet + K8s namespace + Harbor project
     try:

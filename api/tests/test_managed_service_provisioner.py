@@ -982,3 +982,248 @@ class TestProvisionCustomDbName:
         body = call_args.kwargs["body"]
         assert body["spec"]["bootstrap"]["initdb"]["database"] == "my_pg"
         assert body["spec"]["bootstrap"]["initdb"]["owner"] == "my_pg_user"
+
+
+# ---------------------------------------------------------------------------
+# H3f: cleanup_orphans_by_prefix — defensive Everest sweep on tenant delete
+# ---------------------------------------------------------------------------
+
+
+class TestCleanupOrphansByPrefix:
+    """Defensive Everest sweep at the end of TenantService.deprovision.
+
+    Why this method exists: the normal deprovision loop only fires for
+    services that still have a ManagedService DB row. Out-of-band deletions
+    (or earlier failed cleanups) leave Everest DatabaseClusters orphaned.
+    The 2026-04-09 cluster audit found 7 such orphans (4-5 days old).
+    """
+
+    @pytest.mark.asyncio
+    async def test_sweeps_matching_prefix_only(self):
+        """Only DBs whose name starts with `{slug}-` are deleted."""
+        k8s = MagicMock()
+        k8s.is_available.return_value = True
+        ever = MagicMock()
+        ever.list_databases = AsyncMock(
+            return_value=[
+                {"metadata": {"name": "debora-app-pg"}},
+                {"metadata": {"name": "debora-cache"}},
+                {"metadata": {"name": "rotterdam-pg"}},  # different tenant — must NOT be touched
+                {"metadata": {"name": "all-types-app-mongodb"}},  # different tenant
+            ]
+        )
+        ever.delete_database = AsyncMock(return_value={})
+        p = ManagedServiceProvisioner(k8s, everest=ever)
+
+        swept = await p.cleanup_orphans_by_prefix("debora")
+
+        assert sorted(swept) == ["debora-app-pg", "debora-cache"]
+        ever.delete_database.assert_any_call("debora-app-pg")
+        ever.delete_database.assert_any_call("debora-cache")
+        assert ever.delete_database.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_strict_prefix_no_substring_match(self):
+        """`slug=deb` must NOT delete `debora-app-pg`. Strict prefix with `-`."""
+        k8s = MagicMock()
+        k8s.is_available.return_value = True
+        ever = MagicMock()
+        ever.list_databases = AsyncMock(
+            return_value=[
+                {"metadata": {"name": "debora-app-pg"}},
+                {"metadata": {"name": "deb-app-pg"}},  # this one matches
+            ]
+        )
+        ever.delete_database = AsyncMock(return_value={})
+        p = ManagedServiceProvisioner(k8s, everest=ever)
+
+        swept = await p.cleanup_orphans_by_prefix("deb")
+
+        # Only deb-app-pg matches (debora- is rejected because debora != deb)
+        assert swept == ["deb-app-pg"]
+        ever.delete_database.assert_called_once_with("deb-app-pg")
+
+    @pytest.mark.asyncio
+    async def test_no_match_is_noop(self):
+        """If no DB matches the prefix, no delete calls fire."""
+        k8s = MagicMock()
+        k8s.is_available.return_value = True
+        ever = MagicMock()
+        ever.list_databases = AsyncMock(return_value=[{"metadata": {"name": "rotterdam-pg"}}])
+        ever.delete_database = AsyncMock(return_value={})
+        p = ManagedServiceProvisioner(k8s, everest=ever)
+
+        swept = await p.cleanup_orphans_by_prefix("debora")
+
+        assert swept == []
+        ever.delete_database.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_list_failure_swallowed(self):
+        """If Everest list_databases raises, the sweep returns empty (best-effort)."""
+        k8s = MagicMock()
+        k8s.is_available.return_value = True
+        ever = MagicMock()
+        ever.list_databases = AsyncMock(side_effect=RuntimeError("everest down"))
+        ever.delete_database = AsyncMock(return_value={})
+        p = ManagedServiceProvisioner(k8s, everest=ever)
+
+        swept = await p.cleanup_orphans_by_prefix("debora")
+
+        assert swept == []
+        ever.delete_database.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_delete_failure_continues_other_dbs(self):
+        """If one delete fails, the other matches are still attempted."""
+        k8s = MagicMock()
+        k8s.is_available.return_value = True
+        ever = MagicMock()
+        ever.list_databases = AsyncMock(
+            return_value=[
+                {"metadata": {"name": "debora-app-pg"}},
+                {"metadata": {"name": "debora-cache"}},
+            ]
+        )
+        # First delete fails, second succeeds
+        ever.delete_database = AsyncMock(side_effect=[RuntimeError("nope"), {}])
+        p = ManagedServiceProvisioner(k8s, everest=ever)
+
+        swept = await p.cleanup_orphans_by_prefix("debora")
+
+        # Both names attempted (best-effort)
+        assert sorted(swept) == ["debora-app-pg", "debora-cache"]
+        assert ever.delete_database.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_empty_slug_is_noop(self):
+        """Empty/None slug must NOT match anything (defensive)."""
+        k8s = MagicMock()
+        k8s.is_available.return_value = True
+        ever = MagicMock()
+        ever.list_databases = AsyncMock(return_value=[])
+        ever.delete_database = AsyncMock(return_value={})
+        p = ManagedServiceProvisioner(k8s, everest=ever)
+
+        swept = await p.cleanup_orphans_by_prefix("")
+
+        assert swept == []
+        ever.list_databases.assert_not_called()
+        ever.delete_database.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_404_on_delete_treated_as_success(self):
+        """Race condition: another sweep already deleted the DB. delete_database
+        raises httpx.HTTPStatusError(404). Treat as success — post-condition met.
+        Other non-404 HTTP errors are logged as warnings.
+        """
+        import httpx
+
+        k8s = MagicMock()
+        k8s.is_available.return_value = True
+        ever = MagicMock()
+        ever.list_databases = AsyncMock(
+            return_value=[
+                {"metadata": {"name": "debora-app-pg"}},
+                {"metadata": {"name": "debora-cache"}},
+            ]
+        )
+        # First delete: 404 (already gone — race). Second: 500 (real error).
+        resp_404 = MagicMock()
+        resp_404.status_code = 404
+        resp_500 = MagicMock()
+        resp_500.status_code = 500
+        ever.delete_database = AsyncMock(
+            side_effect=[
+                httpx.HTTPStatusError("not found", request=MagicMock(), response=resp_404),
+                httpx.HTTPStatusError("server error", request=MagicMock(), response=resp_500),
+            ]
+        )
+        p = ManagedServiceProvisioner(k8s, everest=ever)
+
+        swept = await p.cleanup_orphans_by_prefix("debora")
+
+        # Both names attempted, 404 was a no-op success
+        assert sorted(swept) == ["debora-app-pg", "debora-cache"]
+        assert ever.delete_database.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_malformed_items_skipped_silently(self):
+        """If list_databases() returns items without proper metadata or with
+        non-string names, they are skipped without raising."""
+        k8s = MagicMock()
+        k8s.is_available.return_value = True
+        ever = MagicMock()
+        ever.list_databases = AsyncMock(
+            return_value=[
+                {},  # no metadata at all
+                {"metadata": None},  # metadata is None
+                {"metadata": "not-a-dict"},  # metadata is wrong type
+                {"metadata": {}},  # metadata empty
+                {"metadata": {"name": ""}},  # empty name
+                {"metadata": {"name": 12345}},  # non-string name
+                {"metadata": {"name": "debora-app-pg"}},  # the one valid match
+                "garbage-not-a-dict",  # whole item is wrong type
+            ]
+        )
+        ever.delete_database = AsyncMock(return_value={})
+        p = ManagedServiceProvisioner(k8s, everest=ever)
+
+        swept = await p.cleanup_orphans_by_prefix("debora")
+
+        assert swept == ["debora-app-pg"]
+        ever.delete_database.assert_called_once_with("debora-app-pg")
+
+    @pytest.mark.asyncio
+    async def test_slug_with_trailing_hyphen_normalized(self):
+        """A slug ending in '-' must produce the same prefix as the un-suffixed
+        slug after rstrip normalization. Without rstrip, prefix would be `slug--`
+        and the regular `slug-app-pg` DB would NOT match. With rstrip, both
+        slug forms produce `slug-` prefix → DB matches.
+        """
+        k8s = MagicMock()
+        k8s.is_available.return_value = True
+        ever = MagicMock()
+        ever.list_databases = AsyncMock(return_value=[{"metadata": {"name": "debora-app-pg"}}])
+        ever.delete_database = AsyncMock(return_value={})
+        p = ManagedServiceProvisioner(k8s, everest=ever)
+
+        # With rstrip: slug "debora-" → prefix "debora-" → matches "debora-app-pg"
+        # Without rstrip: would be prefix "debora--" → no match
+        swept = await p.cleanup_orphans_by_prefix("debora-")
+
+        assert swept == ["debora-app-pg"], "rstrip must normalize trailing dash"
+        ever.delete_database.assert_called_once_with("debora-app-pg")
+
+    @pytest.mark.asyncio
+    async def test_list_databases_returns_non_list_handled(self):
+        """Tester finding #2: if list_databases returns None/dict/garbage instead
+        of a list, the iteration would crash. Defensive isinstance check."""
+        k8s = MagicMock()
+        k8s.is_available.return_value = True
+        ever = MagicMock()
+        ever.delete_database = AsyncMock(return_value={})
+        p = ManagedServiceProvisioner(k8s, everest=ever)
+
+        for bad in [None, {"items": []}, "garbage", 42]:
+            ever.list_databases = AsyncMock(return_value=bad)
+            swept = await p.cleanup_orphans_by_prefix("debora")
+            assert swept == [], f"non-list value {bad!r} must produce empty sweep"
+        ever.delete_database.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_none_slug_is_noop(self):
+        """Tester finding #1: tenant_slug=None must be handled the same as empty."""
+        k8s = MagicMock()
+        k8s.is_available.return_value = True
+        ever = MagicMock()
+        ever.list_databases = AsyncMock(return_value=[])
+        ever.delete_database = AsyncMock(return_value={})
+        p = ManagedServiceProvisioner(k8s, everest=ever)
+
+        # `if not tenant_slug:` covers both "" and None
+        swept = await p.cleanup_orphans_by_prefix(None)  # type: ignore[arg-type]
+
+        assert swept == []
+        ever.list_databases.assert_not_called()
+        ever.delete_database.assert_not_called()

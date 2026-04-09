@@ -825,3 +825,131 @@ class ManagedServiceProvisioner:
             await self._crd_deprovision(service)
         lifecycle_bus.emit(bus_key, "deprovision", "done", f"{service.name} deleted")
         lifecycle_bus.mark_done(bus_key, success=True, message=f"Service {service.name} deprovisioned")
+
+    async def cleanup_orphans_by_prefix(self, tenant_slug: str) -> list[str]:
+        """Defensive scan: find Everest DatabaseClusters whose name starts with
+        ``{tenant_slug}-`` and delete them, regardless of whether a matching
+        ManagedService DB row exists.
+
+        Why: the normal deprovision chain only fires for services that still
+        have a ManagedService row in the platform DB. If a row was deleted
+        out-of-band (e.g. via direct DELETE /services or a failed earlier
+        cleanup), the underlying Everest DatabaseCluster stays orphaned and
+        keeps consuming cluster resources. The 2026-04-09 cluster audit found
+        7 such orphans (4d23h old test residue) which had to be cleaned up
+        manually with `kubectl delete databasecluster`.
+
+        This method runs at the end of TenantService.deprovision as a final
+        sweep — best-effort, errors are logged but never block the rest of
+        tenant deletion.
+
+        ## Namespace pin
+
+        Both ``everest_client.list_databases()`` and ``delete_database()``
+        default to ``EVEREST_NS`` (``everest-system`` /
+        ``settings.everest_namespace``). This matches ``_everest_provision()``
+        which also creates DBs only in ``EVEREST_NS``. If a future tier
+        ever places DBs in a per-tenant namespace, this sweep would silently
+        miss them — guard with a follow-up assertion when that lands.
+
+        ## Naming convention pin
+
+        Everest DB names are constructed by ``_everest_provision()`` (line 297)
+        as ``f"{tenant_slug}-{service.name}"``. So tenant ``debora`` could
+        have DBs named ``debora-app-pg``, ``debora-cache``, etc. The prefix
+        ``debora-`` is the unique identifier — but to avoid accidentally
+        matching ``debora-foo`` when deleting tenant ``deb`` (substring
+        match), we use **strict prefix with the trailing hyphen**:
+        ``name.startswith(f"{tenant_slug}-")``.
+
+        Defensive ``rstrip('-')`` on the slug avoids a malformed
+        ``deb--`` double-dash if a slug ever ended with a trailing hyphen.
+
+        ## 404 handling
+
+        ``delete_database`` may raise ``httpx.HTTPStatusError(404)`` if the
+        DB was already deleted between the list call and the delete call
+        (race with another sweep, or async finalizer cleanup). We treat 404
+        as success — the post-condition ("DB is gone") is met. Other
+        non-404 errors are logged as warnings but don't abort the loop.
+
+        ## Returns
+
+        List of names that were attempted (whether they succeeded or not).
+        Useful for logging, observability, and the unit test.
+
+        ## Raises
+
+        Never. All exceptions are caught and logged.
+        """
+        if not tenant_slug:
+            return []
+
+        # Defensive: a slug ending in '-' would build a malformed `slug--` prefix.
+        prefix = f"{tenant_slug.rstrip('-')}-"
+        attempted: list[str] = []
+
+        try:
+            all_dbs = await self.everest.list_databases()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "cleanup_orphans_by_prefix: failed to list Everest DBs (skipping cleanup): %s",
+                exc,
+            )
+            return attempted
+
+        # Defensive: if Everest API returns something other than a list (None,
+        # dict, malformed) the iteration below would crash. Treat as empty.
+        if not isinstance(all_dbs, list):
+            logger.warning(
+                "cleanup_orphans_by_prefix: list_databases returned non-list type=%s, skipping",
+                type(all_dbs).__name__,
+            )
+            return attempted
+
+        # Lazy import — only the cleanup path needs the typed exception
+        import httpx
+
+        for db in all_dbs:
+            metadata = db.get("metadata") if isinstance(db, dict) else None
+            if not isinstance(metadata, dict):
+                # Malformed item from the Everest API — skip silently
+                continue
+            name = metadata.get("name", "")
+            if not isinstance(name, str) or not name or not name.startswith(prefix):
+                continue
+            attempted.append(name)
+            try:
+                await self.everest.delete_database(name)
+                logger.info("Orphan Everest DB cleaned up: %s (tenant=%s)", name, tenant_slug)
+            except httpx.HTTPStatusError as exc:
+                # 404 = already gone (race with another sweep or async finalizer).
+                # Post-condition met → log info, continue.
+                if exc.response.status_code == 404:
+                    logger.info(
+                        "Orphan Everest DB already gone: %s (tenant=%s) — race with concurrent cleanup",
+                        name,
+                        tenant_slug,
+                    )
+                else:
+                    logger.warning(
+                        "cleanup_orphans_by_prefix: delete %s returned %s (continuing): %s",
+                        name,
+                        exc.response.status_code,
+                        exc,
+                    )
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(
+                    "cleanup_orphans_by_prefix: delete failed for %s (continuing): %s",
+                    name,
+                    exc,
+                )
+
+        if attempted:
+            logger.info(
+                "cleanup_orphans_by_prefix(%s): swept %d orphan DB(s): %s",
+                tenant_slug,
+                len(attempted),
+                attempted,
+            )
+        return attempted
