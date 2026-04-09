@@ -106,10 +106,6 @@ spec:
       labels:
         app: buildkitd
         haven.io/hardened: "true"
-      annotations:
-        # AppArmor unconfined is required for rootless BuildKit user namespace setup.
-        # See https://github.com/moby/buildkit/blob/master/docs/rootless.md
-        container.apparmor.security.beta.kubernetes.io/buildkitd: unconfined
     spec:
       tolerations:
         - operator: Exists
@@ -148,6 +144,13 @@ spec:
             seccompProfile:
               # Unconfined required for unshare(CLONE_NEWUSER) + clone() with
               # CLONE_NEWNS. A custom profile is the future-better path.
+              type: Unconfined
+            # AppArmor unconfined is required for rootless BuildKit user namespace
+            # setup. See https://github.com/moby/buildkit/blob/master/docs/rootless.md
+            # k8s 1.30+: use container-level appArmorProfile (the older
+            # container.apparmor.security.beta.kubernetes.io/<container>=unconfined
+            # annotation is deprecated since 1.30).
+            appArmorProfile:
               type: Unconfined
           readinessProbe:
             tcpSocket:
