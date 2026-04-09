@@ -268,11 +268,34 @@ class TenantService:
                     "haven.io/managed": "true",
                     # Everest: allows Percona Everest to manage databases in this namespace
                     "app.kubernetes.io/managed-by": "everest",
-                    # Pod Security Admission: baseline allows user apps that may not
-                    # have full restricted securityContext (no hostPid/hostNet/privilege)
-                    "pod-security.kubernetes.io/enforce": "baseline",
+                    # H1d (PSA): Pod Security Admission `restricted` profile.
+                    # Pre-fix: tenant namespaces had `enforce: baseline` which still
+                    # allowed root user pods, hostPath volumes, and capabilities
+                    # without drop. This violates the production-grade security
+                    # baseline expected of a multi-tenant SaaS.
+                    #
+                    # `restricted` blocks: privileged containers, host* mounts,
+                    # root user (must be runAsNonRoot), unprivileged capabilities,
+                    # default runtime profile bypass.
+                    #
+                    # NOTE: this only affects NEW tenants. Existing namespaces
+                    # (e.g. tenant-debora) retain whatever labels they were
+                    # created with — _create_namespace returns 409 on existing
+                    # ns and does not patch labels. To migrate an existing
+                    # namespace, the operator runs:
+                    #     kubectl label ns tenant-X \
+                    #       pod-security.kubernetes.io/enforce=restricted \
+                    #       pod-security.kubernetes.io/warn=restricted \
+                    #       --overwrite
+                    # ...after verifying the tenant's pods comply (no
+                    # CrashLoopBackOff). Audit + warn modes are also set so
+                    # restricted violations on existing tenant pods become
+                    # visible without breaking them.
+                    "pod-security.kubernetes.io/enforce": "restricted",
                     "pod-security.kubernetes.io/enforce-version": "latest",
-                    "pod-security.kubernetes.io/warn": "baseline",
+                    "pod-security.kubernetes.io/audit": "restricted",
+                    "pod-security.kubernetes.io/audit-version": "latest",
+                    "pod-security.kubernetes.io/warn": "restricted",
                     "pod-security.kubernetes.io/warn-version": "latest",
                 },
             )
