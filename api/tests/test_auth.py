@@ -3,6 +3,72 @@
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from fastapi import HTTPException
+
+# ---------------------------------------------------------------------------
+# Sprint H2 P8: require_platform_admin dependency
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_require_platform_admin_accepts_token_with_role():
+    """A JWT carrying `platform-admin` in `realm_access.roles` is accepted."""
+    from app.auth.rbac import require_platform_admin
+
+    user = {
+        "sub": "ops-user-1",
+        "email": "ops@haven.dev",
+        "realm_access": {"roles": ["default-roles-haven", "platform-admin"]},
+    }
+    result = await require_platform_admin(current_user=user)
+    assert result is user  # passthrough — handlers can read sub/email from it
+
+
+@pytest.mark.asyncio
+async def test_require_platform_admin_rejects_token_without_role():
+    """A JWT without the `platform-admin` realm role gets 403."""
+    from app.auth.rbac import require_platform_admin
+
+    user = {
+        "sub": "regular-user",
+        "email": "user@haven.dev",
+        "realm_access": {"roles": ["default-roles-haven"]},  # no platform-admin
+    }
+    with pytest.raises(HTTPException) as exc_info:
+        await require_platform_admin(current_user=user)
+    assert exc_info.value.status_code == 403
+    assert "platform-admin" in exc_info.value.detail
+
+
+@pytest.mark.asyncio
+async def test_require_platform_admin_rejects_token_with_no_realm_access():
+    """A JWT missing `realm_access` entirely (rare — only programmatic
+    tokens) is rejected."""
+    from app.auth.rbac import require_platform_admin
+
+    user = {"sub": "weird-user", "email": "weird@example.com"}
+    with pytest.raises(HTTPException) as exc_info:
+        await require_platform_admin(current_user=user)
+    assert exc_info.value.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_require_platform_admin_rejects_token_with_empty_roles():
+    """A JWT with `realm_access.roles = []` is rejected."""
+    from app.auth.rbac import require_platform_admin
+
+    user = {
+        "sub": "no-roles-user",
+        "realm_access": {"roles": []},
+    }
+    with pytest.raises(HTTPException) as exc_info:
+        await require_platform_admin(current_user=user)
+    assert exc_info.value.status_code == 403
+
+
+# ---------------------------------------------------------------------------
+# Original auth tests
+# ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
