@@ -260,3 +260,56 @@ class TestDeprovisionIncludesAppSet:
         assert "appset" in call_order
         assert "namespace" in call_order
         assert call_order.index("appset") < call_order.index("namespace")
+
+
+# ---------------------------------------------------------------------------
+# H1d: PSA restricted on new tenant namespaces
+# ---------------------------------------------------------------------------
+
+
+class TestPSARestricted:
+    @pytest.mark.asyncio
+    async def test_create_namespace_applies_restricted_psa_labels(self):
+        """New tenant namespaces MUST be created with PSA `restricted` enforce.
+
+        Pre-fix the labels were `baseline` which still allowed root pods,
+        hostPath, etc. Post-H1d the namespace boots with the strictest
+        enforce profile.
+        """
+        k8s = _make_k8s()
+        svc = TenantService(k8s, harbor=_make_harbor_mock())
+
+        await svc._create_namespace("tenant-newco", "newco")
+
+        # Inspect the V1Namespace passed to create_namespace
+        ns_obj = k8s.core_v1.create_namespace.call_args.args[0]
+        labels = ns_obj.metadata.labels
+        assert labels["pod-security.kubernetes.io/enforce"] == "restricted"
+        assert labels["pod-security.kubernetes.io/enforce-version"] == "latest"
+        assert labels["pod-security.kubernetes.io/audit"] == "restricted"
+        assert labels["pod-security.kubernetes.io/audit-version"] == "latest"
+        assert labels["pod-security.kubernetes.io/warn"] == "restricted"
+        assert labels["pod-security.kubernetes.io/warn-version"] == "latest"
+        # Pre-existing labels still present
+        assert labels["haven.io/tenant"] == "newco"
+        assert labels["app.kubernetes.io/managed-by"] == "everest"
+
+    @pytest.mark.asyncio
+    async def test_create_namespace_409_does_not_overwrite_existing_labels(self):
+        """If the namespace already exists (409), we do NOT patch its labels.
+
+        This preserves backwards compat: existing tenants (e.g. tenant-debora)
+        keep whatever PSA profile they were created with. The operator
+        migrates them manually after verifying their pods comply.
+        """
+        k8s = _make_k8s()
+        svc = TenantService(k8s, harbor=_make_harbor_mock())
+
+        # Simulate "namespace already exists"
+        k8s.core_v1.create_namespace.side_effect = ApiException(status=409)
+
+        # Should NOT raise
+        await svc._create_namespace("tenant-debora", "debora")
+
+        # Should NOT call patch_namespace (no retro-fit)
+        assert not k8s.core_v1.patch_namespace.called
