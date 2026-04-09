@@ -296,15 +296,25 @@ async def test_jwks_cache_refreshes_after_ttl_expiry():
     Post-P6: cache has a 1-hour TTL. We test it by directly calling
     `_fetch_jwks()` twice with the cache pre-seeded as if it had been
     fetched longer than the TTL ago.
+
+    NOTE: `_jwks_cache_fetched_at` is recorded with `time.monotonic()`, not
+    `time.time()`, so on a freshly-booted CI runner the monotonic clock can
+    be much smaller than 3600 — meaning `0.0` (the obvious "epoch" sentinel)
+    is NOT necessarily "more than TTL ago". Compute the staleness sentinel
+    relative to the current monotonic clock to be safe.
     """
+    import time
+
     import app.auth.jwt as jwt_module
 
     fake_jwks_old = {"keys": [{"kid": "old-key"}]}
     fake_jwks_new = {"keys": [{"kid": "new-key"}]}
 
-    # Seed cache as if it were fetched 2 hours ago (>1h TTL)
+    # Seed cache as if it were fetched well past the TTL (use a value
+    # comfortably below `now - TTL` so the staleness check fires regardless
+    # of how long the runner has been up).
     jwt_module._jwks_cache = fake_jwks_old
-    jwt_module._jwks_cache_fetched_at = 0.0  # epoch — definitely > TTL ago
+    jwt_module._jwks_cache_fetched_at = time.monotonic() - jwt_module._JWKS_CACHE_TTL_SECONDS - 60
 
     # Mock the HTTP fetch to return the "new" key set
     class _FakeResponse:
