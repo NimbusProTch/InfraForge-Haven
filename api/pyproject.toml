@@ -55,6 +55,15 @@ dev = [
     "aiosqlite>=0.20.0",
     "anyio>=4.0.0",
 ]
+# H4a (P3.1): Static analysis tooling. Installed via the `quality` extra
+# rather than `dev` so CI / contributors can opt in without bloating the
+# default test environment. See `tooling-baseline.md` for current findings.
+quality = [
+    "bandit>=1.7.10",       # Python security linting
+    "vulture>=2.13",        # dead code detection
+    "xenon>=0.9.1",         # cyclomatic complexity gates
+    "mypy>=1.13.0",         # static type checking
+]
 
 [build-system]
 requires = ["hatchling"]
