@@ -280,6 +280,93 @@ async def test_token_with_no_issuer_rejected():
     assert exc_info.value.status_code == 401
 
 
+@pytest.mark.asyncio
+async def test_token_issuer_scheme_tolerant():
+    """A JWT issued by Keycloak with `http://...` is accepted when the
+    api's `keycloak_url` is `https://...` (same host + path).
+
+    Why this matters: the dev cluster Keycloak's `frontendUrl` is left at
+    HTTP even though external traffic is HTTPS via Cilium Gateway. After
+    Sprint H2 P6 enabled `verify_iss`, every Keycloak token started being
+    rejected with `Invalid issuer` because the strict string comparison
+    failed on the http/https scheme difference. The host + realm path are
+    identical — what matters cryptographically is the JWT signature
+    (verified against the JWKS) and which realm the token claims to come
+    from. The URL scheme is not security-relevant here.
+
+    This test pins the scheme-tolerant comparison so it cannot regress.
+    """
+    from fastapi.security import HTTPAuthorizationCredentials
+
+    import app.auth.jwt as jwt_module
+    from app.auth.jwt import verify_token
+
+    expected = jwt_module._expected_issuer()  # e.g. "https://kc.../realms/haven"
+    # Build a token claiming the SAME host/realm but with the http scheme
+    http_iss = expected.replace("https://", "http://")
+    fake_payload = {
+        "sub": "real-user",
+        "email": "user@example.com",
+        "iss": http_iss,
+        "aud": "account",
+    }
+
+    with (
+        patch.object(jwt_module, "_fetch_jwks", new=AsyncMock(return_value={"keys": []})),
+        patch("app.auth.jwt.jwt.decode", return_value=fake_payload),
+    ):
+        creds = HTTPAuthorizationCredentials(scheme="Bearer", credentials="real.kc.jwt")
+        result = await verify_token(credentials=creds)
+
+    assert result["sub"] == "real-user"
+
+
+@pytest.mark.asyncio
+async def test_token_issuer_host_mismatch_still_rejected():
+    """Scheme-tolerant comparison must NOT accept a token from a different host.
+
+    The host and realm path are still security-relevant — only the URL
+    scheme is normalized. A token from `https://attacker.example/realms/haven`
+    is still rejected even if its scheme matches.
+    """
+    from fastapi import HTTPException
+    from fastapi.security import HTTPAuthorizationCredentials
+
+    import app.auth.jwt as jwt_module
+    from app.auth.jwt import verify_token
+
+    fake_payload = {
+        "sub": "attacker",
+        "email": "attacker@evil.example",
+        "iss": "https://attacker-keycloak.evil.example/realms/haven",
+        "aud": "account",
+    }
+
+    with (
+        patch.object(jwt_module, "_fetch_jwks", new=AsyncMock(return_value={"keys": []})),
+        patch("app.auth.jwt.jwt.decode", return_value=fake_payload),
+    ):
+        creds = HTTPAuthorizationCredentials(scheme="Bearer", credentials="attacker.jwt")
+        with pytest.raises(HTTPException) as exc_info:
+            await verify_token(credentials=creds)
+
+    assert exc_info.value.status_code == 401
+
+
+def test_normalize_issuer_strips_scheme():
+    """_normalize_issuer() strips http:// or https:// — exact contract."""
+    from app.auth.jwt import _normalize_issuer
+
+    assert _normalize_issuer("https://kc.example/realms/haven") == "kc.example/realms/haven"
+    assert _normalize_issuer("http://kc.example/realms/haven") == "kc.example/realms/haven"
+    # No scheme → return as-is (defensive)
+    assert _normalize_issuer("kc.example/realms/haven") == "kc.example/realms/haven"
+    # Both http and https variants compare equal after normalization
+    assert _normalize_issuer("https://kc.example/realms/haven") == _normalize_issuer(
+        "http://kc.example/realms/haven"
+    )
+
+
 # ---------------------------------------------------------------------------
 # P6 (Sprint H2): JWKS cache TTL regression tests
 # ---------------------------------------------------------------------------
