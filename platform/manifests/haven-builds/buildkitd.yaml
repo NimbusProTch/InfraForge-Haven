@@ -59,6 +59,9 @@ spec:
       targetPort: 1234
       protocol: TCP
   type: ClusterIP
+  sessionAffinity: None
+  ipFamilyPolicy: SingleStack
+  internalTrafficPolicy: Cluster
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -69,6 +72,8 @@ metadata:
     app: buildkitd
 spec:
   replicas: 1
+  revisionHistoryLimit: 10
+  progressDeadlineSeconds: 600
   selector:
     matchLabels:
       app: buildkitd
@@ -82,6 +87,10 @@ spec:
       labels:
         app: buildkitd
     spec:
+      restartPolicy: Always
+      dnsPolicy: ClusterFirst
+      schedulerName: default-scheduler
+      terminationGracePeriodSeconds: 30
       tolerations:
         - operator: Exists
       containers:

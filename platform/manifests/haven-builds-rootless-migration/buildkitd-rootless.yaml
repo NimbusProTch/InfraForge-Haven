@@ -1,7 +1,8 @@
 # ⚠️ NOT AUTO-SYNCED BY ARGOCD ⚠️
 #
 # H1d (BuildKit hardening — ROOTLESS migration variant). Apply ONLY via the
-# manual cutover runbook in `runbook.sh` next door, AFTER you have verified:
+# manual cutover runbook in `scripts/h1d-buildkit-rootless-migration.sh`,
+# AFTER you have verified:
 #
 #   1. The current `platform/manifests/haven-builds/buildkitd.yaml`
 #      privileged version is healthy (`kubectl -n haven-builds get pods`)
@@ -9,6 +10,15 @@
 #      logs for active build jobs)
 #   3. You have a rollback path ready (the unhardened manifest is one
 #      `kubectl apply -f` away in `platform/manifests/haven-builds/`)
+#   4. ⚠️ THE EXISTING `buildkitd-cache` PVC HAS BEEN RECREATED ⚠️
+#      The current cache is owned by uid 0 (root) at /var/lib/buildkit
+#      because the privileged container runs as root. The rootless
+#      container runs as uid 1000 and would hit `EACCES: permission
+#      denied` on first write. fsGroup does NOT reliably retro-chown
+#      Longhorn PVC contents — only `delete pvc` + recreate works.
+#      Cost: first build after cutover is slow (~3-5 min cold cache)
+#      instead of cached (~30s). Worth it for clean ownership. The
+#      runbook script handles this in pre-flight Step 4.
 #
 # This file is INTENTIONALLY located OUTSIDE platform/manifests/haven-builds/
 # (which COULD become an ArgoCD source path in the future). If you put it
@@ -50,6 +60,17 @@
 # only the specific syscalls BuildKit needs (clone, unshare, mount with
 # bind, etc.), reducing the kernel attack surface further. That's a Sprint
 # H1f follow-up — out of scope here.
+#
+# PSA compatibility:
+#   - Admits under PSA `privileged` ✅
+#   - Admits under PSA `baseline`   ✅
+#   - Fails  PSA `restricted`       ❌ — because seccompProfile.type AND
+#       appArmorProfile.type are both `Unconfined`. PSA `restricted`
+#       requires `RuntimeDefault` or `Localhost`. The Sprint H1f custom
+#       Localhost seccomp profile mentioned above closes this gap.
+#   - The haven-builds namespace currently has PSA enforce=privileged,
+#     so this manifest admits cleanly. Tightening the namespace label is
+#     a separate sprint and would need the H1f profile first.
 #
 # ─────────────────────────────────────────────────────────────────────────
 #
@@ -109,6 +130,16 @@ spec:
     spec:
       tolerations:
         - operator: Exists
+      securityContext:
+        # Pod-level fsGroup ensures the longhorn PVC mount is owned by gid
+        # 1000 for any newly-created files. Note: this does NOT retroactively
+        # chown existing cache content from the privileged baseline — the
+        # runbook deletes the PVC entirely before cutover for clean state.
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
       containers:
         - name: buildkitd
           image: moby/buildkit:v0.19.0-rootless
