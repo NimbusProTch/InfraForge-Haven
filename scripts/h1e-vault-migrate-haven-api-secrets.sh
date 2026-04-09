@@ -63,7 +63,7 @@ echo "  Expected output: a JSON dict with all $(wc -l < /tmp/haven-api-secrets.t
 
 echo ""
 echo "===== Step 4: apply the ExternalSecret manifest ====="
-echo "  kubectl --kubeconfig=$KC apply -f platform/manifests/haven-api/externalsecret.yaml"
+echo "  kubectl --kubeconfig=$KC apply -f platform/manifests/haven-api-vault-migration/externalsecret.yaml"
 echo ""
 echo "  Wait for ESO to populate (initial reconcile takes ~10s):"
 echo "  kubectl --kubeconfig=$KC wait externalsecret/haven-api-secrets-sync -n $NAMESPACE --for=condition=Ready --timeout=60s"
