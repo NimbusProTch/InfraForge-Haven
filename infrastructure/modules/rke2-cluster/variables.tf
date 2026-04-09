@@ -125,3 +125,21 @@ variable "etcd_s3_secret_key" {
   default     = ""
   sensitive   = true
 }
+
+# ===== H1a-2: kubectl OIDC integration via Keycloak =====
+# Pre-fix the dev cluster had ZERO --oidc-* flags on kube-apiserver, so
+# tenant admins could not use their Keycloak token with `kubectl`. The
+# defaults below match the dev cluster's haven realm at the sslip.io
+# Keycloak instance. Override in the env tfvars for production.
+
+variable "keycloak_oidc_issuer_url" {
+  description = "OIDC issuer URL for kube-apiserver token verification. Must match the `iss` claim in Keycloak-issued JWTs (no trailing slash)."
+  type        = string
+  default     = "https://keycloak.46.225.42.2.sslip.io/realms/haven"
+}
+
+variable "keycloak_oidc_client_id" {
+  description = "OIDC client_id used by kubectl to obtain tokens from Keycloak. Must exist in the haven realm as a public client (see keycloak/haven-realm.json)."
+  type        = string
+  default     = "haven-kubectl"
+}

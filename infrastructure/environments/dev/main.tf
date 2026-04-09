@@ -102,6 +102,13 @@ module "rke2_cluster" {
   etcd_s3_region          = var.etcd_s3_region
   etcd_s3_access_key      = var.etcd_s3_access_key
   etcd_s3_secret_key      = var.etcd_s3_secret_key
+
+  # H1a-2: kubectl OIDC integration. Defaults point at the dev cluster
+  # Keycloak (haven realm). Operator must ensure haven-kubectl public
+  # client exists (see keycloak/haven-realm.json) before tenant admins
+  # can `kubectl` against the cluster.
+  keycloak_oidc_issuer_url = var.keycloak_oidc_issuer_url
+  keycloak_oidc_client_id  = var.keycloak_oidc_client_id
 }
 
 # --- 4. Master Nodes ---
