@@ -314,8 +314,21 @@ async def test_scaffold_noop_when_unconfigured() -> None:
 
 
 @pytest.mark.asyncio
-async def test_gitea_health_endpoint_unconfigured(async_client) -> None:
-    """When Gitea is not configured the health endpoint returns configured=False."""
+async def test_gitea_health_endpoint_unconfigured(async_client, monkeypatch) -> None:
+    """When Gitea is not configured the health endpoint returns configured=False.
+
+    P15: gitea_client is a module-level singleton that captures
+    `settings.gitea_url` / `settings.gitea_admin_token` at import time. If the
+    local dev environment has those env vars set (a developer running pytest
+    after `source .env`), the singleton's `_base_url` and `_token` are
+    populated and the assertion fails. Force the unconfigured state with
+    monkeypatch so the test passes regardless of the developer's shell.
+    """
+    from app.services.gitea_client import gitea_client
+
+    monkeypatch.setattr(gitea_client, "_base_url", "")
+    monkeypatch.setattr(gitea_client, "_token", "")
+
     resp = await async_client.get("/api/v1/internal/gitea/health")
     assert resp.status_code == 200
     data = resp.json()
