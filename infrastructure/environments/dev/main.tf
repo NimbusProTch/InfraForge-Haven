@@ -693,9 +693,11 @@ resource "helm_release" "minio" {
   wait             = true
 
   values = [templatefile("${path.module}/helm-values/minio.yaml", {
-    root_user     = var.minio_root_user
-    root_password = var.minio_root_password
-    storage_size  = var.minio_storage_size
+    root_user           = var.minio_root_user
+    root_password       = var.minio_root_password
+    storage_size        = var.minio_storage_size
+    kms_secret_key      = var.minio_kms_secret_key
+    kms_auto_encryption = var.minio_kms_auto_encryption
   })]
 
   depends_on = [ssh_resource.wait_longhorn_ready]

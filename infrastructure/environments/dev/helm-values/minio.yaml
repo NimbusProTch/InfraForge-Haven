@@ -1,4 +1,25 @@
 # MinIO Object Storage
+#
+# H1e (MinIO SSE): server-side encryption at rest. Pre-fix MinIO had
+# zero encryption config — backup data (CNPG WAL, Loki chunks, etc) was
+# written to Longhorn volumes in plaintext. With auto-encryption enabled
+# below, every NEW object write is AES-256-GCM encrypted using a key
+# derived from `MINIO_KMS_SECRET_KEY`. Existing objects stay plaintext
+# until rewritten — a separate `mc admin encrypt` migration script is
+# needed for retro-fit (NOT in this PR).
+#
+# Operator action required: set `minio_kms_secret_key` in terraform.tfvars
+# to a value of the form `<key-name>:<base64-32-bytes>`. Generate with:
+#
+#   KEY=$(openssl rand 32 | base64); echo "haven-dev:$KEY"
+#
+# Then `tofu apply`. The helm chart re-renders, MinIO pod restarts, and
+# all subsequent writes are encrypted. **Losing the key = losing all
+# encrypted data.** Back it up off-cluster (Cloudflare R2 / 1Password / etc).
+#
+# If `minio_kms_secret_key` is empty (default), the env vars are NOT
+# emitted at all and MinIO behaves exactly as before — backwards-compat.
+
 mode: standalone
 rootUser: "${root_user}"
 rootPassword: "${root_password}"
@@ -14,3 +35,12 @@ resources:
     memory: 1Gi
 tolerations:
   - operator: "Exists"
+%{ if kms_secret_key != "" ~}
+extraEnvVars:
+  - name: MINIO_KMS_SECRET_KEY
+    value: "${kms_secret_key}"
+%{ if kms_auto_encryption ~}
+  - name: MINIO_KMS_AUTO_ENCRYPTION
+    value: "on"
+%{ endif ~}
+%{ endif ~}
