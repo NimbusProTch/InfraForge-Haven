@@ -179,6 +179,10 @@ async def remove_member(tenant_slug: str, user_id: str, db: DBSession, current_u
         if len(list(owners_result.scalars().all())) <= 1:
             raise HTTPException(status_code=409, detail="Cannot remove the last owner")
 
+    # Capture the removed user's identifier for the revocation entry
+    # before we delete the row.
+    removed_user_id = member.user_id
+
     await audit(
         db,
         tenant_id=tenant.id,
@@ -190,6 +194,24 @@ async def remove_member(tenant_slug: str, user_id: str, db: DBSession, current_u
     )
 
     await db.delete(member)
+
+    # Sprint H2 P9 (#24): force the removed user to re-authenticate so
+    # their existing JWT (which may still carry the old tenant in its
+    # claims) stops working immediately. The next request from that user
+    # gets 401 from `verify_token_not_revoked`, the user re-logs in, and
+    # the fresh token reflects the updated membership set.
+    #
+    # We only do this if there's a real Keycloak `sub` to revoke. Members
+    # invited but never logged in have `user_id == ""` and don't need it.
+    if removed_user_id:
+        from app.services.token_revocation_service import revoke_user
+
+        await revoke_user(
+            db,
+            user_id=removed_user_id,
+            reason=f"removed from tenant {tenant.slug} by {current_user.get('sub', 'unknown')}",
+        )
+
     await db.commit()
 
 

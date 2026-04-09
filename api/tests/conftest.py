@@ -9,7 +9,7 @@ import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from app.auth.jwt import verify_token
+from app.auth.jwt import verify_token, verify_token_not_revoked
 from app.deps import get_db, get_k8s
 from app.k8s.client import K8sClient
 from app.main import app
@@ -20,6 +20,7 @@ from app.models.cronjob import CronJob  # noqa: F401 — registers table in meta
 from app.models.deployment import Deployment  # noqa: F401 — ensures table created
 from app.models.tenant import Tenant
 from app.models.tenant_member import TenantMember  # noqa: F401 — ensures table created
+from app.models.token_revocation import TokenRevocation  # noqa: F401 — Sprint H2 P9
 
 TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
 
@@ -128,6 +129,16 @@ async def async_client(db_session: AsyncSession, mock_k8s: K8sClient) -> AsyncGe
     app.dependency_overrides[get_db] = _override_db
     app.dependency_overrides[get_k8s] = lambda: mock_k8s
     app.dependency_overrides[verify_token] = lambda: {"sub": "test-user", "email": "test@haven.nl"}
+    # Sprint H2 P9: CurrentUser now flows through `verify_token_not_revoked`
+    # which would otherwise hit the real DB session factory (not the test
+    # in-memory SQLite). Override it with the same stub user. Tests that
+    # specifically want to exercise the revocation flow can build their
+    # own client without this override (see test_token_revocation.py).
+    app.dependency_overrides[verify_token_not_revoked] = lambda: {
+        "sub": "test-user",
+        "email": "test@haven.nl",
+        "iat": 9999999999,
+    }
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         yield client

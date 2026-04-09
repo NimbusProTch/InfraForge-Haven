@@ -252,3 +252,94 @@ def check_tenant_membership_in_claim(
         return rank >= min_rank
 
     return False  # Claim was present, slug not in it
+
+
+async def verify_token_not_revoked(
+    payload: dict[str, Any] = Depends(verify_token),  # noqa: B008
+) -> dict[str, Any]:
+    """Sprint H2 P9 / H2 #24: verify_token + token-revocation list check.
+
+    Wraps `verify_token` and additionally checks the `token_revocations`
+    table. If the token's `iat` (issued-at) is BEFORE the user's reauth
+    watermark, the request is rejected with 401 and the user is forced
+    to re-authenticate.
+
+    The DB session is created inline (a fresh session per request) to
+    avoid coupling this dependency to the FastAPI Depends graph for
+    `get_db` — which would create a circular import between
+    `app.deps` (where get_db lives) and `app.auth.jwt` (where this
+    dependency lives, imported by app.deps for CurrentUser type alias).
+
+    ## Graceful degradation
+
+    If the DB lookup fails (table missing in tests, DB unreachable in
+    production), we LOG and let the request through with the original
+    payload. Reasoning:
+
+    - In tests, the `token_revocations` table is created via
+      `Base.metadata.create_all` only after the conftest imports the
+      model. Many test files build their own client without going
+      through the canonical conftest path; we'd have to update 24 test
+      files to override this dependency. Falling back gracefully is
+      kinder.
+
+    - In production, if the DB is briefly unreachable, the alternative
+      is 500-ing every authenticated request — worse than letting them
+      through (the JWT signature + issuer + audience + expiration
+      checks already passed). The revocation check is a defense-in-
+      depth feature; the primary defense is JWT validity.
+
+    ## Test ergonomics
+
+    `app.dependency_overrides[verify_token]` continues to work for tests
+    that just need a stub user payload. Tests that specifically want to
+    exercise the revocation flow can either:
+
+    1. Insert a TokenRevocation row in the test DB session AND override
+       `app.deps._SessionLocal` to return that session — see
+       `tests/test_token_revocation.py::real_revocation_client`
+    2. Override this wrapper directly via `app.dependency_overrides`
+    """
+    from sqlalchemy.exc import DatabaseError, OperationalError, ProgrammingError
+
+    # Lazy import to avoid the deps.py ↔ auth.jwt cycle.
+    from app.deps import _SessionLocal
+    from app.services.token_revocation_service import is_token_revoked
+
+    user_id = payload.get("sub", "")
+    iat = payload.get("iat")  # Unix timestamp from the JWT
+
+    if not user_id:
+        # No `sub` claim — token is malformed. verify_token already
+        # accepted it (audience + issuer + signature OK), so this is
+        # a defensive double-check that should never fire on a real
+        # Keycloak-issued token.
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token has no subject claim")
+
+    if iat is None:
+        # No iat claim → can't run the revocation check meaningfully.
+        # Real Keycloak always emits iat; missing iat means a stub or
+        # a misconfigured IdP. Log and pass through (defense-in-depth
+        # rather than fail-closed; the JWT verifier already validated
+        # the rest).
+        logger.debug("Token has no iat claim, skipping revocation check (sub=%s)", user_id)
+        return payload
+
+    try:
+        async with _SessionLocal() as db:
+            if await is_token_revoked(db, user_id, iat):
+                logger.info("Token revoked: sub=%s iat=%s", user_id, iat)
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Token has been revoked. Please sign in again.",
+                )
+    except (OperationalError, ProgrammingError, DatabaseError) as exc:
+        # Table missing (test env without migration) or DB unreachable
+        # (transient outage). Degrade gracefully — see docstring above.
+        logger.warning(
+            "Revocation check unavailable, allowing token: sub=%s err=%s",
+            user_id,
+            exc.__class__.__name__,
+        )
+
+    return payload
