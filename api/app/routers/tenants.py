@@ -1,10 +1,24 @@
+"""Tenant CRUD endpoints.
+
+H3e (P2.5 / P21 batch 5 / final): migrated to canonical `TenantMembership`
+dependency from `app/deps.py`. The local `_get_tenant_or_404` helper has
+been removed. The role-aware `_require_tenant_membership` helper is KEPT
+because routes that need a min_role check (update_tenant=admin,
+delete_tenant=owner) still need it. The dep handles the basic membership
+check (404/403); `_require_tenant_membership(..., min_role=...)` layers
+the role-hierarchy check on top.
+
+This is the FINAL H3e migration. All 14 routers now use TenantMembership.
+"""
+
 import logging
 
 from fastapi import APIRouter, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
-from app.deps import CurrentUser, DBSession, K8sDep
+from app.auth.rbac import require_role  # noqa: F401 — available for future use
+from app.deps import CurrentUser, DBSession, K8sDep, TenantMembership
 from app.models.managed_service import ManagedService
 from app.models.tenant import Tenant
 from app.models.tenant_member import MemberRole, TenantMember
@@ -19,18 +33,15 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/tenants", tags=["tenants"])
 
 
-async def _get_tenant_or_404(tenant_slug: str, db: DBSession) -> Tenant:
-    result = await db.execute(select(Tenant).where(Tenant.slug == tenant_slug))
-    tenant = result.scalar_one_or_none()
-    if tenant is None:
-        raise HTTPException(status_code=404, detail="Tenant not found")
-    return tenant
+async def _require_min_role(tenant: Tenant, current_user: dict, db: DBSession, min_role: str) -> TenantMember:
+    """Verify the caller has at least `min_role` on this tenant.
 
+    Assumes `TenantMembership` dependency already enforced basic membership
+    (so a non-member would have been 403'd before reaching this function).
+    Returns the TenantMember record so callers can inspect it.
 
-async def _require_tenant_membership(
-    tenant: Tenant, current_user: dict, db: DBSession, min_role: str | None = None
-) -> TenantMember:
-    """Verify user is a member of this tenant. Returns the membership record."""
+    Role hierarchy (descending power): owner > admin > member > viewer.
+    """
     user_id = current_user.get("sub", "")
     result = await db.execute(
         select(TenantMember).where(
@@ -40,11 +51,11 @@ async def _require_tenant_membership(
     )
     member = result.scalar_one_or_none()
     if member is None:
+        # Defensive — TenantMembership dep should have prevented this.
         raise HTTPException(status_code=403, detail="You are not a member of this tenant")
-    if min_role:
-        hierarchy = {"owner": 4, "admin": 3, "member": 2, "viewer": 1}
-        if hierarchy.get(member.role.value, 0) < hierarchy.get(min_role, 0):
-            raise HTTPException(status_code=403, detail=f"Requires {min_role} role or higher")
+    hierarchy = {"owner": 4, "admin": 3, "member": 2, "viewer": 1}
+    if hierarchy.get(member.role.value, 0) < hierarchy.get(min_role, 0):
+        raise HTTPException(status_code=403, detail=f"Requires {min_role} role or higher")
     return member
 
 
@@ -162,17 +173,24 @@ async def create_tenant(body: TenantCreate, db: DBSession, k8s: K8sDep, current_
 
 
 @router.get("/{tenant_slug}", response_model=TenantResponse)
-async def get_tenant(tenant_slug: str, db: DBSession, current_user: CurrentUser) -> Tenant:
-    tenant = await _get_tenant_or_404(tenant_slug, db)
-    await _require_tenant_membership(tenant, current_user, db)
+async def get_tenant(
+    tenant_slug: str,  # noqa: ARG001 — used by TenantMembership dep, kept for OpenAPI
+    db: DBSession,  # noqa: ARG001 — kept for parity with other routes; TenantMembership uses it
+    tenant: TenantMembership,
+) -> Tenant:
     return tenant
 
 
 @router.patch("/{tenant_slug}", response_model=TenantResponse)
 @router.put("/{tenant_slug}", response_model=TenantResponse)
-async def update_tenant(tenant_slug: str, body: TenantUpdate, db: DBSession, current_user: CurrentUser) -> Tenant:
-    tenant = await _get_tenant_or_404(tenant_slug, db)
-    await _require_tenant_membership(tenant, current_user, db, min_role="admin")
+async def update_tenant(
+    tenant_slug: str,  # noqa: ARG001 — used by TenantMembership dep, kept for OpenAPI
+    body: TenantUpdate,
+    db: DBSession,
+    tenant: TenantMembership,
+    current_user: CurrentUser,
+) -> Tenant:
+    await _require_min_role(tenant, current_user, db, min_role="admin")
 
     # H0-3: github_token is intentionally excluded — it must only be set via
     # the OAuth callback flow (api/app/routers/github.py). Allowing PATCH would
@@ -190,7 +208,13 @@ async def update_tenant(tenant_slug: str, body: TenantUpdate, db: DBSession, cur
 
 
 @router.delete("/{tenant_slug}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_tenant(tenant_slug: str, db: DBSession, k8s: K8sDep, current_user: CurrentUser) -> None:
+async def delete_tenant(
+    tenant_slug: str,
+    db: DBSession,
+    k8s: K8sDep,
+    tenant: TenantMembership,
+    current_user: CurrentUser,
+) -> None:
     """Delete tenant with best-effort external cleanup.
 
     Each external cleanup step is wrapped in try/except so a single failure
@@ -198,8 +222,7 @@ async def delete_tenant(tenant_slug: str, db: DBSession, k8s: K8sDep, current_us
     stuck in the DB. The DB delete ALWAYS runs after the cleanup attempts.
     Cleanup failures are logged for ops to inspect later.
     """
-    tenant = await _get_tenant_or_404(tenant_slug, db)
-    await _require_tenant_membership(tenant, current_user, db, min_role="owner")
+    await _require_min_role(tenant, current_user, db, min_role="owner")
     cleanup_errors: list[str] = []
 
     # 1. Deprovision all managed services (Everest DBs, Redis CRDs, RabbitMQ CRDs)
