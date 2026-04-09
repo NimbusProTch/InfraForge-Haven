@@ -35,10 +35,31 @@ rules:
   - apiGroups: ["autoscaling"]
     resources: ["horizontalpodautoscalers"]
     verbs: ["get", "list", "watch", "create", "patch", "update", "delete"]
-  # RBAC for tenant provisioning — needs escalate to grant permissions
+  # RBAC for tenant provisioning — namespace-scoped only.
+  # haven-api creates per-tenant Roles + RoleBindings via
+  # tenant_service.py::_setup_namespace_rbac (rbac_v1.create_namespaced_role
+  # and create_namespaced_role_binding). It NEVER creates cluster-scoped
+  # ClusterRoles or ClusterRoleBindings — verified by grep over api/app/.
+  #
+  # Pre-fix (post-PR-#89): the rule lumped namespace-scoped and
+  # cluster-scoped RBAC together with full create/patch/delete/bind/escalate.
+  # That left a privilege-escalation vector: a compromised haven-api pod
+  # could create a ClusterRoleBinding granting itself cluster-admin and
+  # bypass the entire scope-down. The rogue haven-api-admin binding was
+  # masking it.
+  #
+  # Fix: split into two rules.
+  #   1. Namespace-scoped RBAC (roles + rolebindings): full verbs +
+  #      bind + escalate (needed to grant tenant admins their RoleBindings).
+  #   2. Cluster-scoped RBAC (clusterroles + clusterrolebindings):
+  #      read-only get/list/watch (used by audit log checks + sanity
+  #      probes). NO create/patch/delete/bind/escalate.
   - apiGroups: ["rbac.authorization.k8s.io"]
-    resources: ["roles", "rolebindings", "clusterroles", "clusterrolebindings"]
-    verbs: ["get", "list", "create", "patch", "delete", "bind", "escalate"]
+    resources: ["roles", "rolebindings"]
+    verbs: ["get", "list", "watch", "create", "patch", "update", "delete", "bind", "escalate"]
+  - apiGroups: ["rbac.authorization.k8s.io"]
+    resources: ["clusterroles", "clusterrolebindings"]
+    verbs: ["get", "list", "watch"]
   # CiliumNetworkPolicy
   - apiGroups: ["cilium.io"]
     resources: ["ciliumnetworkpolicies"]
