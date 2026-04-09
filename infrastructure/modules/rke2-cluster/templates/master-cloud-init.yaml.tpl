@@ -59,6 +59,28 @@ disable:
 ${ disable_kube_proxy ? "disable-kube-proxy: true" : "" }
 ${ enable_cis_profile ? "profile: cis\nprotect-kernel-defaults: true" : "" }
 write-kubeconfig-mode: "0644"
+# H1a-2: Keycloak OIDC integration for kubectl. Pre-fix the dev cluster
+# had ZERO --oidc-* flags on kube-apiserver, so tenant admins could not
+# use their Keycloak token with `kubectl`. tenant_service.py was creating
+# RoleBindings against subjects like `oidc:tenant_{slug}_admin` but
+# kube-apiserver had no OIDC verifier so those bindings were inert.
+#
+# Activates: tenant admin gets a Keycloak token via the `haven-kubectl`
+# client, kubectl sends it as a Bearer, kube-apiserver verifies signature
+# against Keycloak's JWKS, extracts `preferred_username` (prefixed with
+# `oidc:`) and the `groups` claim (also prefixed `oidc:`), and matches
+# them against tenant RoleBindings.
+#
+# IMPORTANT: the keycloak_url here MUST match the issuer the JWT was
+# signed with. The realm import (keycloak/haven-realm.json) emits the
+# `groups` protocolMapper that fills the claim.
+kube-apiserver-arg:
+  - "oidc-issuer-url=${keycloak_oidc_issuer_url}"
+  - "oidc-client-id=${keycloak_oidc_client_id}"
+  - "oidc-username-claim=preferred_username"
+  - "oidc-username-prefix=oidc:"
+  - "oidc-groups-claim=groups"
+  - "oidc-groups-prefix=oidc:"
 # H1b-2 (P4.2): etcd snapshot schedule. Pre-fix the cluster had ZERO
 # automated backups — total cluster loss = total data loss for every
 # tenant + Harbor + Gitea + Keycloak. Snapshots are written to

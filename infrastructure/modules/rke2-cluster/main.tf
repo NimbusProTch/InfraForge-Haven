@@ -24,6 +24,17 @@ locals {
     etcd_s3_secret_key      = var.etcd_s3_secret_key
   }
 
+  # H1a-2: kubectl OIDC integration. The master cloud-init writes
+  # `--oidc-issuer-url` and `--oidc-client-id` flags to the kube-apiserver
+  # config. Defaults point at the dev cluster Keycloak. Operator must
+  # ensure the Keycloak realm has the `groups` protocolMapper enabled
+  # (see keycloak/haven-realm.json) and a `haven-kubectl` public client
+  # exists for tenant admins to obtain tokens.
+  _oidc_template_vars = {
+    keycloak_oidc_issuer_url = var.keycloak_oidc_issuer_url
+    keycloak_oidc_client_id  = var.keycloak_oidc_client_id
+  }
+
   master_cloud_init = templatefile("${path.module}/templates/master-cloud-init.yaml.tpl", merge({
     cluster_token            = var.cluster_token
     first_master_private_ip  = var.first_master_private_ip
@@ -35,7 +46,7 @@ locals {
     cilium_operator_replicas = var.cilium_operator_replicas
     disable_kube_proxy       = var.disable_kube_proxy
     enable_cis_profile       = var.enable_cis_profile
-  }, local._etcd_template_vars))
+  }, local._etcd_template_vars, local._oidc_template_vars))
 
   joining_master_cloud_init = templatefile("${path.module}/templates/master-cloud-init.yaml.tpl", merge({
     cluster_token            = var.cluster_token
@@ -48,7 +59,7 @@ locals {
     cilium_operator_replicas = var.cilium_operator_replicas
     disable_kube_proxy       = var.disable_kube_proxy
     enable_cis_profile       = var.enable_cis_profile
-  }, local._etcd_template_vars))
+  }, local._etcd_template_vars, local._oidc_template_vars))
 
   worker_cloud_init = templatefile("${path.module}/templates/worker-cloud-init.yaml.tpl", {
     cluster_token           = var.cluster_token

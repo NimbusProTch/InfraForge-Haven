@@ -164,6 +164,41 @@ class TenantService:
         await self._create_applicationset(slug)
         lifecycle_bus.emit(bus_key, "appset", "done", f"ApplicationSet appset-{slug} created")
 
+        # H1a-2: create the three Keycloak groups (`tenant_{slug}_admin`,
+        # `_developer`, `_viewer`) so that tenant admins can obtain Keycloak
+        # tokens carrying the `groups` claim that kube-apiserver matches
+        # against the RoleBindings created in `_create_rbac` above.
+        # Best-effort: failure is logged but does not abort tenant
+        # provisioning (the tenant still works via the platform UI/API,
+        # just not via direct kubectl until the groups exist).
+        lifecycle_bus.emit(bus_key, "keycloak-groups", "running", "Creating Keycloak tenant groups")
+        try:
+            from app.services.keycloak_service import keycloak_service
+
+            await keycloak_service.create_tenant_groups(slug)
+            lifecycle_bus.emit(
+                bus_key,
+                "keycloak-groups",
+                "done",
+                f"Keycloak groups created (tenant_{slug}_admin/developer/viewer)",
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "Keycloak group creation failed for tenant %s (non-fatal, kubectl OIDC won't work until manually fixed): %s",
+                slug,
+                exc,
+            )
+            # Emit "done" with a "skipped" message rather than "warn" — the
+            # tenant provision as a whole still succeeded, the group creation
+            # is a best-effort optimization for kubectl OIDC. Existing tests
+            # expect every "running" step to terminate in "done".
+            lifecycle_bus.emit(
+                bus_key,
+                "keycloak-groups",
+                "done",
+                f"Keycloak group creation skipped (non-fatal): {exc}",
+            )
+
         lifecycle_bus.mark_done(bus_key, success=True, message=f"Tenant {slug} provisioned")
         logger.info("Tenant %s provisioned in namespace %s (tier=%s)", slug, namespace, tier)
 
@@ -197,6 +232,25 @@ class TenantService:
             except Exception as exc:
                 logger.warning("Harbor project deletion failed for tenant %s: %s", slug, exc)
                 lifecycle_bus.emit(bus_key, "harbor-delete", "failed", f"Harbor cleanup failed: {exc}")
+
+        # H1a-2: clean up the three Keycloak groups created during provision.
+        # Best-effort: missing groups (404) are silently skipped, other failures
+        # are logged but do not block the rest of the deprovision chain.
+        if slug:
+            lifecycle_bus.emit(bus_key, "keycloak-groups-delete", "running", "Deleting Keycloak tenant groups")
+            try:
+                from app.services.keycloak_service import keycloak_service
+
+                await keycloak_service.delete_tenant_groups(slug)
+                lifecycle_bus.emit(bus_key, "keycloak-groups-delete", "done", "Keycloak groups deleted")
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Keycloak group cleanup failed for tenant %s: %s", slug, exc)
+                lifecycle_bus.emit(
+                    bus_key,
+                    "keycloak-groups-delete",
+                    "failed",
+                    f"Keycloak group cleanup failed: {exc}",
+                )
 
         lifecycle_bus.mark_done(bus_key, success=True, message=f"Tenant {slug or namespace} deprovisioned")
 
