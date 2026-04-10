@@ -12,9 +12,11 @@
 locals {
   node_username = "root"
 
-  # Multi-AZ distribution: first 2 nodes primary, rest secondary
-  master_locations = [for i in range(var.master_count) : i < 2 ? var.location_primary : var.location_secondary]
-  worker_locations = [for i in range(var.worker_count) : i < 2 ? var.location_primary : var.location_secondary]
+  # Multi-AZ distribution: even split across zones for etcd quorum safety.
+  # With 4 masters (2+2) losing one AZ still leaves 2 nodes = etcd quorum survives.
+  # With 3 workers distributed round-robin across zones.
+  master_locations = [for i in range(var.master_count) : i % 2 == 0 ? var.location_primary : var.location_secondary]
+  worker_locations = [for i in range(var.worker_count) : i % 2 == 0 ? var.location_primary : var.location_secondary]
 
   # First master gets a static private IP for other nodes to join
   first_master_private_ip = "10.0.1.10"
@@ -249,7 +251,7 @@ secrets-encryption: true
 ${var.enable_oidc ? <<-OIDCEOF
 kube-apiserver-arg:
   - "oidc-issuer-url=https://${local.keycloak_host}/realms/haven"
-  - "oidc-client-id=kubernetes"
+  - "oidc-client-id=${var.keycloak_oidc_client_id}"
   - "oidc-username-claim=preferred_username"
   - "oidc-groups-claim=groups"
   - "oidc-username-prefix=oidc:"
@@ -354,7 +356,7 @@ secrets-encryption: true
 ${var.enable_oidc ? <<-OIDCEOF
 kube-apiserver-arg:
   - "oidc-issuer-url=https://${local.keycloak_host}/realms/haven"
-  - "oidc-client-id=kubernetes"
+  - "oidc-client-id=${var.keycloak_oidc_client_id}"
   - "oidc-username-claim=preferred_username"
   - "oidc-groups-claim=groups"
   - "oidc-username-prefix=oidc:"
