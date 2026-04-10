@@ -84,6 +84,7 @@ jobs:
         with:
           sarif_file: api/bandit.sarif
           category: bandit
+        continue-on-error: true
 
   ts-quality:
     name: TypeScript (knip dead code)
