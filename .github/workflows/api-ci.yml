@@ -48,22 +48,24 @@ jobs:
     defaults:
       run:
         working-directory: api
-    services:
-      postgres:
-        image: postgres:16
-        env:
-          POSTGRES_USER: haven
-          POSTGRES_PASSWORD: haven
-          POSTGRES_DB: haven_platform
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
     steps:
       - uses: actions/checkout@v4
+
+      - name: Start PostgreSQL (Docker)
+        run: |
+          docker rm -f haven-test-pg 2>/dev/null || true
+          docker run -d --name haven-test-pg \
+            -e POSTGRES_USER=haven \
+            -e POSTGRES_PASSWORD=haven \
+            -e POSTGRES_DB=haven_platform \
+            -p 5432:5432 \
+            postgres:16
+          # Wait for PostgreSQL to be ready
+          for i in $(seq 1 30); do
+            docker exec haven-test-pg pg_isready -U haven && break
+            sleep 1
+          done
+        working-directory: .
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -80,6 +82,11 @@ jobs:
           K8S_INCLUSTER: "false"
           DEBUG: "true"
         run: pytest tests/ -v --tb=short
+
+      - name: Cleanup PostgreSQL
+        if: always()
+        run: docker rm -f haven-test-pg 2>/dev/null || true
+        working-directory: .
 
   build-and-push:
     name: Build & Push
