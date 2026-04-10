@@ -14,7 +14,9 @@
     ],
     "additionalDirectories": [
       "/Users/gaskin/Desktop/gokhan_askin/GitHub/InfraForge-Haven",
-      "/tmp"
+      "/tmp",
+      "C:\\Users\\gokhan.askin\\Documents\\InfraForge-Haven\\.claude",
+      "C:\\Users\\gokhan.askin\\.claude"
     ]
   }
 }
