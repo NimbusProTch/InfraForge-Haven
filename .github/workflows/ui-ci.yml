@@ -20,7 +20,7 @@ env:
 jobs:
   lint-and-build:
     name: Lint & Build
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, haven]
     defaults:
       run:
         working-directory: ui
@@ -57,7 +57,7 @@ jobs:
 
   build-and-push:
     name: Build & Push Docker Image
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, haven]
     needs: lint-and-build
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     outputs:
@@ -101,7 +101,7 @@ jobs:
 
   update-manifest:
     name: Update Deployment Manifest
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, haven]
     needs: build-and-push
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     steps:
