@@ -59,6 +59,26 @@ variable "os_image" {
   default     = "ubuntu-22.04"
 }
 
+# ===== CI Runner =====
+variable "enable_ci_runner" {
+  description = "Deploy a self-hosted GitHub Actions runner on Hetzner (€4.49/mo CX22)"
+  type        = bool
+  default     = true
+}
+
+variable "ci_runner_server_type" {
+  description = "Hetzner server type for CI runner"
+  type        = string
+  default     = "cx22" # 2 vCPU, 4GB RAM — enough for lint+test+build
+}
+
+variable "github_runner_token" {
+  description = "GitHub Actions runner registration token (from repo Settings → Actions → Runners → New)"
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
 # ===== Network =====
 variable "network_cidr" {
   description = "Private network CIDR"

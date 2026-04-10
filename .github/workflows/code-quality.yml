@@ -30,7 +30,7 @@ permissions:
 jobs:
   python-quality:
     name: Python (bandit + vulture + xenon + mypy)
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, haven]
     defaults:
       run:
         working-directory: api
@@ -88,7 +88,7 @@ jobs:
 
   ts-quality:
     name: TypeScript (knip dead code)
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, haven]
     defaults:
       run:
         working-directory: ui
@@ -112,7 +112,7 @@ jobs:
 
   security-scan:
     name: Security (semgrep + trufflehog + trivy)
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, haven]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -168,7 +168,7 @@ jobs:
 
   iac-quality:
     name: IaC (tflint + trivy config)
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, haven]
     steps:
       - uses: actions/checkout@v4
 
