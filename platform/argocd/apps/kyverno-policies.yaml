@@ -1,10 +1,10 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: haven-ui
+  name: kyverno-policies
   namespace: argocd
   labels:
-    haven.io/component: ui
+    haven.io/component: policy-engine
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:
@@ -12,21 +12,13 @@ spec:
   source:
     repoURL: https://github.com/NimbusProTch/InfraForge-Haven
     targetRevision: main
-    path: platform/manifests/haven-ui
+    path: platform/kyverno-policies
   destination:
     server: https://kubernetes.default.svc
-    namespace: haven-system
-  ignoreDifferences:
-    - group: gateway.networking.k8s.io
-      kind: HTTPRoute
-      jsonPointers:
-        - /spec/parentRefs
+    namespace: kyverno-system
   syncPolicy:
     automated:
       prune: true
       selfHeal: true
     syncOptions:
-      - CreateNamespace=true
       - ServerSideApply=true
-      - ServerSideDiff=true
-      - RespectIgnoreDifferences=true

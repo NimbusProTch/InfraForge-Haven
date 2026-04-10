@@ -1,0 +1,99 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: kyverno
+  namespace: argocd
+  labels:
+    haven.io/component: policy-engine
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://kyverno.github.io/kyverno
+    chart: kyverno
+    targetRevision: 3.3.4
+    helm:
+      releaseName: kyverno
+      values: |
+        # HA: 3 replicas for webhook availability (342 municipalities SLA)
+        admissionController:
+          replicas: 3
+          podDisruptionBudget:
+            minAvailable: 2
+          resources:
+            requests:
+              cpu: 200m
+              memory: 512Mi
+            limits:
+              memory: 2Gi
+
+        backgroundController:
+          replicas: 2
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              memory: 1Gi
+
+        cleanupController:
+          replicas: 1
+
+        reportsController:
+          replicas: 1
+
+        # Failure mode: fail-secure (deny pods if webhook is down)
+        config:
+          webhooks:
+            - failurePolicy: Fail
+              timeoutSeconds: 10
+              namespaceSelector:
+                matchExpressions:
+                  - key: kubernetes.io/metadata.name
+                    operator: NotIn
+                    values:
+                      # System namespaces — must NOT be policy-gated
+                      - kyverno-system
+                      - kube-system
+                      - kube-public
+                      - kube-node-lease
+                      - default
+                      # Platform services — need privileged access
+                      - argocd
+                      - haven-system
+                      - haven-builds
+                      - haven-gateway
+                      - longhorn-system
+                      - cert-manager
+                      - monitoring
+                      - logging
+                      - harbor-system
+                      - minio-system
+                      - gitea-system
+                      - keycloak
+                      - cnpg-system
+                      # Managed DB operators
+                      - everest
+                      - everest-system
+                      - everest-olm
+                      - everest-monitoring
+                      - redis-system
+                      - rabbitmq-system
+          excludeKyvernoNamespace: true
+
+        # Enable PolicyReport CRD for compliance audit trail
+        features:
+          policyExceptions:
+            enabled: true
+            namespace: kyverno-system
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: kyverno-system
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true

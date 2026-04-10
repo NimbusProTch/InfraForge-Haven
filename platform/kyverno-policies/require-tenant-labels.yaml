@@ -1,0 +1,52 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-tenant-labels
+  annotations:
+    policies.kyverno.io/title: Require and Inject Tenant Labels
+    policies.kyverno.io/category: Multi-Tenancy
+    policies.kyverno.io/severity: medium
+    policies.kyverno.io/description: >-
+      All workloads in tenant namespaces must carry a haven.io/tenant label.
+      If missing, it is automatically injected from the namespace name
+      (tenant-{slug} → slug). This ensures Loki/Prometheus tenant isolation
+      and enables per-tenant monitoring dashboards.
+spec:
+  validationFailureAction: Audit
+  background: true
+  rules:
+    - name: inject-tenant-label
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+                - Deployment
+                - StatefulSet
+                - Job
+                - CronJob
+              namespaceSelector:
+                matchLabels:
+                  haven.io/managed: "true"
+      mutate:
+        patchStrategicMerge:
+          metadata:
+            labels:
+              haven.io/tenant: "{{ request.namespace | replace_all(@, 'tenant-', '') }}"
+    - name: validate-tenant-label-present
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+                - Deployment
+                - StatefulSet
+              namespaceSelector:
+                matchLabels:
+                  haven.io/managed: "true"
+      validate:
+        message: "All workloads in tenant namespaces must have a haven.io/tenant label."
+        pattern:
+          metadata:
+            labels:
+              haven.io/tenant: "?*"
