@@ -367,7 +367,7 @@ class BuildService:
 
         buildctl_container = k8s_client_lib.V1Container(
             name="buildctl",
-            image="moby/buildkit:latest",
+            image="moby/buildkit:rootless",
             command=["buildctl"],
             args=[
                 "--addr",
