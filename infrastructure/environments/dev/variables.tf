@@ -551,3 +551,12 @@ variable "keycloak_oidc_client_id" {
   type        = string
   default     = "haven-kubectl"
 }
+
+# H1d/H1e gap fix (added 2026-04-10 for destroy): #87 "variables cleanup"
+# removed var.cnpg_version but main.tf:903 still references it.
+# Default matches the version in the live cluster (helm_release.cnpg).
+variable "cnpg_version" {
+  description = "CloudNativePG operator helm chart version"
+  type        = string
+  default     = "0.22.1"
+}
