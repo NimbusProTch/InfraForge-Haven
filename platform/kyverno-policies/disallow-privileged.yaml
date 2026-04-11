@@ -1,0 +1,84 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: disallow-privileged-containers
+  annotations:
+    policies.kyverno.io/title: Disallow Privileged Containers
+    policies.kyverno.io/category: Pod Security
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/description: >-
+      Tenant pods must not run as privileged, root, or with dangerous
+      capabilities. Complements PSA restricted profile with explicit validation.
+spec:
+  validationFailureAction: Audit
+  background: true
+  rules:
+    - name: disallow-privileged
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              namespaceSelector:
+                matchLabels:
+                  haven.io/managed: "true"
+      validate:
+        message: "Privileged containers are not allowed in tenant namespaces."
+        pattern:
+          spec:
+            containers:
+              - securityContext:
+                  privileged: false
+    - name: require-run-as-non-root
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              namespaceSelector:
+                matchLabels:
+                  haven.io/managed: "true"
+      validate:
+        message: "Containers must run as non-root (runAsNonRoot: true)."
+        pattern:
+          spec:
+            =(securityContext):
+              =(runAsNonRoot): true
+            containers:
+              - =(securityContext):
+                  =(runAsNonRoot): true
+    - name: disallow-host-path
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              namespaceSelector:
+                matchLabels:
+                  haven.io/managed: "true"
+      validate:
+        message: "hostPath volumes are not allowed in tenant namespaces."
+        deny:
+          conditions:
+            any:
+              - key: "{{ request.object.spec.volumes[?hostPath].length(@) }}"
+                operator: GreaterThan
+                value: 0
+    - name: drop-all-capabilities
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              namespaceSelector:
+                matchLabels:
+                  haven.io/managed: "true"
+      validate:
+        message: "Containers must drop ALL capabilities."
+        pattern:
+          spec:
+            containers:
+              - securityContext:
+                  capabilities:
+                    drop:
+                      - ALL

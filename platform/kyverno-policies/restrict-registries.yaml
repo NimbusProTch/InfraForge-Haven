@@ -1,0 +1,49 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: restrict-image-registries
+  annotations:
+    policies.kyverno.io/title: Restrict Image Registries
+    policies.kyverno.io/category: Supply Chain Security
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/description: >-
+      Tenant workloads may only pull images from the Haven Harbor registry.
+      This prevents supply chain attacks via untrusted public registries.
+spec:
+  validationFailureAction: Audit
+  background: true
+  rules:
+    - name: validate-container-registries
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              namespaceSelector:
+                matchLabels:
+                  haven.io/managed: "true"
+      validate:
+        message: >-
+          Image '{{request.object.spec.containers[*].image}}' is not from an
+          approved registry. Only images from Harbor (harbor.46.225.42.2.sslip.io)
+          are allowed in tenant namespaces.
+        pattern:
+          spec:
+            containers:
+              - image: "harbor.46.225.42.2.sslip.io/*"
+    - name: validate-init-container-registries
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              namespaceSelector:
+                matchLabels:
+                  haven.io/managed: "true"
+      validate:
+        message: >-
+          Init container image is not from an approved registry.
+        pattern:
+          spec:
+            =(initContainers):
+              - image: "harbor.46.225.42.2.sslip.io/* | alpine:* | busybox:*"
