@@ -13,6 +13,7 @@ from app.models.application import Application
 from app.models.deployment import Deployment, DeploymentStatus
 from app.models.environment import Environment, EnvironmentStatus, EnvironmentType
 from app.models.tenant import Tenant
+from app.rate_limit import RATE_WEBHOOK, limiter
 from app.routers.environments import _compute_domain, _compute_namespace
 from app.services.pipeline import run_pipeline
 
@@ -42,6 +43,7 @@ def _verify_github_signature(body: bytes, secret: str, signature_header: str | N
 
 
 @router.post("/github/{webhook_token}", status_code=status.HTTP_202_ACCEPTED)
+@limiter.limit(RATE_WEBHOOK)
 async def github_webhook(
     webhook_token: str,
     request: Request,
@@ -371,6 +373,7 @@ def _verify_gitea_signature(body: bytes, secret: str, signature_header: str | No
 
 
 @router.post("/gitea/{webhook_token}", status_code=status.HTTP_202_ACCEPTED)
+@limiter.limit(RATE_WEBHOOK)
 async def gitea_webhook(
     webhook_token: str,
     request: Request,
