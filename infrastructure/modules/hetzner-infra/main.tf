@@ -97,6 +97,15 @@ resource "hcloud_firewall" "haven" {
     port       = "8472"
     source_ips = ["0.0.0.0/0", "::/0"]
   }
+
+  # NodePort range for gateway proxy (LB uses private IP, bypasses firewall,
+  # but Hetzner health checks come from public — need this for HC to pass)
+  rule {
+    direction  = "in"
+    protocol   = "tcp"
+    port       = "30000-32767"
+    source_ips = ["0.0.0.0/0", "::/0"]
+  }
 }
 
 # --- Load Balancer (K8s API + HTTP/S Ingress) ---
@@ -119,18 +128,36 @@ resource "hcloud_load_balancer_service" "k8s_api" {
   destination_port = 6443
 }
 
-# HTTP service (Gateway API / ACME)
+# HTTP service → nginx proxy NodePort
+# Chain: LB:80 → node:NodePort → nginx proxy pod → Cilium Gateway ClusterIP
+# Health check must probe destination_port, NOT listen_port (Hetzner defaults to listen_port)
 resource "hcloud_load_balancer_service" "http" {
   load_balancer_id = hcloud_load_balancer.haven.id
   protocol         = "tcp"
   listen_port      = 80
-  destination_port = 80
+  destination_port = var.gateway_http_nodeport
+
+  health_check {
+    protocol = "tcp"
+    port     = var.gateway_http_nodeport
+    interval = 15
+    timeout  = 10
+    retries  = 3
+  }
 }
 
-# HTTPS service (Gateway API TLS termination)
+# HTTPS service → Cilium Gateway NodePort (TLS terminated by Cilium Envoy)
 resource "hcloud_load_balancer_service" "https" {
   load_balancer_id = hcloud_load_balancer.haven.id
   protocol         = "tcp"
   listen_port      = 443
-  destination_port = 443
+  destination_port = var.gateway_https_nodeport
+
+  health_check {
+    protocol = "tcp"
+    port     = var.gateway_https_nodeport
+    interval = 15
+    timeout  = 10
+    retries  = 3
+  }
 }

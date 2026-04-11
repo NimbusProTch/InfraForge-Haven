@@ -73,7 +73,9 @@ module "hetzner_infra" {
   # H1b-1 (P4.1): operator IP allow-list for SSH 22, K8s API 6443, RKE2
   # supervisor 9345. Pre-fix all three were 0.0.0.0/0. Set this in
   # terraform.tfvars (NOT here) to your VPN/office egress CIDRs.
-  operator_cidrs = var.operator_cidrs
+  operator_cidrs         = var.operator_cidrs
+  gateway_http_nodeport  = 80   # nginx DaemonSet hostPort (gateway-api.yaml)
+  gateway_https_nodeport = 443  # nginx DaemonSet hostPort (gateway-api.yaml)
 }
 
 # --- 3. RKE2 Cluster Config (cloud-init generation) ---
