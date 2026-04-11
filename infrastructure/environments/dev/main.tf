@@ -284,14 +284,11 @@ spec:
         enabled: true
     ipam:
       mode: kubernetes
-    ${var.enable_wireguard_encryption ? <<-WGEOF
     encryption:
-      enabled: true
+      enabled: ${var.enable_wireguard_encryption ? "true" : "false"}
       type: wireguard
       wireguard:
         userspaceFallback: true
-    WGEOF
-: ""}
     tolerations:
       - operator: Exists
 CILEOF
