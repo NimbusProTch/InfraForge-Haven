@@ -105,23 +105,21 @@ jobs:
         id: sha
         run: echo "short=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
 
-      - name: Log in to Harbor
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ secrets.HARBOR_USER }}
-          password: ${{ secrets.HARBOR_PASSWORD }}
-
-      - name: Build and push
+      - name: Build and push with crane
         id: build
         run: |
           TAG="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.sha.outputs.short }}"
           LATEST="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest"
-          docker build --platform linux/amd64 -t "$TAG" -t "$LATEST" -f api/Dockerfile api
-          docker push "$TAG"
-          docker push "$LATEST"
-          # Extract digest for manifest pinning
-          DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' "$TAG" | cut -d@ -f2)
+          # Build image
+          docker build --platform linux/amd64 -t "$TAG" -f api/Dockerfile api
+          # Login + push via crane (handles insecure HTTP registries)
+          crane auth login ${{ env.REGISTRY }} -u ${{ secrets.HARBOR_USER }} -p ${{ secrets.HARBOR_PASSWORD }} --insecure
+          docker save "$TAG" -o /tmp/haven-api.tar
+          crane push /tmp/haven-api.tar "$TAG" --insecure
+          crane push /tmp/haven-api.tar "$LATEST" --insecure
+          rm -f /tmp/haven-api.tar
+          # Get digest for manifest pinning
+          DIGEST=$(crane digest "$TAG" --insecure)
           echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
 
   update-manifest:
