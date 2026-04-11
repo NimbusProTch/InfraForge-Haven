@@ -41,3 +41,4 @@ variable "operator_cidrs" {
   type        = list(string)
   default     = ["0.0.0.0/0", "::/0"]   # H1b-1 morning TODO: replace with operator IPs
 }
+

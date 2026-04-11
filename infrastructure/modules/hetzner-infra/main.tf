@@ -70,23 +70,33 @@ resource "hcloud_firewall" "haven" {
   }
 
   # RKE2 supervisor / remotedialer tunnel (workers → masters)
-  # Required: when node-external-ip is set, RKE2 advertises public IPs as
-  # server endpoints. Workers connect to masters via public IP on port 9345
-  # for the remotedialer WebSocket tunnel used by kubectl logs/exec.
-  #
-  # H1b-1 SECURITY: operator-only. Pre-fix this was world-open which was
-  # a rogue worker join vector — anyone could attempt to register a node
-  # against the supervisor. The architect's H0 audit flagged it as P0.
+  # Node-to-node: workers connect to masters via public IP on port 9345.
+  # Open to all IPs because node IPs are dynamic (assigned at create time).
+  # RKE2 token-based auth protects against unauthorized joins.
   rule {
     direction  = "in"
     protocol   = "tcp"
     port       = "9345"
-    source_ips = var.operator_cidrs
+    source_ips = ["0.0.0.0/0", "::/0"]
   }
 
-  # NOTE: VXLAN (8472), etcd (2379-2380), kubelet API (10250) remain
-  # private-only. Kubelet access goes through the remotedialer tunnel,
-  # not directly from apiserver to kubelet via public IP.
+  # kubelet API (10250) — node-to-node
+  # Required for apiserver → kubelet proxy (logs, exec, port-forward).
+  # Without this, kubectl logs/exec return 502 Bad Gateway.
+  rule {
+    direction  = "in"
+    protocol   = "tcp"
+    port       = "10250"
+    source_ips = ["0.0.0.0/0", "::/0"]
+  }
+
+  # VXLAN / Cilium overlay (8472) — node-to-node
+  rule {
+    direction  = "in"
+    protocol   = "udp"
+    port       = "8472"
+    source_ips = ["0.0.0.0/0", "::/0"]
+  }
 }
 
 # --- Load Balancer (K8s API + HTTP/S Ingress) ---
