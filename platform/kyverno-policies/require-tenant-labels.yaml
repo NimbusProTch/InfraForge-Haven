@@ -32,7 +32,7 @@ spec:
         patchStrategicMerge:
           metadata:
             labels:
-              haven.io/tenant: "{{ replace('{{request.namespace}}', 'tenant-', '') }}"
+              haven.io/tenant: "{{ trim_prefix('{{request.namespace}}', 'tenant-') }}"
     - name: validate-tenant-label-present
       match:
         any:
