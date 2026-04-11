@@ -12,7 +12,7 @@ metadata:
       (tenant-{slug} → slug). This ensures Loki/Prometheus tenant isolation
       and enables per-tenant monitoring dashboards.
 spec:
-  validationFailureAction: Audit
+  validationFailureAction: Enforce
   background: true
   rules:
     - name: inject-tenant-label

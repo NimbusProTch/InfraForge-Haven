@@ -11,7 +11,7 @@ metadata:
       and readiness probes for graceful rolling updates and automatic restart
       on failure. Jobs and CronJobs are exempt.
 spec:
-  validationFailureAction: Audit
+  validationFailureAction: Enforce
   background: true
   rules:
     - name: require-liveness-probe
