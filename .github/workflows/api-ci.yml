@@ -1,6 +1,7 @@
 name: API CI
 
 on:
+  workflow_dispatch:
   push:
     branches: [main, "feature/**"]
     paths:
@@ -93,7 +94,7 @@ jobs:
     runs-on: [self-hosted, haven]
     needs: [lint, test]
     # Only push on main branch
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     outputs:
       digest: ${{ steps.build.outputs.digest }}
       short_sha: ${{ steps.sha.outputs.short }}
@@ -135,7 +136,7 @@ jobs:
     name: Update Deployment Manifest
     runs-on: [self-hosted, haven]
     needs: build-and-push
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     steps:
       - uses: actions/checkout@v4
         with:
