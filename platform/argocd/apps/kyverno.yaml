@@ -43,44 +43,40 @@ spec:
         reportsController:
           replicas: 1
 
-        # Failure mode: fail-secure (deny pods if webhook is down)
+        # Namespace exclusions — system namespaces skip policy enforcement
         config:
-          webhooks:
-            - failurePolicy: Fail
-              timeoutSeconds: 10
-              namespaceSelector:
-                matchExpressions:
-                  - key: kubernetes.io/metadata.name
-                    operator: NotIn
-                    values:
-                      # System namespaces — must NOT be policy-gated
-                      - kyverno-system
-                      - kube-system
-                      - kube-public
-                      - kube-node-lease
-                      - default
-                      # Platform services — need privileged access
-                      - argocd
-                      - haven-system
-                      - haven-builds
-                      - haven-gateway
-                      - longhorn-system
-                      - cert-manager
-                      - monitoring
-                      - logging
-                      - harbor-system
-                      - minio-system
-                      - gitea-system
-                      - keycloak
-                      - cnpg-system
-                      # Managed DB operators
-                      - everest
-                      - everest-system
-                      - everest-olm
-                      - everest-monitoring
-                      - redis-system
-                      - rabbitmq-system
           excludeKyvernoNamespace: true
+          webhooks:
+            failurePolicy: Fail
+            namespaceSelector:
+              matchExpressions:
+                - key: kubernetes.io/metadata.name
+                  operator: NotIn
+                  values:
+                    - kyverno-system
+                    - kube-system
+                    - kube-public
+                    - kube-node-lease
+                    - default
+                    - argocd
+                    - haven-system
+                    - haven-builds
+                    - haven-gateway
+                    - longhorn-system
+                    - cert-manager
+                    - monitoring
+                    - logging
+                    - harbor-system
+                    - minio-system
+                    - gitea-system
+                    - keycloak
+                    - cnpg-system
+                    - everest
+                    - everest-system
+                    - everest-olm
+                    - everest-monitoring
+                    - redis-system
+                    - rabbitmq-system
 
         # Enable PolicyReport CRD for compliance audit trail
         features:
