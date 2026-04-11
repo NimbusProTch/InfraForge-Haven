@@ -21,6 +21,11 @@ def _generate_webhook_token() -> str:
     return secrets.token_hex(32)
 
 
+class GitProvider(PyEnum):
+    GITHUB = "github"
+    GITEA = "gitea"
+
+
 class AppType(PyEnum):
     WEB = "web"
     WORKER = "worker"
@@ -40,7 +45,13 @@ class Application(Base, TimestampMixin):
     image_tag: Mapped[str | None] = mapped_column(String(512), nullable=True)
     replicas: Mapped[int] = mapped_column(default=1)
     port: Mapped[int] = mapped_column(default=8000)
-    # Unique token used to route GitHub webhooks to this application
+    # Git source provider (github or gitea)
+    git_provider: Mapped[str] = mapped_column(
+        Enum(GitProvider, values_callable=lambda e: [x.value for x in e]),
+        default=GitProvider.GITHUB.value,
+    )
+
+    # Unique token used to route GitHub/Gitea webhooks to this application
     webhook_token: Mapped[str] = mapped_column(String(64), unique=True, index=True, default=_generate_webhook_token)
 
     # Sprint 3: Monorepo support

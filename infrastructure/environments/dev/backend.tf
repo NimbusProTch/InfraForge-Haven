@@ -15,24 +15,27 @@
 # DO NOT commit S3 credentials. Use environment variables or ~/.aws/credentials.
 # DO NOT use the in-cluster MinIO — cluster dies → state lost → unmanageable.
 
+# TODO: migrate to S3 after Hetzner Object Storage bucket is created
+# terraform {
+#   backend "s3" {
+#     bucket = "haven-tfstate-dev"
+#     key    = "dev/terraform.tfstate"
+#     endpoints = {
+#       s3 = "https://fsn1.your-objectstorage.com"
+#     }
+#     region = "eu-central"
+#     skip_credentials_validation = true
+#     skip_metadata_api_check     = true
+#     skip_region_validation      = true
+#     skip_requesting_account_id  = true
+#     skip_s3_checksum            = true
+#     use_path_style              = true
+#   }
+# }
+
+# Local backend until Hetzner S3 bucket is provisioned
 terraform {
-  backend "s3" {
-    bucket = "haven-tfstate-dev"
-    key    = "dev/terraform.tfstate"
-
-    # Hetzner Object Storage endpoint (Falkenstein)
-    # https://docs.hetzner.com/storage/object-storage/overview
-    endpoints = {
-      s3 = "https://fsn1.your-objectstorage.com"
-    }
-
-    region = "eu-central"
-
-    # Required for non-AWS S3 endpoints
-    skip_credentials_validation = true
-    skip_metadata_api_check     = true
-    skip_region_validation      = true
-    skip_requesting_account_id  = true
-    use_path_style              = true
+  backend "local" {
+    path = "terraform.tfstate"
   }
 }

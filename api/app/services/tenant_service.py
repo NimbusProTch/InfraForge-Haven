@@ -164,6 +164,18 @@ class TenantService:
         await self._create_applicationset(slug)
         lifecycle_bus.emit(bus_key, "appset", "done", f"ApplicationSet appset-{slug} created")
 
+        # Sprint 3: Create Gitea org for tenant's internal git repos
+        lifecycle_bus.emit(bus_key, "gitea-org", "running", "Creating Gitea organization")
+        try:
+            from app.services.gitea_client import gitea_client
+
+            org_name = f"tenant-{slug}"
+            await gitea_client.ensure_org(org_name)
+            lifecycle_bus.emit(bus_key, "gitea-org", "done", f"Gitea org '{org_name}' created")
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Gitea org creation failed for tenant %s (non-fatal): %s", slug, exc)
+            lifecycle_bus.emit(bus_key, "gitea-org", "done", f"Gitea org creation skipped (non-fatal): {exc}")
+
         # H1a-2: create the three Keycloak groups (`tenant_{slug}_admin`,
         # `_developer`, `_viewer`) so that tenant admins can obtain Keycloak
         # tokens carrying the `groups` claim that kube-apiserver matches
@@ -251,6 +263,18 @@ class TenantService:
                     "failed",
                     f"Keycloak group cleanup failed: {exc}",
                 )
+
+        # Sprint 3: delete Gitea org for tenant
+        if slug:
+            lifecycle_bus.emit(bus_key, "gitea-org-delete", "running", "Deleting Gitea organization")
+            try:
+                from app.services.gitea_client import gitea_client
+
+                await gitea_client.delete_org(f"tenant-{slug}")
+                lifecycle_bus.emit(bus_key, "gitea-org-delete", "done", "Gitea org deleted")
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Gitea org cleanup failed for tenant %s: %s", slug, exc)
+                lifecycle_bus.emit(bus_key, "gitea-org-delete", "done", f"Gitea org cleanup skipped: {exc}")
 
         lifecycle_bus.mark_done(bus_key, success=True, message=f"Tenant {slug or namespace} deprovisioned")
 

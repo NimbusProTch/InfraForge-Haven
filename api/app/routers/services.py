@@ -9,13 +9,14 @@ been removed. Endpoints that write audit log entries still take
 import base64
 import logging
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Request, status
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
 from app.deps import CurrentUser, DBSession, K8sDep, TenantMembership
 from app.models.application import Application
 from app.models.managed_service import ManagedService, ServiceStatus, ServiceTier
+from app.rate_limit import RATE_SERVICE_PROVISION, limiter
 from app.schemas.managed_service import (
     ConnectedAppSummary,
     ManagedServiceCreate,
@@ -73,7 +74,9 @@ async def list_services(
 
 
 @router.post("", response_model=ManagedServiceResponse, status_code=status.HTTP_201_CREATED)
+@limiter.limit(RATE_SERVICE_PROVISION)
 async def create_service(
+    request: Request,
     tenant_slug: str,  # noqa: ARG001 — used by TenantMembership dep, kept for OpenAPI
     body: ManagedServiceCreate,
     db: DBSession,

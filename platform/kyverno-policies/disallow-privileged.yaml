@@ -10,7 +10,7 @@ metadata:
       Tenant pods must not run as privileged, root, or with dangerous
       capabilities. Complements PSA restricted profile with explicit validation.
 spec:
-  validationFailureAction: Audit
+  validationFailureAction: Enforce
   background: true
   rules:
     - name: disallow-privileged

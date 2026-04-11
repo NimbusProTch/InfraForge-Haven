@@ -10,7 +10,7 @@ metadata:
       Tenant workloads may only pull images from the Haven Harbor registry.
       This prevents supply chain attacks via untrusted public registries.
 spec:
-  validationFailureAction: Audit
+  validationFailureAction: Enforce
   background: true
   rules:
     - name: validate-container-registries

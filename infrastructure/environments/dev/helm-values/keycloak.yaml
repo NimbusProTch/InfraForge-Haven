@@ -4,7 +4,8 @@ image:
   tag: "26.1"
 command:
   - "/opt/keycloak/bin/kc.sh"
-  - "start"
+  - "start-dev"
+  - "--cache=local"
   - "--hostname=${keycloak_host}"
   - "--hostname-strict=false"
   - "--http-enabled=true"

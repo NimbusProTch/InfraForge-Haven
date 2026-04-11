@@ -73,7 +73,9 @@ module "hetzner_infra" {
   # H1b-1 (P4.1): operator IP allow-list for SSH 22, K8s API 6443, RKE2
   # supervisor 9345. Pre-fix all three were 0.0.0.0/0. Set this in
   # terraform.tfvars (NOT here) to your VPN/office egress CIDRs.
-  operator_cidrs = var.operator_cidrs
+  operator_cidrs         = var.operator_cidrs
+  gateway_http_nodeport  = 80   # nginx DaemonSet hostPort (gateway-api.yaml)
+  gateway_https_nodeport = 443  # nginx DaemonSet hostPort (gateway-api.yaml)
 }
 
 # --- 3. RKE2 Cluster Config (cloud-init generation) ---
@@ -284,14 +286,11 @@ spec:
         enabled: true
     ipam:
       mode: kubernetes
-    ${var.enable_wireguard_encryption ? <<-WGEOF
     encryption:
-      enabled: true
+      enabled: ${var.enable_wireguard_encryption ? "true" : "false"}
       type: wireguard
       wireguard:
         userspaceFallback: true
-    WGEOF
-: ""}
     tolerations:
       - operator: Exists
 CILEOF
@@ -537,7 +536,16 @@ resource "ssh_resource" "namespace_security_labels" {
           pod-security.kubernetes.io/warn=privileged \
           --overwrite
       done
-      echo "All system namespaces labeled privileged"
+
+      # Everest Helm chart expects to own these namespaces — add Helm labels
+      for NS in everest everest-monitoring everest-olm; do
+        $K label namespace $NS app.kubernetes.io/managed-by=Helm --overwrite
+        $K annotate namespace $NS \
+          meta.helm.sh/release-name=everest \
+          meta.helm.sh/release-namespace=everest-system \
+          --overwrite
+      done
+      echo "All system namespaces labeled privileged + Everest Helm labels"
     EOT
   ]
 

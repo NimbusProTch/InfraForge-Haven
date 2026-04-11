@@ -21,6 +21,7 @@ from app.models.deployment import Deployment  # noqa: F401 — ensures table cre
 from app.models.tenant import Tenant
 from app.models.tenant_member import TenantMember  # noqa: F401 — ensures table created
 from app.models.token_revocation import TokenRevocation  # noqa: F401 — Sprint H2 P9
+from app.rate_limit import limiter
 
 TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
 
@@ -30,6 +31,14 @@ TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
 # in webhook tests. Each test that needs to verify pipeline behaviour can
 # re-patch locally.
 # ---------------------------------------------------------------------------
+
+
+@pytest.fixture(autouse=True)
+def _disable_rate_limiter():
+    """Disable rate limiting in tests to prevent false failures."""
+    limiter.enabled = False
+    yield
+    limiter.enabled = True
 
 
 @pytest.fixture(autouse=True)

@@ -7,12 +7,12 @@ from datetime import UTC
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
-from slowapi.util import get_remote_address
 
 from app.config import settings
 from app.k8s.client import k8s_client
+from app.rate_limit import limiter
 from app.routers import (
     applications,
     audit,
@@ -28,6 +28,7 @@ from app.routers import (
     events,
     gdpr,
     gitea,
+    gitea_repos,
     github,
     health,
     members,
@@ -43,10 +44,7 @@ from app.routers import (
 logging.basicConfig(level=logging.DEBUG if settings.debug else logging.INFO)
 logger = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
-# Rate limiter
-# ---------------------------------------------------------------------------
-limiter = Limiter(key_func=get_remote_address, default_limits=["200/minute"])
+# Rate limiter imported from app.rate_limit
 
 
 async def _auto_connect_pending_services(db: object, svc: object, tenant: object) -> None:
@@ -335,6 +333,7 @@ app.include_router(cronjobs.router, prefix=settings.api_prefix)
 app.include_router(pvcs.router, prefix=settings.api_prefix)
 app.include_router(clusters.router, prefix=settings.api_prefix)
 app.include_router(gitea.router, prefix=settings.api_prefix)
+app.include_router(gitea_repos.router, prefix=settings.api_prefix)
 app.include_router(queue_status.router, prefix=settings.api_prefix)
 app.include_router(build_queue.router, prefix=settings.api_prefix)
 app.include_router(events.router, prefix=settings.api_prefix)

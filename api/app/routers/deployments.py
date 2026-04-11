@@ -11,7 +11,7 @@ import asyncio
 import logging
 import uuid
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, status
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, Request, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select
@@ -20,6 +20,7 @@ from app.config import settings
 from app.deps import ArgoCDDep, CurrentUser, DBSession, GitOpsDep, K8sDep, TenantMembership, get_session_factory
 from app.models.application import Application
 from app.models.deployment import Deployment, DeploymentStatus
+from app.rate_limit import RATE_BUILD, limiter
 from app.schemas.deployment import DeploymentResponse
 from app.services.audit_service import audit
 from app.services.deploy_service import DeployService, get_service_secret_names
@@ -202,7 +203,9 @@ class DeployRequest(BaseModel):
 
 
 @router.post("/build", response_model=DeploymentResponse, status_code=status.HTTP_202_ACCEPTED)
+@limiter.limit(RATE_BUILD)
 async def trigger_build(
+    request: Request,
     tenant_slug: str,
     app_slug: str,
     db: DBSession,

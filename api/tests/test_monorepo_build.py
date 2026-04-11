@@ -359,3 +359,33 @@ def test_build_job_docker_config_non_root_path():
     assert docker_mount[0].read_only is True
     # Must NOT use /root/.docker (root user path)
     assert "/root/" not in docker_mount[0].mount_path
+
+
+def test_build_job_containers_drop_all_capabilities():
+    """All containers (init + main) must drop ALL capabilities."""
+    k8s = MagicMock()
+    svc = BuildService(k8s)
+    job = svc._build_job_manifest(
+        job_name="build-cap-abc123-def456",
+        namespace="haven-builds",
+        app_slug="cap-app",
+        repo_url="https://github.com/org/repo",
+        branch="main",
+        commit_sha="abc12345",
+        image_name="harbor.example.com/test/app:abc12345",
+    )
+    # Check main buildctl container
+    buildctl = job.spec.template.spec.containers[0]
+    assert buildctl.security_context is not None, "buildctl container must have security_context"
+    assert buildctl.security_context.capabilities is not None, "buildctl must have capabilities"
+    assert "ALL" in buildctl.security_context.capabilities.drop, "buildctl must drop ALL capabilities"
+    assert buildctl.security_context.allow_privilege_escalation is False
+
+    # Check init containers
+    for init_c in job.spec.template.spec.init_containers:
+        assert init_c.security_context is not None, f"init container '{init_c.name}' must have security_context"
+        assert init_c.security_context.capabilities is not None, (
+            f"init container '{init_c.name}' must have capabilities"
+        )
+        assert "ALL" in init_c.security_context.capabilities.drop, f"init container '{init_c.name}' must drop ALL"
+        assert init_c.security_context.allow_privilege_escalation is False

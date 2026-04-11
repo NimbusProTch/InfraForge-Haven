@@ -13,7 +13,7 @@ This is the FINAL H3e migration. All 14 routers now use TenantMembership.
 
 import logging
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Request, status
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
@@ -22,6 +22,7 @@ from app.deps import CurrentUser, DBSession, K8sDep, TenantMembership
 from app.models.managed_service import ManagedService
 from app.models.tenant import Tenant
 from app.models.tenant_member import MemberRole, TenantMember
+from app.rate_limit import RATE_TENANT_CREATE, limiter
 from app.schemas.tenant import TenantCreate, TenantResponse, TenantUpdate
 from app.services.audit_service import audit
 from app.services.gitops_scaffold import gitops_scaffold
@@ -97,7 +98,10 @@ async def list_tenants(db: DBSession, current_user: CurrentUser) -> list[Tenant]
 
 
 @router.post("", response_model=TenantResponse, status_code=status.HTTP_201_CREATED)
-async def create_tenant(body: TenantCreate, db: DBSession, k8s: K8sDep, current_user: CurrentUser) -> Tenant:
+@limiter.limit(RATE_TENANT_CREATE)
+async def create_tenant(
+    request: Request, body: TenantCreate, db: DBSession, k8s: K8sDep, current_user: CurrentUser
+) -> Tenant:
     # Check slug uniqueness
     existing = await db.execute(select(Tenant).where(Tenant.slug == body.slug))
     if existing.scalar_one_or_none() is not None:
