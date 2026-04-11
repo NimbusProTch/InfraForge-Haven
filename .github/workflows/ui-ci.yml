@@ -78,32 +78,18 @@ jobs:
           username: ${{ secrets.HARBOR_USER }}
           password: ${{ secrets.HARBOR_PASSWORD }}
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-        with:
-          buildkitd-config-inline: |
-            [registry."harbor.46.225.42.2.sslip.io"]
-              http = true
-              insecure = true
-
       - name: Build and push
         id: build
-        uses: docker/build-push-action@v6
-        with:
-          context: ui
-          file: ui/Dockerfile
-          platforms: linux/amd64
-          push: true
-          # Tag is still pushed for human browsing in Harbor; the deployment
-          # manifest references the immutable digest below (Haven check #15).
-          tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.sha.outputs.short }}
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-          provenance: false
-          build-args: |
-            NEXT_PUBLIC_API_URL=${{ secrets.NEXT_PUBLIC_API_URL }}
+        run: |
+          TAG="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.sha.outputs.short }}"
+          LATEST="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest"
+          docker build --platform linux/amd64 \
+            --build-arg NEXT_PUBLIC_API_URL=${{ secrets.NEXT_PUBLIC_API_URL }} \
+            -t "$TAG" -t "$LATEST" -f ui/Dockerfile ui
+          docker push "$TAG"
+          docker push "$LATEST"
+          DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' "$TAG" | cut -d@ -f2)
+          echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
 
   update-manifest:
     name: Update Deployment Manifest
