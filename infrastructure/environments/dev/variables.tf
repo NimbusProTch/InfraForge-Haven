@@ -37,9 +37,14 @@ variable "worker_server_type" {
 }
 
 variable "master_count" {
-  description = "Number of master nodes (Haven Check 2: min 3)"
+  description = "Number of master nodes (Haven Check 2: min 3). Use 4 for 2+2 AZ quorum safety."
   type        = number
-  default     = 3
+  default     = 4
+
+  validation {
+    condition     = var.master_count >= 3
+    error_message = "Haven requires at least 3 master nodes."
+  }
 }
 
 variable "worker_count" {
@@ -52,6 +57,26 @@ variable "os_image" {
   description = "Hetzner OS image"
   type        = string
   default     = "ubuntu-22.04"
+}
+
+# ===== CI Runner =====
+variable "enable_ci_runner" {
+  description = "Deploy a self-hosted GitHub Actions runner on Hetzner (€4.49/mo CX22)"
+  type        = bool
+  default     = true
+}
+
+variable "ci_runner_server_type" {
+  description = "Hetzner server type for CI runner"
+  type        = string
+  default     = "cx22" # 2 vCPU, 4GB RAM — enough for lint+test+build
+}
+
+variable "github_runner_token" {
+  description = "GitHub Actions runner registration token (from repo Settings → Actions → Runners → New)"
+  type        = string
+  sensitive   = true
+  default     = ""
 }
 
 # ===== Network =====
@@ -119,15 +144,18 @@ variable "monitoring_version" {
   default     = "67.4.0"
 }
 
-# H1b-1 (P4.1): operator IP allow-list — passed through to hetzner-infra
-# module for SSH 22, K8s API 6443, RKE2 supervisor 9345 firewall rules.
-# Set this in terraform.tfvars to your VPN/office egress CIDRs. Defaults
-# to "world open" temporarily so an unconfigured tofu apply doesn't lock
-# the operator out, but the H1b-1 morning task is to set it explicitly.
+# Operator IP allow-list — passed through to hetzner-infra module for
+# SSH 22, K8s API 6443, RKE2 supervisor 9345 firewall rules.
+# MUST be set in terraform.tfvars to your VPN/office egress CIDRs.
+# No default — forces explicit configuration to prevent world-open access.
 variable "operator_cidrs" {
-  description = "Allow-list CIDRs for SSH, K8s API, and RKE2 supervisor (port 9345). Set in tfvars."
+  description = "Allow-list CIDRs for SSH, K8s API, and RKE2 supervisor (port 9345). REQUIRED — set in tfvars."
   type        = list(string)
-  default     = ["0.0.0.0/0", "::/0"]
+
+  validation {
+    condition     = length(var.operator_cidrs) > 0 && !contains(var.operator_cidrs, "0.0.0.0/0")
+    error_message = "operator_cidrs must not be empty or contain 0.0.0.0/0. Set your real operator IP CIDRs."
+  }
 }
 
 # H1b-1 (P4.1): hardcoded password default removed. The pre-fix value
@@ -422,9 +450,9 @@ variable "enable_wireguard_encryption" {
 
 # ===== OIDC / Keycloak Integration =====
 variable "enable_oidc" {
-  description = "Enable Keycloak OIDC on kube-apiserver (IS4-01, requires Keycloak deployed)"
+  description = "Enable Keycloak OIDC on kube-apiserver (Haven Check #4). Requires Keycloak deployed with haven-kubectl client."
   type        = bool
-  default     = false
+  default     = true
 }
 
 variable "oidc_keycloak_realm" {

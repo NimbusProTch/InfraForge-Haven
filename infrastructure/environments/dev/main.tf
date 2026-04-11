@@ -12,9 +12,11 @@
 locals {
   node_username = "root"
 
-  # Multi-AZ distribution: first 2 nodes primary, rest secondary
-  master_locations = [for i in range(var.master_count) : i < 2 ? var.location_primary : var.location_secondary]
-  worker_locations = [for i in range(var.worker_count) : i < 2 ? var.location_primary : var.location_secondary]
+  # Multi-AZ distribution: even split across zones for etcd quorum safety.
+  # With 4 masters (2+2) losing one AZ still leaves 2 nodes = etcd quorum survives.
+  # With 3 workers distributed round-robin across zones.
+  master_locations = [for i in range(var.master_count) : i % 2 == 0 ? var.location_primary : var.location_secondary]
+  worker_locations = [for i in range(var.worker_count) : i % 2 == 0 ? var.location_primary : var.location_secondary]
 
   # First master gets a static private IP for other nodes to join
   first_master_private_ip = "10.0.1.10"
@@ -249,7 +251,7 @@ secrets-encryption: true
 ${var.enable_oidc ? <<-OIDCEOF
 kube-apiserver-arg:
   - "oidc-issuer-url=https://${local.keycloak_host}/realms/haven"
-  - "oidc-client-id=kubernetes"
+  - "oidc-client-id=${var.keycloak_oidc_client_id}"
   - "oidc-username-claim=preferred_username"
   - "oidc-groups-claim=groups"
   - "oidc-username-prefix=oidc:"
@@ -354,7 +356,7 @@ secrets-encryption: true
 ${var.enable_oidc ? <<-OIDCEOF
 kube-apiserver-arg:
   - "oidc-issuer-url=https://${local.keycloak_host}/realms/haven"
-  - "oidc-client-id=kubernetes"
+  - "oidc-client-id=${var.keycloak_oidc_client_id}"
   - "oidc-username-claim=preferred_username"
   - "oidc-groups-claim=groups"
   - "oidc-username-prefix=oidc:"
@@ -1331,4 +1333,65 @@ YAML
   ]
 
   depends_on = [ssh_resource.gitea_admin_setup, ssh_resource.gateway_resources]
+}
+
+# ============================================================
+# CI Runner — Self-hosted GitHub Actions runner (Hetzner CX22)
+# ============================================================
+# Dedicated VPS for CI/CD pipelines. Benefits:
+#   - No GitHub Actions minute limits
+#   - No runner allocation failures (dedicated)
+#   - EU data sovereignty (code never leaves Hetzner)
+#   - Faster builds (no queue wait)
+# Cost: €4.49/month (CX22: 2 vCPU, 4GB RAM, 40GB SSD)
+
+resource "hcloud_server" "ci_runner" {
+  count       = var.enable_ci_runner ? 1 : 0
+  name        = "haven-ci-runner-${var.environment}"
+  server_type = var.ci_runner_server_type
+  image       = var.os_image
+  location    = var.location_primary
+  ssh_keys    = [module.hetzner_infra.ssh_key_id]
+
+  user_data = <<-CLOUD_INIT
+    #!/bin/bash
+    set -euo pipefail
+
+    # System packages for CI (docker, git, node, python)
+    apt-get update -qq
+    apt-get install -y -qq \
+      curl git jq unzip docker.io python3 python3-pip python3-venv \
+      nodejs npm build-essential
+
+    systemctl enable --now docker
+
+    # Create runner user
+    useradd -m -s /bin/bash -G docker runner
+
+    # Install GitHub Actions runner
+    RUNNER_VERSION="2.321.0"
+    cd /home/runner
+    mkdir -p actions-runner && cd actions-runner
+    curl -sL "https://github.com/actions/runner/releases/download/v$${RUNNER_VERSION}/actions-runner-linux-x64-$${RUNNER_VERSION}.tar.gz" | tar xz
+    chown -R runner:runner /home/runner/actions-runner
+
+    # Runner will be configured manually after provisioning:
+    #   ssh runner@<ip>
+    #   cd actions-runner
+    #   ./config.sh --url https://github.com/NimbusProTch/InfraForge-Haven \
+    #     --token <GITHUB_RUNNER_TOKEN> --name haven-ci-runner --labels self-hosted,haven
+    #   sudo ./svc.sh install runner
+    #   sudo ./svc.sh start
+  CLOUD_INIT
+
+  labels = {
+    role        = "ci-runner"
+    environment = var.environment
+    project     = "haven"
+  }
+}
+
+output "ci_runner_ip" {
+  description = "CI runner public IP (SSH: ssh runner@<ip>)"
+  value       = var.enable_ci_runner ? hcloud_server.ci_runner[0].ipv4_address : null
 }

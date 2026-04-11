@@ -367,7 +367,7 @@ class BuildService:
 
         buildctl_container = k8s_client_lib.V1Container(
             name="buildctl",
-            image="moby/buildkit:latest",
+            image="moby/buildkit:rootless",
             command=["buildctl"],
             args=[
                 "--addr",
@@ -384,7 +384,7 @@ class BuildService:
             ],
             volume_mounts=[
                 k8s_client_lib.V1VolumeMount(name="workspace", mount_path="/workspace"),
-                k8s_client_lib.V1VolumeMount(name="docker-config", mount_path="/root/.docker", read_only=True),
+                k8s_client_lib.V1VolumeMount(name="docker-config", mount_path="/home/user/.docker", read_only=True),
             ],
         )
 
@@ -399,8 +399,19 @@ class BuildService:
             ),
         ]
 
+        # Security context: run build pods as non-root with minimal capabilities.
+        # BuildKit rootless mode (moby/buildkit:rootless) works with UID 1000.
+        pod_security_context = k8s_client_lib.V1PodSecurityContext(
+            run_as_non_root=True,
+            run_as_user=1000,
+            run_as_group=1000,
+            fs_group=1000,
+            seccomp_profile=k8s_client_lib.V1SeccompProfile(type="RuntimeDefault"),
+        )
+
         pod_spec = k8s_client_lib.V1PodSpec(
             restart_policy="Never",
+            security_context=pod_security_context,
             init_containers=init_containers,
             containers=[buildctl_container],
             volumes=volumes,

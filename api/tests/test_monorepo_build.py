@@ -292,3 +292,70 @@ async def test_repo_tree_endpoint_exists(async_client, db_session):
     """GET /github/repos/{owner}/{repo}/tree endpoint exists."""
     response = await async_client.get("/api/v1/github/repos/test/repo/tree")
     assert response.status_code == 401
+
+
+# ---------------------------------------------------------------------------
+# BuildService security hardening (Sprint 1)
+# ---------------------------------------------------------------------------
+
+
+def test_build_job_has_pod_security_context():
+    """Build jobs must run as non-root with seccomp profile."""
+    k8s = MagicMock()
+    svc = BuildService(k8s)
+    job = svc._build_job_manifest(
+        job_name="build-sec-abc123-def456",
+        namespace="haven-builds",
+        app_slug="sec-app",
+        repo_url="https://github.com/org/repo",
+        branch="main",
+        commit_sha="abc12345",
+        image_name="harbor.example.com/test/app:abc12345",
+    )
+    pod_sec = job.spec.template.spec.security_context
+    assert pod_sec is not None, "Pod security context must be set"
+    assert pod_sec.run_as_non_root is True
+    assert pod_sec.run_as_user == 1000
+    assert pod_sec.run_as_group == 1000
+    assert pod_sec.fs_group == 1000
+    assert pod_sec.seccomp_profile is not None
+    assert pod_sec.seccomp_profile.type == "RuntimeDefault"
+
+
+def test_build_job_uses_rootless_image():
+    """BuildKit container must use the rootless image tag, not :latest."""
+    k8s = MagicMock()
+    svc = BuildService(k8s)
+    job = svc._build_job_manifest(
+        job_name="build-img-abc123-def456",
+        namespace="haven-builds",
+        app_slug="img-app",
+        repo_url="https://github.com/org/repo",
+        branch="main",
+        commit_sha="abc12345",
+        image_name="harbor.example.com/test/app:abc12345",
+    )
+    buildctl = job.spec.template.spec.containers[0]
+    assert buildctl.image == "moby/buildkit:rootless", f"Expected rootless image, got {buildctl.image}"
+
+
+def test_build_job_docker_config_non_root_path():
+    """Docker config must mount at /home/user/.docker (not /root/.docker)."""
+    k8s = MagicMock()
+    svc = BuildService(k8s)
+    job = svc._build_job_manifest(
+        job_name="build-cfg-abc123-def456",
+        namespace="haven-builds",
+        app_slug="cfg-app",
+        repo_url="https://github.com/org/repo",
+        branch="main",
+        commit_sha="abc12345",
+        image_name="harbor.example.com/test/app:abc12345",
+    )
+    buildctl = job.spec.template.spec.containers[0]
+    docker_mount = [m for m in buildctl.volume_mounts if m.name == "docker-config"]
+    assert len(docker_mount) == 1
+    assert docker_mount[0].mount_path == "/home/user/.docker"
+    assert docker_mount[0].read_only is True
+    # Must NOT use /root/.docker (root user path)
+    assert "/root/" not in docker_mount[0].mount_path
