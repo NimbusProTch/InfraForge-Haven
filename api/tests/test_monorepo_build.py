@@ -389,3 +389,29 @@ def test_build_job_containers_drop_all_capabilities():
         )
         assert "ALL" in init_c.security_context.capabilities.drop, f"init container '{init_c.name}' must drop ALL"
         assert init_c.security_context.allow_privilege_escalation is False
+
+
+def test_build_job_output_uses_https_no_insecure_registry():
+    """BuildKit --output must NOT contain registry.insecure=true.
+
+    Harbor uses HTTPS with Let's Encrypt TLS. The insecure flag would
+    force HTTP push which fails against the HTTPS-only gateway.
+    """
+    k8s = MagicMock()
+    svc = BuildService(k8s)
+    job = svc._build_job_manifest(
+        job_name="build-tls-abc123-def456",
+        namespace="haven-builds",
+        app_slug="tls-app",
+        repo_url="https://github.com/org/repo",
+        branch="main",
+        commit_sha="abc12345",
+        image_name="harbor.example.com/test/app:abc12345",
+    )
+    buildctl = job.spec.template.spec.containers[0]
+    output_args = [a for a in buildctl.args if "type=image" in a]
+    assert len(output_args) == 1, "Expected exactly one --output type=image arg"
+    assert "registry.insecure" not in output_args[0], (
+        f"BuildKit output must not use registry.insecure (Harbor is HTTPS): {output_args[0]}"
+    )
+    assert "push=true" in output_args[0], "BuildKit output must push to registry"

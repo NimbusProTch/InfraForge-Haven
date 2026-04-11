@@ -403,7 +403,7 @@ class BuildService:
                 "--local",
                 f"dockerfile={df_dir}",
                 "--output",
-                f"type=image,name={image_name},push=true,registry.insecure=true",
+                f"type=image,name={image_name},push=true",
             ],
             volume_mounts=[
                 k8s_client_lib.V1VolumeMount(name="workspace", mount_path="/workspace"),
