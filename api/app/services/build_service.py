@@ -353,9 +353,9 @@ class BuildService:
         init_containers = [
             k8s_client_lib.V1Container(
                 name="git-clone",
-                image="alpine:3.20",
+                image="alpine/git:2.43.0",
                 command=["sh", "-c"],
-                args=[f"apk add --no-cache git && {git_clone_cmd}"],
+                args=[git_clone_cmd],
                 env=[
                     k8s_client_lib.V1EnvVar(name="GIT_TERMINAL_PROMPT", value="0"),
                     k8s_client_lib.V1EnvVar(name="GIT_CONFIG_NOSYSTEM", value="1"),
@@ -370,7 +370,11 @@ class BuildService:
                 command=["/bin/sh", "-c"],
                 args=[nixpacks_cmd],
                 volume_mounts=[k8s_client_lib.V1VolumeMount(name="workspace", mount_path="/workspace")],
-                security_context=_init_security_ctx,
+                # nixpacks needs apk for curl/tar download — run as root in init container
+                security_context=k8s_client_lib.V1SecurityContext(
+                    allow_privilege_escalation=False,
+                    read_only_root_filesystem=False,
+                ),
             ),
         ]
 

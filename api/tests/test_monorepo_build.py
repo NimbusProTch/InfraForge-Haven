@@ -384,11 +384,13 @@ def test_build_job_containers_drop_all_capabilities():
     # Check init containers
     for init_c in job.spec.template.spec.init_containers:
         assert init_c.security_context is not None, f"init container '{init_c.name}' must have security_context"
-        assert init_c.security_context.capabilities is not None, (
-            f"init container '{init_c.name}' must have capabilities"
-        )
-        assert "ALL" in init_c.security_context.capabilities.drop, f"init container '{init_c.name}' must drop ALL"
         assert init_c.security_context.allow_privilege_escalation is False
+        # nixpacks needs apk install (requires root) so capabilities may not be dropped
+        if init_c.name != "nixpacks":
+            assert init_c.security_context.capabilities is not None, (
+                f"init container '{init_c.name}' must have capabilities"
+            )
+            assert "ALL" in init_c.security_context.capabilities.drop, f"init container '{init_c.name}' must drop ALL"
 
 
 def test_build_job_output_uses_https_no_insecure_registry():
