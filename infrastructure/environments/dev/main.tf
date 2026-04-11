@@ -74,8 +74,8 @@ module "hetzner_infra" {
   # supervisor 9345. Pre-fix all three were 0.0.0.0/0. Set this in
   # terraform.tfvars (NOT here) to your VPN/office egress CIDRs.
   operator_cidrs         = var.operator_cidrs
-  gateway_http_nodeport  = 80   # nginx DaemonSet hostPort (gateway-api.yaml)
-  gateway_https_nodeport = 443  # nginx DaemonSet hostPort (gateway-api.yaml)
+  gateway_http_nodeport  = 80
+  gateway_https_nodeport = 443
 }
 
 # --- 3. RKE2 Cluster Config (cloud-init generation) ---
@@ -1070,6 +1070,279 @@ resource "helm_release" "keycloak" {
   })]
 
   depends_on = [ssh_resource.wait_keycloak_db_ready]
+}
+
+# --- 20b. Haven Platform Database (CNPG) ---
+# The haven-api application database. Same pattern as keycloak_db above.
+resource "helm_release" "haven_platform_db" {
+  count            = 1
+  name             = "haven-platform-db"
+  namespace        = "cnpg-system"
+  create_namespace = false
+  chart            = "${path.module}/../../charts/cnpg-cluster"
+  timeout          = 600
+  wait             = true
+
+  set {
+    name  = "name"
+    value = "haven-platform"
+  }
+  set {
+    name  = "instances"
+    value = "1"
+  }
+  set {
+    name  = "database"
+    value = "haven_platform"
+  }
+  set {
+    name  = "owner"
+    value = "haven"
+  }
+  set {
+    name  = "storage.size"
+    value = "20Gi"
+  }
+
+  depends_on = [ssh_resource.wait_cnpg_ready, ssh_resource.wait_longhorn_ready]
+}
+
+resource "ssh_resource" "wait_haven_platform_db_ready" {
+  host        = hcloud_server.master[0].ipv4_address
+  user        = local.node_username
+  private_key = tls_private_key.global_key.private_key_pem
+  timeout     = "10m"
+
+  commands = [nonsensitive(<<-EOT
+    bash -c '
+      export KUBECONFIG=/etc/rancher/rke2/rke2.yaml
+      K=/var/lib/rancher/rke2/bin/kubectl
+      echo "Waiting for haven-platform CNPG primary pod..."
+      for i in $(seq 1 60); do
+        READY=$($K get pods -n cnpg-system -l cnpg.io/cluster=haven-platform,role=primary \
+          --no-headers 2>/dev/null | grep -c "1/1" || echo 0)
+        if [ "$$READY" -ge "1" ]; then
+          echo "HAVEN_PLATFORM_DB_READY"
+          break
+        fi
+        echo "  DB primary not ready yet (attempt $$i)"
+        sleep 10
+      done
+    '
+  EOT
+  )]
+
+  depends_on = [helm_release.haven_platform_db]
+}
+
+# --- 20c. Keycloak Realm Bootstrap ---
+# Creates haven realm, haven-ui client, platform-admin role, admin user.
+# Runs AFTER Keycloak pod is ready. Idempotent (safe to re-run).
+resource "ssh_resource" "keycloak_realm_bootstrap" {
+  count       = var.enable_keycloak ? 1 : 0
+  host        = hcloud_server.master[0].ipv4_address
+  user        = local.node_username
+  private_key = tls_private_key.global_key.private_key_pem
+  timeout     = "10m"
+
+  commands = [nonsensitive(<<-EOT
+    bash -c '
+      export KUBECONFIG=/etc/rancher/rke2/rke2.yaml
+      K=/var/lib/rancher/rke2/bin/kubectl
+
+      echo "Waiting for Keycloak pod to be ready..."
+      for i in $(seq 1 60); do
+        READY=$($K get pods -n keycloak -l app.kubernetes.io/name=keycloakx \
+          --no-headers 2>/dev/null | grep -c "1/1" || echo 0)
+        if [ "$$READY" -ge "1" ]; then
+          echo "KEYCLOAK_POD_READY"
+          break
+        fi
+        echo "  Keycloak not ready yet (attempt $$i)"
+        sleep 10
+      done
+
+      KC_IP=$($K get svc keycloak-keycloakx-http -n keycloak -o jsonpath="{.spec.clusterIP}" 2>/dev/null || echo "")
+      if [ -z "$$KC_IP" ]; then
+        echo "ERROR: Could not get Keycloak ClusterIP"
+        exit 1
+      fi
+      KC_URL="http://$$KC_IP:80"
+      ADMIN_PASS="${var.keycloak_admin_password}"
+
+      echo "Getting admin token..."
+      for i in $(seq 1 10); do
+        TOKEN=$(curl -sf -X POST "$$KC_URL/realms/master/protocol/openid-connect/token" \
+          -d "grant_type=password&client_id=admin-cli&username=admin&password=$$ADMIN_PASS" \
+          2>/dev/null | jq -r ".access_token" 2>/dev/null || echo "")
+        if [ -n "$$TOKEN" ] && [ "$$TOKEN" != "null" ]; then
+          echo "Admin token obtained"
+          break
+        fi
+        echo "  Keycloak API not ready yet (attempt $$i)"
+        sleep 10
+      done
+
+      if [ -z "$$TOKEN" ] || [ "$$TOKEN" = "null" ]; then
+        echo "ERROR: Could not get Keycloak admin token"
+        exit 1
+      fi
+
+      AUTH="Authorization: Bearer $$TOKEN"
+
+      echo "Creating haven realm..."
+      curl -sf -X POST "$$KC_URL/admin/realms" \
+        -H "$$AUTH" -H "Content-Type: application/json" \
+        -d "{\"realm\":\"haven\",\"displayName\":\"Haven Platform\",\"enabled\":true,\"registrationAllowed\":false,\"loginWithEmailAllowed\":true,\"accessTokenLifespan\":3600,\"ssoSessionIdleTimeout\":28800,\"ssoSessionMaxLifespan\":28800}" \
+        || echo "  haven realm may already exist"
+
+      echo "Creating haven-ui client..."
+      curl -sf -X POST "$$KC_URL/admin/realms/haven/clients" \
+        -H "$$AUTH" -H "Content-Type: application/json" \
+        -d "{\"clientId\":\"haven-ui\",\"publicClient\":false,\"directAccessGrantsEnabled\":true,\"standardFlowEnabled\":true,\"redirectUris\":[\"http://localhost:3000/*\",\"http://localhost:3001/*\",\"http://app.${local._sslip_suffix}/*\",\"https://app.${local._sslip_suffix}/*\"],\"webOrigins\":[\"*\"],\"secret\":\"haven-ui-secret\"}" \
+        || echo "  haven-ui client may already exist"
+
+      echo "Creating haven-api client..."
+      curl -sf -X POST "$$KC_URL/admin/realms/haven/clients" \
+        -H "$$AUTH" -H "Content-Type: application/json" \
+        -d "{\"clientId\":\"haven-api\",\"publicClient\":false,\"serviceAccountsEnabled\":true,\"directAccessGrantsEnabled\":true,\"secret\":\"haven-api-secret\"}" \
+        || echo "  haven-api client may already exist"
+
+      echo "Creating platform-admin role..."
+      curl -sf -X POST "$$KC_URL/admin/realms/haven/roles" \
+        -H "$$AUTH" -H "Content-Type: application/json" \
+        -d "{\"name\":\"platform-admin\"}" \
+        || echo "  platform-admin role may already exist"
+
+      echo "Creating admin user..."
+      curl -sf -X POST "$$KC_URL/admin/realms/haven/users" \
+        -H "$$AUTH" -H "Content-Type: application/json" \
+        -d "{\"username\":\"admin\",\"email\":\"admin@haven.dev\",\"firstName\":\"Haven\",\"lastName\":\"Admin\",\"enabled\":true,\"emailVerified\":true,\"credentials\":[{\"type\":\"password\",\"value\":\"$$ADMIN_PASS\",\"temporary\":false}]}" \
+        || echo "  admin user may already exist"
+
+      echo "Assigning platform-admin role to admin user..."
+      USER_ID=$(curl -sf "$$KC_URL/admin/realms/haven/users?username=admin" \
+        -H "$$AUTH" | jq -r ".[0].id" 2>/dev/null || echo "")
+      ROLE_JSON=$(curl -sf "$$KC_URL/admin/realms/haven/roles/platform-admin" \
+        -H "$$AUTH" 2>/dev/null || echo "")
+      if [ -n "$$USER_ID" ] && [ "$$USER_ID" != "null" ] && [ -n "$$ROLE_JSON" ]; then
+        curl -sf -X POST "$$KC_URL/admin/realms/haven/users/$$USER_ID/role-mappings/realm" \
+          -H "$$AUTH" -H "Content-Type: application/json" \
+          -d "[$$ROLE_JSON]" || echo "  role assignment may already exist"
+      fi
+
+      echo "KEYCLOAK_REALM_BOOTSTRAP_COMPLETE"
+    '
+  EOT
+  )]
+
+  depends_on = [helm_release.keycloak]
+}
+
+# --- 20d. Haven API + UI Secrets ---
+# Creates K8s Secrets required by haven-api and haven-ui deployments.
+# Depends on: haven-platform DB (for DATABASE_URL), Keycloak realm (for URLs),
+# Gitea admin setup (for GITEA_ADMIN_TOKEN).
+resource "ssh_resource" "haven_platform_secrets" {
+  host        = hcloud_server.master[0].ipv4_address
+  user        = local.node_username
+  private_key = tls_private_key.global_key.private_key_pem
+  timeout     = "5m"
+
+  commands = [nonsensitive(<<-EOT
+    bash -c '
+      export KUBECONFIG=/etc/rancher/rke2/rke2.yaml
+      K=/var/lib/rancher/rke2/bin/kubectl
+
+      # Get haven-platform DB password from CNPG-generated secret
+      DB_PASS=$($K get secret haven-platform-app -n cnpg-system \
+        -o jsonpath="{.data.password}" 2>/dev/null | base64 -d || echo "haven")
+      DB_USER=$($K get secret haven-platform-app -n cnpg-system \
+        -o jsonpath="{.data.username}" 2>/dev/null | base64 -d || echo "haven")
+
+      # Get Gitea admin token from gitea_admin_setup
+      GITEA_TOKEN=$($K get secret gitea-admin-token -n haven-system \
+        -o jsonpath="{.data.token}" 2>/dev/null | base64 -d || echo "")
+
+      DATABASE_URL="postgresql+asyncpg://$$DB_USER:$$DB_PASS@haven-platform-rw.cnpg-system.svc.cluster.local:5432/haven_platform"
+
+      echo "Creating haven-api-secrets..."
+      $K create secret generic haven-api-secrets -n haven-system \
+        --from-literal=DATABASE_URL="$$DATABASE_URL" \
+        --from-literal=SECRET_KEY="haven-platform-secret-$(date +%s)" \
+        --from-literal=HARBOR_ADMIN_PASSWORD="${var.harbor_admin_password}" \
+        --from-literal=KEYCLOAK_ADMIN_PASSWORD="${var.keycloak_admin_password}" \
+        --from-literal=EVEREST_ADMIN_PASSWORD="${var.everest_admin_password}" \
+        --from-literal=GITEA_ADMIN_TOKEN="$$GITEA_TOKEN" \
+        --dry-run=client -o yaml | $K apply -f -
+
+      echo "Creating haven-ui-secrets..."
+      $K create secret generic haven-ui-secrets -n haven-system \
+        --from-literal=NEXTAUTH_SECRET="haven-ui-nextauth-$(date +%s)" \
+        --from-literal=KEYCLOAK_CLIENT_SECRET="haven-ui-secret" \
+        --dry-run=client -o yaml | $K apply -f -
+
+      echo "HAVEN_SECRETS_CREATED"
+    '
+  EOT
+  )]
+
+  depends_on = [
+    ssh_resource.wait_haven_platform_db_ready,
+    ssh_resource.keycloak_realm_bootstrap,
+    ssh_resource.gitea_admin_setup,
+  ]
+}
+
+# --- 20e. ArgoCD App-of-Apps Bootstrap ---
+# Creates the root ArgoCD Application that discovers all other Applications
+# in platform/argocd/apps/. This triggers automatic deployment of haven-api,
+# haven-ui, kyverno, and kyverno-policies.
+resource "ssh_resource" "argocd_app_of_apps" {
+  count       = var.enable_argocd ? 1 : 0
+  host        = hcloud_server.master[0].ipv4_address
+  user        = local.node_username
+  private_key = tls_private_key.global_key.private_key_pem
+  timeout     = "5m"
+
+  commands = [nonsensitive(<<-EOT
+    bash -c '
+      export KUBECONFIG=/etc/rancher/rke2/rke2.yaml
+      K=/var/lib/rancher/rke2/bin/kubectl
+
+      echo "Creating ArgoCD app-of-apps Application..."
+      cat <<APPEOF | $K apply -f -
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: haven-platform
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/NimbusProTch/InfraForge-Haven.git
+    targetRevision: main
+    path: platform/argocd/apps
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+APPEOF
+
+      echo "ARGOCD_APP_OF_APPS_CREATED"
+    '
+  EOT
+  )]
+
+  depends_on = [
+    helm_release.argocd,
+    ssh_resource.haven_platform_secrets,
+  ]
 }
 
 # Platform namespaces are created by namespace_security_labels (step 9b)

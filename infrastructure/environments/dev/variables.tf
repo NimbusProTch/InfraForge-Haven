@@ -354,6 +354,13 @@ variable "everest_version" {
   default     = "1.13.0"
 }
 
+variable "everest_admin_password" {
+  description = "Percona Everest admin password"
+  type        = string
+  sensitive   = true
+  default     = "admin"
+}
+
 # ===== Redis Operator =====
 variable "enable_redis_operator" {
   description = "Enable OpsTree Redis Operator"

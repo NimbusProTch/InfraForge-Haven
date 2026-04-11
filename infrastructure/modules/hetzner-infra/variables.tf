@@ -42,3 +42,15 @@ variable "operator_cidrs" {
   default     = ["0.0.0.0/0", "::/0"]   # H1b-1 morning TODO: replace with operator IPs
 }
 
+variable "gateway_http_nodeport" {
+  description = "nginx DaemonSet hostPort for HTTP (gateway-proxy)"
+  type        = number
+  default     = 80
+}
+
+variable "gateway_https_nodeport" {
+  description = "nginx DaemonSet hostPort for HTTPS (gateway-proxy)"
+  type        = number
+  default     = 443
+}
+
