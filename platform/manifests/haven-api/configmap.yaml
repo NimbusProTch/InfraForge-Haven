@@ -4,7 +4,7 @@ metadata:
   name: haven-api-config
   namespace: haven-system
 data:
-  KEYCLOAK_URL: "https://keycloak.46.225.42.2.sslip.io"
+  KEYCLOAK_URL: "http://keycloak-keycloakx-http.keycloak.svc.cluster.local:80"
   KEYCLOAK_REALM: "haven"
   HARBOR_URL: "http://harbor.46.225.42.2.sslip.io"
   HARBOR_PROJECT: "library"
