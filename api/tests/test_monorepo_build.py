@@ -336,9 +336,7 @@ def test_build_job_uses_rootless_image():
         image_name="harbor.example.com/test/app:abc12345",
     )
     buildctl = job.spec.template.spec.containers[0]
-    assert buildctl.image == "moby/buildkit:rootless", (
-        f"Expected rootless image, got {buildctl.image}"
-    )
+    assert buildctl.image == "moby/buildkit:rootless", f"Expected rootless image, got {buildctl.image}"
 
 
 def test_build_job_docker_config_non_root_path():
