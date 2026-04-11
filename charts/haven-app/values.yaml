@@ -95,10 +95,10 @@ tolerations:
   - operator: "Exists"
 
 # Pod-level security context (applies to all containers)
-# Disabled by default so user apps that run as root aren't blocked.
-# Enable for apps that support it to meet restricted PSA.
+# Enabled by default: Kyverno + PSA restricted require these settings.
+# User apps must be compatible with non-root execution.
 podSecurityContext:
-  enabled: false
+  enabled: true
   runAsNonRoot: true
   runAsUser: 1000
   fsGroup: 1000
@@ -107,7 +107,7 @@ podSecurityContext:
 
 # Container-level security context
 containerSecurityContext:
-  enabled: false
+  enabled: true
   allowPrivilegeEscalation: false
   readOnlyRootFilesystem: false
   capabilities:
