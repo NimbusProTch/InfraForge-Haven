@@ -279,6 +279,7 @@ data:
     events { worker_connections 1024; }
     http {
       access_log /dev/stdout;
+      client_max_body_size 2g;
       server {
         listen 80;
         location / {
@@ -290,7 +291,8 @@ data:
           proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
           proxy_set_header X-Forwarded-Proto $scheme;
           proxy_connect_timeout 5s;
-          proxy_read_timeout 60s;
+          proxy_read_timeout 300s;
+          proxy_send_timeout 300s;
         }
       }
     }
@@ -299,7 +301,7 @@ data:
         listen 443;
         proxy_pass cilium-gateway-haven-gateway.haven-gateway.svc.cluster.local:443;
         proxy_connect_timeout 5s;
-        proxy_timeout 60s;
+        proxy_timeout 300s;
       }
     }
 

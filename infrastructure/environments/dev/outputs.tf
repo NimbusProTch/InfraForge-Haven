@@ -25,9 +25,9 @@ output "kubeconfig_path" {
 
 output "harbor_url" {
   description = "Harbor registry URL"
-  # H1e: HTTPS — TLS termination at Cilium Gateway, intra-cluster plaintext.
-  # See helm-values/harbor.yaml header comment for the chain.
-  value       = var.enable_harbor ? "https://${local.harbor_host}" : ""
+  # HTTP — dev environment uses HTTP-only Harbor behind nginx proxy.
+  # RKE2 nodes have registries.yaml configured for insecure (HTTP) pull.
+  value       = var.enable_harbor ? "http://${local.harbor_host}" : ""
 }
 
 output "argocd_url" {

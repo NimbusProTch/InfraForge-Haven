@@ -67,6 +67,9 @@ resource "hcloud_server" "runner" {
     systemctl enable --now docker
     systemctl restart docker
 
+    # Install crane for insecure registry push (Harbor HTTP-only dev)
+    curl -sL https://github.com/google/go-containerregistry/releases/download/v0.20.3/go-containerregistry_Linux_x86_64.tar.gz | tar xz -C /usr/local/bin crane
+
     # Node.js 20 LTS
     curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
     apt-get install -y -qq nodejs

@@ -295,6 +295,14 @@ spec:
       - operator: Exists
 CILEOF
 
+      # Insecure registry config for Harbor (HTTP-only dev)
+      cat > /etc/rancher/rke2/registries.yaml << REGEOF
+mirrors:
+  ${local.harbor_host}:
+    endpoint:
+      - "http://${local.harbor_host}"
+REGEOF
+
       curl -sfL https://get.rke2.io | INSTALL_RKE2_VERSION=${var.kubernetes_version} sh -
       systemctl enable rke2-server.service
       systemctl start rke2-server.service
@@ -364,6 +372,14 @@ OIDCEOF
 : ""}
 RKEEOF
 
+      # Insecure registry config for Harbor (HTTP-only dev)
+      cat > /etc/rancher/rke2/registries.yaml << REGEOF
+mirrors:
+  ${local.harbor_host}:
+    endpoint:
+      - "http://${local.harbor_host}"
+REGEOF
+
       curl -sfL https://get.rke2.io | INSTALL_RKE2_VERSION=${var.kubernetes_version} sh -
       systemctl enable rke2-server.service
       systemctl start rke2-server.service
@@ -398,6 +414,14 @@ node-external-ip: $PUBLIC_IP
 profile: cis
 protect-kernel-defaults: true
 RKEEOF
+
+      # Insecure registry config for Harbor (HTTP-only dev)
+      cat > /etc/rancher/rke2/registries.yaml << REGEOF
+mirrors:
+  ${local.harbor_host}:
+    endpoint:
+      - "http://${local.harbor_host}"
+REGEOF
 
       curl -sfL https://get.rke2.io | INSTALL_RKE2_TYPE=agent INSTALL_RKE2_VERSION=${var.kubernetes_version} sh -
       systemctl enable rke2-agent.service
@@ -1171,6 +1195,127 @@ resource "ssh_resource" "gateway_resources" {
   ]
 
   depends_on = [ssh_resource.gateway_api, helm_release.cert_manager]
+}
+
+# --- 22b. Haven Proxy DaemonSet ---
+# Workaround for Cilium 1.16 bug: L7LB Proxy Port is NOT propagated to
+# NodePort BPF entries, so external traffic can't reach the Cilium gateway
+# via NodePort. This nginx DaemonSet runs with hostNetwork:true and proxies
+# to the gateway ClusterIP.
+#
+# Port 80  -> HTTP proxy to Cilium gateway (with large body + timeout for Harbor push)
+# Port 443 -> TCP stream passthrough to Cilium gateway (TLS terminated by Cilium)
+resource "ssh_resource" "haven_proxy" {
+  host        = hcloud_server.master[0].ipv4_address
+  user        = local.node_username
+  private_key = tls_private_key.global_key.private_key_pem
+  timeout     = "5m"
+
+  commands = [
+    <<-EOT
+      export KUBECONFIG=/etc/rancher/rke2/rke2.yaml
+      K=/var/lib/rancher/rke2/bin/kubectl
+
+      cat <<'YAML' | $K apply -f -
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: haven-proxy
+        labels:
+          pod-security.kubernetes.io/enforce: privileged
+      ---
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: nginx-conf
+        namespace: haven-proxy
+      data:
+        nginx.conf: |
+          user nginx;
+          worker_processes auto;
+          error_log /dev/stderr warn;
+          pid /tmp/nginx.pid;
+          events { worker_connections 1024; }
+          http {
+            access_log /dev/stdout;
+            client_max_body_size 2g;
+            server {
+              listen 80;
+              location / {
+                proxy_pass http://cilium-gateway-haven-gateway.haven-gateway.svc.cluster.local:80;
+                proxy_http_version 1.1;
+                proxy_set_header Host $host;
+                proxy_set_header Connection "";
+                proxy_set_header X-Real-IP $remote_addr;
+                proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                proxy_set_header X-Forwarded-Proto $scheme;
+                proxy_connect_timeout 5s;
+                proxy_read_timeout 300s;
+                proxy_send_timeout 300s;
+              }
+            }
+          }
+          stream {
+            server {
+              listen 443;
+              proxy_pass cilium-gateway-haven-gateway.haven-gateway.svc.cluster.local:443;
+              proxy_connect_timeout 5s;
+              proxy_timeout 300s;
+            }
+          }
+      ---
+      apiVersion: apps/v1
+      kind: DaemonSet
+      metadata:
+        name: gateway-proxy
+        namespace: haven-proxy
+        labels:
+          app: gateway-proxy
+      spec:
+        selector:
+          matchLabels:
+            app: gateway-proxy
+        template:
+          metadata:
+            labels:
+              app: gateway-proxy
+          spec:
+            hostNetwork: true
+            dnsPolicy: ClusterFirstWithHostNet
+            tolerations:
+              - operator: "Exists"
+            containers:
+              - name: nginx
+                image: nginx:1.27-alpine
+                ports:
+                  - containerPort: 80
+                    hostPort: 80
+                    protocol: TCP
+                  - containerPort: 443
+                    hostPort: 443
+                    protocol: TCP
+                volumeMounts:
+                  - name: nginx-conf
+                    mountPath: /etc/nginx/nginx.conf
+                    subPath: nginx.conf
+                resources:
+                  requests:
+                    cpu: "10m"
+                    memory: "32Mi"
+                  limits:
+                    memory: "64Mi"
+            volumes:
+              - name: nginx-conf
+                configMap:
+                  name: nginx-conf
+      YAML
+
+      # Wait for DaemonSet to roll out
+      $K rollout status daemonset/gateway-proxy -n haven-proxy --timeout=120s || true
+    EOT
+  ]
+
+  depends_on = [ssh_resource.gateway_resources]
 }
 
 # --- 23. External-DNS (optional) ---
