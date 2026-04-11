@@ -47,7 +47,7 @@ expose:
   type: clusterIP
   tls:
     enabled: false
-externalURL: https://${harbor_host}
+externalURL: http://${harbor_host}
 harborAdminPassword: "${admin_password}"
 persistence:
   enabled: true

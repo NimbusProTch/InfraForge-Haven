@@ -114,6 +114,11 @@ jobs:
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
+        with:
+          buildkitd-config-inline: |
+            [registry."harbor.46.225.42.2.sslip.io"]
+              http = true
+              insecure = true
 
       - name: Build and push
         id: build
