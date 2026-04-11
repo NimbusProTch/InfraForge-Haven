@@ -370,8 +370,10 @@ class BuildService:
                 command=["/bin/sh", "-c"],
                 args=[nixpacks_cmd],
                 volume_mounts=[k8s_client_lib.V1VolumeMount(name="workspace", mount_path="/workspace")],
-                # nixpacks needs apk for curl/tar download — run as root in init container
+                # nixpacks needs apk for curl/tar download — override pod-level runAsNonRoot
                 security_context=k8s_client_lib.V1SecurityContext(
+                    run_as_user=0,
+                    run_as_non_root=False,
                     allow_privilege_escalation=False,
                     read_only_root_filesystem=False,
                 ),
