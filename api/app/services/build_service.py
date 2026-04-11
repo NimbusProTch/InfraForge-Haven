@@ -329,6 +329,12 @@ class BuildService:
                 "fi"
             )
 
+        _init_security_ctx = k8s_client_lib.V1SecurityContext(
+            allow_privilege_escalation=False,
+            capabilities=k8s_client_lib.V1Capabilities(drop=["ALL"]),
+            read_only_root_filesystem=False,
+        )
+
         init_containers = [
             k8s_client_lib.V1Container(
                 name="git-clone",
@@ -341,6 +347,7 @@ class BuildService:
                     k8s_client_lib.V1EnvVar(name="HOME", value="/tmp"),
                 ],
                 volume_mounts=[k8s_client_lib.V1VolumeMount(name="workspace", mount_path="/workspace")],
+                security_context=_init_security_ctx,
             ),
             k8s_client_lib.V1Container(
                 name="nixpacks",
@@ -348,6 +355,7 @@ class BuildService:
                 command=["/bin/sh", "-c"],
                 args=[nixpacks_cmd],
                 volume_mounts=[k8s_client_lib.V1VolumeMount(name="workspace", mount_path="/workspace")],
+                security_context=_init_security_ctx,
             ),
         ]
 
@@ -386,6 +394,11 @@ class BuildService:
                 k8s_client_lib.V1VolumeMount(name="workspace", mount_path="/workspace"),
                 k8s_client_lib.V1VolumeMount(name="docker-config", mount_path="/home/user/.docker", read_only=True),
             ],
+            security_context=k8s_client_lib.V1SecurityContext(
+                allow_privilege_escalation=False,
+                capabilities=k8s_client_lib.V1Capabilities(drop=["ALL"]),
+                read_only_root_filesystem=False,
+            ),
         )
 
         volumes = [
