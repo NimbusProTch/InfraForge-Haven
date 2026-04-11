@@ -1,36 +1,35 @@
-# /sprint-plan — Sprint Plan Oluştur
+# /sprint-plan — Create Sprint Plan
 
-Deep dive araştırması SONRASI sprint planı oluştur. 
+Create a sprint plan ONLY AFTER deep-dive research is complete.
 
-## ÖN KOŞUL
-Bu skill SADECE deep dive yapıldıktan sonra çalıştırılmalı. Eğer mevcut conversation'da deep dive yapılmamışsa, önce /deep-dive çalıştır.
+## Prerequisite
+This command should ONLY run after a deep-dive. If no research was done in this conversation, run /deep-dive first.
 
-## Akış
+## Flow
 
-1. **Deep dive bulgularını topla:**
-   - Bu conversation'daki araştırma sonuçlarını özetle
-   - Kritik sorunları, gap'leri, best practice farklarını listele
+1. **Gather deep-dive findings:**
+   - Summarize research results from this conversation
+   - List critical issues, gaps, best practice differences
 
-2. **Sprint'lere böl:**
-   - Her sprint max 2-3 gün
-   - Öncelik: CRITICAL → HIGH → MEDIUM
-   - Bağımlılık sırası: infra → backend → frontend
-   - Her sprint sonunda doğrulanabilir çıktı olmalı
+2. **Split into sprints:**
+   - Each sprint max 2-3 days
+   - Priority: CRITICAL → HIGH → MEDIUM
+   - Dependency order: infra → backend → frontend
+   - Each sprint must have verifiable output
 
-3. **Her sprint için:**
-   - Task listesi (checkbox format)
-   - Değiştirilecek dosyalar (tam yol)
-   - Yeni oluşturulacak dosyalar
-   - Test planı (ne test edilecek, nasıl)
+3. **For each sprint:**
+   - Task list (checkbox format)
+   - Files to modify (full paths)
+   - New files to create
+   - Test plan (what to test, how)
    - Definition of Done
 
-4. **Plan dosyasına yaz:**
-   - `.claude/plans/` altına markdown olarak kaydet
-   - Kullanıcıya onay sor
+4. **Save to plan file:**
+   - Write to `docs/sprints/` as markdown
 
-## KURALLAR
-- Deep dive olmadan plan yazma — kullanıcı bunu istemez
-- Her task'ta dosya yolu ve ne değişeceği net olmalı
-- "X yap" gibi vague task'lar yasak — "main.tf:252'deki kubernetes → ${var.keycloak_oidc_client_id} değiştir" gibi spesifik olmalı
-- Test planı olmayan sprint plan kabul edilemez
-- CLAUDE.md'deki "Zorunlu Kurallar" section'ındaki Definition of Done'a uymalı
+## Rules
+- No plan without deep-dive — user doesn't want surface-level plans
+- Each task must have file path + what changes
+- Vague tasks like "do X" forbidden — be specific: "change main.tf:252 from Y to Z"
+- No sprint plan without test plan
+- Must follow CLAUDE.md Definition of Done

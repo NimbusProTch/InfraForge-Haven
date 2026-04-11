@@ -1,34 +1,30 @@
 # /deep-dive — Multi-Agent Deep Dive Research
 
-Kullanıcı bir konuyu araştırmamı istiyor. ASLA yüzeysel plan yazma. Önce gerçek durumu anla.
+User wants a topic researched. NEVER write a surface-level plan. Understand the real state first.
 
-## Zorunlu Akış
+## Mandatory Flow
 
-1. **3 Explore agent paralel başlat:**
-   - Agent 1: Live koddaki gerçek durumu satır satır oku (dosya yolları + satır numaraları)
-   - Agent 2: Best practices / industry standards araştır (web search + bilgi)
-   - Agent 3: Güvenlik + yapısal sorunlar tara (cross-reference, bağımlılıklar, edge case'ler)
+1. **Launch 3 Explore agents in parallel:**
+   - Agent 1: Read live code line-by-line (file paths + line numbers)
+   - Agent 2: Research best practices / industry standards
+   - Agent 3: Scan for security + structural issues
 
-2. **Gap Analizi Raporu oluştur:**
-   - Live durum vs Best practice karşılaştırma tablosu
-   - Tüm sorunlar listesi (severity: CRITICAL / HIGH / MEDIUM / LOW)
-   - Her sorun için: dosya yolu, satır numarası, ne yanlış, ne olmalı
-   - Öneriler (actionable, somut)
+2. **Produce Gap Analysis Report:**
+   - Live state vs Best practice comparison table
+   - All issues with severity: CRITICAL / HIGH / MEDIUM / LOW
+   - Each issue: file path, line number, what's wrong, what it should be
+   - Actionable recommendations
 
-3. **KURALLAR:**
-   - CLAUDE.md'deki "✅ yapıldı" iddialarına güvenme — kodu oku
-   - "Kod hazır" ≠ "doğru çalışır" — her iddiayı dosyada confirm et
-   - İlk seferde TÜM sorunları bul — kullanıcı tekrar "bak bir daha" demek zorunda kalmamalı
-   - Hardcoded değerler, TODO/FIXME, race condition, quorum riski gibi şeyleri ara
-   - Rapor formatı net ve scannable olsun
+3. **Rules:**
+   - Do NOT trust CLAUDE.md "done" claims — read actual code
+   - "Code ready" ≠ "works correctly" — confirm in file
+   - Find ALL issues first pass — user must NOT ask twice
+   - Report must be clear and scannable
 
-4. **ASLA plan yazma bu aşamada.** Sadece araştırma raporu ver. Plan ayrı bir adım.
+4. **NEVER write a plan at this stage.** Research report only.
 
-## Kullanım
+## Usage
 ```
 /deep-dive kyverno multi-tenancy
 /deep-dive infra haven compliance
-/deep-dive build pipeline security
 ```
-
-Argüman olarak verilen konu hakkında yukarıdaki akışı uygula. Argüman yoksa kullanıcıya sor.

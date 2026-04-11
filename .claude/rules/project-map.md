@@ -1,127 +1,110 @@
-# Proje Haritası — Her Şey Nerede?
+# Project Map — Where Is Everything?
 
-Bu dosya her session'da okunur. Yeni session açıldığında hiçbir şey sorma — buraya bak.
+This file is read every session. Never ask "where is X" — look here.
 
-## Repo Yapısı
+## Repository Structure
 
 ```
 haven-platform/
-├── CLAUDE.md                          # Ana proje hafızası (root, tek kaynak)
+├── CLAUDE.md                          # Main project memory (Turkish)
 ├── .claude/
-│   ├── CLAUDE.md                      # Mimari detaylar
-│   ├── settings.json                  # İzinler
-│   ├── rules/                         # ⭐ Her session otomatik okunur
-│   ├── commands/                      # /slash komutları
-│   └── agents/                        # architect.md, tester.md
+│   ├── CLAUDE.md                      # Architecture decisions (English)
+│   ├── settings.json                  # Permissions
+│   ├── rules/                         # ⭐ Auto-loaded every session
+│   ├── commands/                      # /slash commands
+│   ├── agents/                        # architect, tester sub-agents
+│   └── skills/                        # Multi-file skills
 │
 ├── api/                               # Backend (FastAPI)
 │   ├── app/
-│   │   ├── main.py                    # FastAPI app entry
+│   │   ├── main.py                    # FastAPI entry point
 │   │   ├── config.py                  # Settings (env vars)
-│   │   ├── models/                    # SQLAlchemy modeller
+│   │   ├── models/                    # SQLAlchemy models
 │   │   ├── schemas/                   # Pydantic v2 schemas
-│   │   ├── routers/                   # API endpoint'leri
+│   │   ├── routers/                   # API endpoints
 │   │   ├── services/                  # Business logic
-│   │   │   ├── build_service.py       # BuildKit job oluşturma
-│   │   │   ├── tenant_service.py      # Tenant lifecycle (namespace, quota, CNP, RBAC)
-│   │   │   ├── gitea.py               # Gitea HTTP API wrapper
-│   │   │   ├── gitops_scaffold.py     # GitOps repo scaffold
+│   │   │   ├── build_service.py       # BuildKit job creation
+│   │   │   ├── tenant_service.py      # Tenant lifecycle
+│   │   │   ├── gitea.py               # Gitea API wrapper
 │   │   │   ├── argocd.py              # ArgoCD sync/rollback
-│   │   │   ├── managed_service.py     # DB provision (Everest/CRD)
+│   │   │   ├── managed_service.py     # DB provisioning
 │   │   │   └── vault.py               # Vault API wrapper
-│   │   ├── k8s/                       # Kubernetes client wrapper
-│   │   └── auth/                      # JWT + RBAC (jwt.py, rbac.py)
-│   ├── tests/                         # ⭐ BACKEND TESTLER BURDA (71 dosya, ~1185 test)
-│   │   └── test_{module}.py           # Test dosya pattern
-│   ├── pyproject.toml                 # Dependencies
+│   │   ├── k8s/                       # Kubernetes client
+│   │   └── auth/                      # JWT + RBAC
+│   ├── tests/                         # ⭐ BACKEND TESTS (71 files, ~1185 tests)
+│   │   └── test_{module}.py
+│   ├── pyproject.toml
 │   └── Dockerfile
 │
 ├── ui/                                # Frontend (Next.js 14)
 │   ├── app/                           # App Router pages
 │   ├── components/                    # React components
 │   ├── lib/                           # API client, auth, utils
-│   ├── package.json
-│   └── Dockerfile
+│   └── package.json
 │
 ├── infrastructure/                    # OpenTofu IaC
-│   ├── modules/
-│   │   ├── rancher-cluster/           # RKE2 cluster + Helm templates
-│   │   │   └── templates/             # cilium-values, longhorn-values, cloud-init
-│   │   ├── hetzner-infra/             # VM, Network, LB, Firewall
-│   │   └── dns/                       # Cloudflare
+│   ├── modules/                       # Reusable modules
+│   │   ├── rancher-cluster/           # RKE2 + Helm templates
+│   │   └── hetzner-infra/             # VM, Network, LB, Firewall
 │   └── environments/
-│       ├── dev/                       # ⭐ ANA INFRA BURDA
-│       │   ├── main.tf                # Tüm resource'lar (1300+ satır)
-│       │   ├── variables.tf           # Tüm variable'lar
-│       │   ├── backend.tf             # Hetzner S3 remote state
-│       │   ├── providers.tf           # rancher2 provider
-│       │   ├── terraform.tfvars       # ⚠️ GİTİGNORED — secret'lar
-│       │   ├── helm-values/           # Longhorn, monitoring, logging
-│       │   └── templates/             # cloud-init templates
-│       └── production/                # Cyso/NL (Phase 2+)
+│       └── dev/                       # ⭐ MAIN INFRA CONFIG
+│           ├── main.tf                # All resources (1300+ lines)
+│           ├── variables.tf           # All variables
+│           ├── backend.tf             # Hetzner S3 remote state
+│           ├── terraform.tfvars       # ⚠️ GITIGNORED secrets
+│           └── helm-values/           # Longhorn, monitoring, etc.
 │
 ├── platform/                          # ArgoCD + Kyverno + Manifests
-│   ├── argocd/
-│   │   ├── app-of-apps.yaml
-│   │   └── apps/                      # haven-api, haven-ui, kyverno, kyverno-policies
-│   ├── kyverno-policies/              # ⭐ 5 ClusterPolicy YAML
-│   ├── manifests/
-│   │   ├── haven-api/                 # deployment, clusterrole, service
-│   │   └── haven-ui/                  # deployment, service
-│   └── base/                          # Namespace, RBAC templates
+│   ├── argocd/apps/                   # ArgoCD Applications
+│   ├── kyverno-policies/              # ⭐ 5 ClusterPolicy YAMLs
+│   └── manifests/                     # haven-api, haven-ui deployments
 │
-├── charts/                            # Helm charts (haven-pg, haven-mysql, etc.)
+├── charts/                            # Internal Helm charts
 ├── keycloak/                          # haven-realm.json, bootstrap scripts
-├── gitops/                            # haven-gitops repo mirror (tenant manifests)
-├── runner/                            # ⭐ CI runner IaC (standalone tofu)
-│   └── main.tf                        # Hetzner CX23 runner
+├── gitops/                            # haven-gitops repo mirror
+├── runner/                            # ⭐ CI runner IaC (standalone)
+│   └── main.tf
 ├── docs/
-│   ├── sprints/                       # Sprint planları
-│   │   └── SPRINT_BACKLOG.md          # Aktif sprint task'ları
-│   └── haven-compliance/              # Compliance raporları
-├── tests/                             # Playwright E2E testler
+│   └── sprints/                       # Sprint plans + backlog
+├── tests/                             # Playwright E2E tests
 ├── scripts/                           # Bootstrap, migration scripts
-└── .github/workflows/                 # ⭐ CI/CD pipeline'lar
+└── .github/workflows/                 # ⭐ CI/CD pipelines
     ├── api-ci.yml                     # Lint → Test → Build → Push
     ├── ui-ci.yml                      # Lint → Build → Push
-    └── code-quality.yml               # bandit, vulture, semgrep, tflint
+    └── code-quality.yml               # bandit, semgrep, tflint
 ```
 
 ## CI/CD
-- **Runner**: Self-hosted Hetzner CX23 (46.225.154.1), 3 paralel instance
-- **Label**: `runs-on: [self-hosted, haven]`
-- **PostgreSQL**: docker run step (service container değil)
-- **Workflow'lar**: api-ci.yml, ui-ci.yml, code-quality.yml
+- **Runner**: Self-hosted Hetzner CX23 (46.225.154.1), 3 parallel instances
+- **Labels**: `runs-on: [self-hosted, haven]`
+- **PostgreSQL for tests**: docker run step (NOT service container)
 
-## Test Konumları
-| Tip | Konum | Komut |
-|-----|-------|-------|
+## Test Locations
+| Type | Location | Command |
+|------|----------|---------|
 | Backend unit | `api/tests/test_*.py` | `cd api && pytest tests/ -q` |
 | Backend lint | `api/` | `cd api && ruff check . && ruff format --check .` |
 | Frontend lint | `ui/` | `cd ui && npm run lint` |
 | Frontend build | `ui/` | `cd ui && npm run build` |
 | Playwright E2E | `tests/` | `npx playwright test` |
-| IaC validate | `infrastructure/` | `cd infrastructure/environments/dev && tofu validate` |
+| IaC validate | `infrastructure/` | `tofu validate` |
 
-## Cluster Erişimi
+## Cluster Access
 - **Kubeconfig**: `infrastructure/environments/dev/kubeconfig`
-- **API**: `https://api.46.225.42.2.sslip.io/api/docs`
-- **ArgoCD**: argocd namespace
-- **Keycloak**: `http://localhost:8080` (port-forward)
-- **Gitea**: `http://localhost:3030` (port-forward)
+- **API docs**: `https://api.46.225.42.2.sslip.io/api/docs`
 - **Harbor**: `http://harbor.46.225.42.2.sslip.io`
 
 ## Agents
-| Agent | Dosya | Ne Yapar | Ne Zaman |
-|-------|-------|----------|----------|
-| Architect | `.claude/agents/architect.md` | PR review (kod, güvenlik, mimari) | Her PR'dan önce |
-| Tester | `.claude/agents/tester.md` | Test çalıştır, count doğrula | Her kod değişikliğinde |
+| Agent | File | Purpose | When |
+|-------|------|---------|------|
+| Architect | `.claude/agents/architect.md` | PR review | Before every merge |
+| Tester | `.claude/agents/tester.md` | Run tests, verify count | Every code change |
 
-## Commands (/slash)
-| Komut | Ne Yapar |
-|-------|----------|
-| `/deep-dive` | Multi-agent araştırma + gap raporu |
-| `/haven-check` | 15/15 compliance doğrulama |
-| `/security-audit` | Tam güvenlik taraması |
-| `/sprint-plan` | Sprint planı oluştur |
+## Commands
+| Command | Purpose |
+|---------|---------|
+| `/deep-dive` | Multi-agent research + gap report |
+| `/haven-check` | 15/15 compliance verification |
+| `/security-audit` | Full security scan |
+| `/sprint-plan` | Create sprint plan after deep-dive |
 | `/sprint` | Sprint execution checklist |

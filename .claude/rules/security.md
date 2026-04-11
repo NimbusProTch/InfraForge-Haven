@@ -6,28 +6,28 @@ paths:
   - ".github/**"
 ---
 
-# Güvenlik Kuralları
+# Security Rules
 
 ## Credentials
-- Secret'ları ASLA koda yazma — tfvars, .env, K8s Secret kullan
-- Token/password conversation'da paylaşılırsa HEMEN rotate uyarısı ver
-- .gitignore kontrol et: terraform.tfvars, .env, kubeconfig, *.pem, *.key
+- NEVER hardcode secrets — use tfvars, .env, K8s Secrets
+- If token/password appears in conversation: IMMEDIATELY warn to rotate
+- Verify .gitignore: terraform.tfvars, .env, kubeconfig, *.pem, *.key
 
-## API Güvenliği
-- Her endpoint'te auth dependency zorunlu (TenantMembership veya CurrentUser)
-- Cross-tenant data leakage: SQL query'lerde tenant_id filter zorunlu
-- Rate limiting: hassas endpoint'lerde per-endpoint limit
-- Input validation: Pydantic BaseModel zorunlu
-- CORS: wildcard (*) YASAK
+## API Security
+- Every endpoint requires auth dependency (TenantMembership or CurrentUser)
+- Cross-tenant data leakage: SQL queries MUST filter by tenant_id
+- Rate limiting on sensitive endpoints
+- Input validation: Pydantic BaseModel mandatory
+- CORS: wildcard (*) FORBIDDEN
 
-## K8s / Infra
-- PSA restricted profile: tenant namespace'lerde zorunlu
+## K8s / Infrastructure
+- PSA restricted profile on all tenant namespaces
 - BuildKit: rootless image + securityContext (runAsNonRoot, drop ALL)
-- operator_cidrs: 0.0.0.0/0 YASAK, validation ile engelle
-- Kyverno: tenant namespace'lerde policy enforcement
-- Firewall: gereksiz port açma
+- operator_cidrs: 0.0.0.0/0 FORBIDDEN, enforce via validation
+- Kyverno: policy enforcement on tenant namespaces
+- Do not open unnecessary firewall ports
 
 ## CI/CD
-- Workflow'larda secret'lar ${{ secrets.* }} ile
-- SARIF upload: continue-on-error: true (permission sorunları için)
-- Docker image tag: digest pin (@sha256:) tercih et
+- Secrets via `${{ secrets.* }}` only
+- SARIF upload: add continue-on-error for permission issues
+- Prefer image digest pin (@sha256:) over tags

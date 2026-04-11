@@ -1,43 +1,31 @@
 # /haven-check — Haven 15/15 Compliance Verification
 
-Haven compliance skorunu canlı doğrula. Her maddeyi gerçek kod ve (erişilebilirse) kubectl ile kontrol et.
+Verify Haven compliance score against live code and (if accessible) kubectl.
 
-## 15 Check Listesi
+## Verification Steps
 
-Her check için şu formatı kullan:
+1. **Code verification** (always):
+   - Read relevant files (main.tf, variables.tf, helm-values/, manifests/)
+   - Are variables correctly set?
+   - Do templates render correctly?
+   - Any hardcoded bugs?
 
-| # | Check | Doğrulama Yöntemi | Beklenen | Gerçek | Status |
-|---|-------|-------------------|----------|--------|--------|
-
-## Doğrulama Adımları
-
-1. **Kod doğrulama** (her zaman):
-   - İlgili dosyaları oku (main.tf, variables.tf, helm-values/, manifests/)
-   - Değişkenler doğru set edilmiş mi?
-   - Template'ler doğru render ediyor mu?
-   - Hardcoded hatalar var mı?
-
-2. **Cluster doğrulama** (kubeconfig erişimi varsa):
+2. **Cluster verification** (if kubeconfig available):
    ```bash
    KC=infrastructure/environments/dev/kubeconfig
-   # Check 1: Multi-AZ
-   kubectl --kubeconfig=$KC get nodes -L topology.kubernetes.io/zone
-   # Check 2: Node count
-   kubectl --kubeconfig=$KC get nodes
-   # Check 3: K8s version
-   kubectl --kubeconfig=$KC version
-   # Check 4: OIDC
-   kubectl --kubeconfig=$KC get pod -n kube-system -l component=kube-apiserver -o yaml | grep oidc
-   # ... tüm 15 check
+   kubectl --kubeconfig=$KC get nodes -L topology.kubernetes.io/zone  # Check 1
+   kubectl --kubeconfig=$KC get nodes                                 # Check 2
+   kubectl --kubeconfig=$KC version                                   # Check 3
+   # ... all 15 checks
    ```
 
-3. **Rapor:**
-   - Skor: X/15
-   - Her madde: ✅ PASS / ⚠️ KOD HAZIR / ❌ BROKEN
-   - Broken maddeler için: ne yanlış, nasıl düzeltilir
-   - Önceki skorla karşılaştırma (CLAUDE.md'deki ile)
+3. **Report:**
+   - Score: X/15
+   - Each item: PASS / CODE READY / BROKEN
+   - Broken items: what's wrong, how to fix
+   - Compare with previous score
 
-## KURALLAR
-- CLAUDE.md'deki skora güvenme — kodu oku, varsa cluster'ı kontrol et
-- "Kod hazır" ile "canlıda çalışıyor" ayrımını net yap
-- Her check için kaynak dosya ve satır numarası ver
+## Rules
+- Do NOT trust CLAUDE.md score — read code, check cluster
+- Clearly separate "code ready" from "live and working"
+- Provide source file + line number for each check

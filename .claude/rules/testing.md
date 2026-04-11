@@ -4,30 +4,29 @@ paths:
   - "ui/**"
 ---
 
-# Test Yazma Kuralı (İhlal Edilemez)
+# Testing Rules (Non-Negotiable)
 
-Kod değişikliği yapıldığında test yazmadan commit YASAK.
+No code change may be committed without tests.
 
-## Neden?
-Bu proje 342 Hollandalı belediyeye hizmet veren multi-tenant PaaS. Testler güvenlik ağı — 
-test olmadan deploy edilen bir bug tüm belediyeler etkilenir.
+## Why?
+This platform serves 342 Dutch municipalities. A bug without test coverage
+could affect all tenants simultaneously. Tests are the safety net.
 
-## Akış
-1. Kod değiştir
-2. Mevcut testlerin geçtiğini doğrula
-3. Değişiklik için YENİ test yaz
-4. Test count artmalı — artmadıysa commit yapma
-5. Commit mesajında test count belirt: "Tests: 1185 → 1192 (+7)"
+## Workflow
+1. Make the code change
+2. Verify existing tests still pass
+3. Write NEW tests for the change (test count must increase)
+4. Include test count in commit message: "Tests: 1185 → 1192 (+7)"
 
-## Konum
-- Backend testleri: `api/tests/test_{module}.py`
-- Frontend testleri: `ui/__tests__/` veya component yanında
+## Test Locations
+- Backend tests: `api/tests/test_{module}.py`
+- Frontend tests: `ui/__tests__/` or co-located with components
 - Playwright E2E: `tests/`
-- Test çalıştırma: `cd api && pytest tests/ -q`
-- Lint: `cd api && ruff check . && ruff format --check .`
+- Run backend: `cd api && pytest tests/ -q`
+- Run lint: `cd api && ruff check . && ruff format --check .`
 
-## Test Yoksa
-- Commit yapma
-- PR açma
-- Sprint bitti deme
-- "Sonra yazarız" deme — test şimdi yazılır
+## Forbidden
+- Committing without new tests
+- Opening a PR without test count in description
+- Saying "sprint done" without test count increase
+- Saying "tests later" — tests are written NOW
