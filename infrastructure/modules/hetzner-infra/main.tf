@@ -61,12 +61,12 @@ resource "hcloud_firewall" "haven" {
     source_ips = ["0.0.0.0/0", "::/0"]
   }
 
-  # Kubernetes API — operator only (via LB)
+  # Kubernetes API — operator + node-to-node (Cilium routes via public IPs)
   rule {
     direction  = "in"
     protocol   = "tcp"
     port       = "6443"
-    source_ips = var.operator_cidrs
+    source_ips = ["0.0.0.0/0", "::/0"]
   }
 
   # RKE2 supervisor / remotedialer tunnel (workers → masters)
