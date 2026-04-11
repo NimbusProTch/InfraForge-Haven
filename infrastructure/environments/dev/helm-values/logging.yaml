@@ -35,7 +35,6 @@ promtail:
                   replace: "$1"
               - labels:
                   tenant_id:
-                    source: namespace
               - tenant:
                   source: tenant_id
         - match:

@@ -534,7 +534,16 @@ resource "ssh_resource" "namespace_security_labels" {
           pod-security.kubernetes.io/warn=privileged \
           --overwrite
       done
-      echo "All system namespaces labeled privileged"
+
+      # Everest Helm chart expects to own these namespaces — add Helm labels
+      for NS in everest everest-monitoring everest-olm; do
+        $K label namespace $NS app.kubernetes.io/managed-by=Helm --overwrite
+        $K annotate namespace $NS \
+          meta.helm.sh/release-name=everest \
+          meta.helm.sh/release-namespace=everest-system \
+          --overwrite
+      done
+      echo "All system namespaces labeled privileged + Everest Helm labels"
     EOT
   ]
 
