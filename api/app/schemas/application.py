@@ -29,6 +29,7 @@ class ApplicationCreate(BaseModel):
 
     repo_url: str = Field(..., max_length=2048)
     branch: str = Field(default="main", max_length=255)
+    git_provider: str = Field(default="github", pattern=r"^(github|gitea)$")
     env_vars: dict[str, str] = Field(default_factory=dict)
     replicas: int = Field(default=1, ge=1, le=20)
     port: int = Field(default=8000, ge=1, le=65535)
@@ -76,6 +77,7 @@ class ApplicationUpdate(BaseModel):
     name: str | None = Field(default=None, max_length=255)
     repo_url: str | None = Field(default=None, max_length=2048)
     branch: str | None = Field(default=None, max_length=255)
+    git_provider: str | None = Field(default=None, pattern=r"^(github|gitea)$")
     env_vars: dict[str, str] | None = None
     replicas: int | None = Field(default=None, ge=1, le=20)
     port: int | None = Field(default=None, ge=1, le=65535)
@@ -122,6 +124,7 @@ class ApplicationResponse(BaseModel):
     name: str
     repo_url: str
     branch: str
+    git_provider: str = "github"
     env_vars: dict
     image_tag: str | None
     replicas: int

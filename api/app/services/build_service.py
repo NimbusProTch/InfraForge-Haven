@@ -32,11 +32,13 @@ class BuildService:
         dockerfile_path: str | None = None,
         build_context: str | None = None,
         use_dockerfile: bool = False,
+        git_provider: str = "github",
+        gitea_token: str | None = None,
     ) -> str:
         """Submit a BuildKit build Job and return the K8s job name."""
         job_name = f"build-{app_slug}-{commit_sha[:8]}-{uuid.uuid4().hex[:6]}"
         logger.info(
-            "Submitting build job: job=%s repo=%s branch=%s commit=%s image=%s dockerfile=%s context=%s use_dockerfile=%s",
+            "Submitting build job: job=%s repo=%s branch=%s commit=%s image=%s dockerfile=%s context=%s use_dockerfile=%s provider=%s",
             job_name,
             repo_url,
             branch,
@@ -45,6 +47,7 @@ class BuildService:
             dockerfile_path,
             build_context,
             use_dockerfile,
+            git_provider,
         )
 
         job_body = self._build_job_manifest(
@@ -59,6 +62,8 @@ class BuildService:
             dockerfile_path=dockerfile_path,
             build_context=build_context,
             use_dockerfile=use_dockerfile,
+            git_provider=git_provider,
+            gitea_token=gitea_token,
         )
 
         await asyncio.to_thread(
@@ -163,6 +168,8 @@ class BuildService:
         dockerfile_path: str | None = None,
         build_context: str | None = None,
         use_dockerfile: bool = False,
+        git_provider: str = "github",
+        gitea_token: str | None = None,
     ) -> k8s_client_lib.V1Job:
         """Construct the K8s Job manifest for the build pipeline.
 
@@ -173,7 +180,15 @@ class BuildService:
         """
         # Inject auth into clone URL for private repos (do not modify stored repo_url)
         clone_url = repo_url
-        if github_token and repo_url.startswith("https://"):
+        if git_provider == "gitea" and gitea_token and repo_url.startswith("https://"):
+            clone_url = repo_url.replace("https://", f"https://gitea-admin:{gitea_token}@")
+        elif git_provider == "gitea" and repo_url.startswith("http://"):
+            # In-cluster Gitea uses HTTP
+            from app.config import settings
+
+            if settings.gitea_admin_token:
+                clone_url = repo_url.replace("http://", f"http://gitea-admin:{settings.gitea_admin_token}@")
+        elif github_token and repo_url.startswith("https://"):
             clone_url = repo_url.replace("https://", f"https://oauth2:{github_token}@")
 
         _is_real_sha = len(commit_sha) >= 7 and all(c in "0123456789abcdef" for c in commit_sha)

@@ -113,6 +113,60 @@ class GiteaClient:
             else:
                 raise
 
+    async def delete_org(self, org: str) -> None:
+        """Delete organization. No-op if it does not exist."""
+        if not self._is_configured():
+            return
+        try:
+            await self._request("DELETE", f"/orgs/{org}", expected_status=(204, 404))
+            logger.info("Deleted Gitea org '%s'", org)
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code == 404:
+                logger.debug("Gitea org '%s' does not exist — nothing to delete", org)
+            else:
+                raise
+
+    async def add_org_member(self, org: str, username: str, role: str = "member") -> None:
+        """Add a user as a member of the organization's owners team."""
+        if not self._is_configured():
+            return
+        # Gitea API: add user to the org owners team, or any team
+        # First, get the org teams to find the appropriate team
+        teams = await self._request("GET", f"/orgs/{org}/teams", expected_status=200)
+        if not isinstance(teams, list):
+            teams = [teams]
+        target_team = None
+        for team in teams:
+            if role == "owner" and team.get("permission") == "owner":
+                target_team = team
+                break
+            if role == "member" and team.get("name", "").lower() in ("owners", "developers", "members"):
+                target_team = team
+                break
+        if target_team is None and teams:
+            target_team = teams[0]  # fallback to first team
+        if target_team:
+            team_id = target_team["id"]
+            await self._request("PUT", f"/teams/{team_id}/members/{username}", expected_status=(204, 200, 404))
+            logger.info("Added user '%s' to org '%s' team '%s'", username, org, target_team.get("name"))
+
+    async def list_org_repos(self, org: str, page: int = 1, limit: int = 50) -> list[dict[str, Any]]:
+        """List repositories for an organization."""
+        if not self._is_configured():
+            return []
+        try:
+            result = await self._request(
+                "GET",
+                f"/orgs/{org}/repos",
+                expected_status=200,
+                params={"page": page, "limit": limit},
+            )
+            return result if isinstance(result, list) else [result]
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code == 404:
+                return []
+            raise
+
     # ------------------------------------------------------------------
     # Repository
     # ------------------------------------------------------------------
@@ -141,6 +195,93 @@ class GiteaClient:
                 logger.info("Created Gitea repo '%s/%s'", owner, repo)
             else:
                 raise
+
+    async def get_repo(self, owner: str, repo: str) -> dict[str, Any] | None:
+        """Get repository metadata. Returns None if not found."""
+        if not self._is_configured():
+            return None
+        try:
+            return await self._request("GET", f"/repos/{owner}/{repo}", expected_status=200)
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code == 404:
+                return None
+            raise
+
+    async def delete_repo(self, owner: str, repo: str) -> None:
+        """Delete a repository. No-op if not found."""
+        if not self._is_configured():
+            return
+        try:
+            await self._request("DELETE", f"/repos/{owner}/{repo}", expected_status=(204, 404))
+            logger.info("Deleted Gitea repo '%s/%s'", owner, repo)
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code == 404:
+                logger.debug("Gitea repo '%s/%s' not found — nothing to delete", owner, repo)
+            else:
+                raise
+
+    async def list_branches(self, owner: str, repo: str) -> list[dict[str, Any]]:
+        """List branches for a repository."""
+        if not self._is_configured():
+            return []
+        try:
+            result = await self._request("GET", f"/repos/{owner}/{repo}/branches", expected_status=200)
+            return result if isinstance(result, list) else [result]
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code == 404:
+                return []
+            raise
+
+    async def get_file_tree(
+        self, owner: str, repo: str, ref: str = "main", *, recursive: bool = True
+    ) -> list[dict[str, Any]]:
+        """Get the git tree (file list) for a repository at a given ref."""
+        if not self._is_configured():
+            return []
+        try:
+            params: dict[str, Any] = {}
+            if recursive:
+                params["recursive"] = "true"
+            result = await self._request(
+                "GET",
+                f"/repos/{owner}/{repo}/git/trees/{ref}",
+                expected_status=200,
+                params=params,
+            )
+            return result.get("tree", []) if isinstance(result, dict) else []
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code == 404:
+                return []
+            raise
+
+    async def create_webhook(
+        self,
+        owner: str,
+        repo: str,
+        url: str,
+        secret: str = "",
+        events: list[str] | None = None,
+    ) -> dict[str, Any]:
+        """Create a push webhook on a repository."""
+        if not self._is_configured():
+            return {}
+        payload: dict[str, Any] = {
+            "type": "gitea",
+            "active": True,
+            "config": {
+                "url": url,
+                "content_type": "json",
+            },
+            "events": events or ["push"],
+        }
+        if secret:
+            payload["config"]["secret"] = secret
+        return await self._request(
+            "POST",
+            f"/repos/{owner}/{repo}/hooks",
+            expected_status=201,
+            json=payload,
+        )
 
     # ------------------------------------------------------------------
     # File operations

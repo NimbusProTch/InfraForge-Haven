@@ -345,3 +345,141 @@ async def _delete_preview(
 
     logger.info("Preview environment %s deleted for app=%s", env_name, app.slug)
     return {"status": "deleted", "environment": env_name}
+
+
+# ---------------------------------------------------------------------------
+# Gitea webhook handler (Sprint 3)
+# ---------------------------------------------------------------------------
+
+
+def _verify_gitea_signature(body: bytes, secret: str, signature_header: str | None) -> None:
+    """Validate Gitea HMAC-SHA256 webhook signature."""
+    if not secret:
+        logger.warning("WEBHOOK_SECRET not set — skipping Gitea signature verification (dev mode)")
+        return
+    if not signature_header:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing X-Gitea-Signature header",
+        )
+    expected = hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(expected, signature_header):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid Gitea webhook signature",
+        )
+
+
+@router.post("/gitea/{webhook_token}", status_code=status.HTTP_202_ACCEPTED)
+async def gitea_webhook(
+    webhook_token: str,
+    request: Request,
+    db: DBSession,
+    k8s: K8sDep,
+    gitops: GitOpsDep,
+    argocd: ArgoCDDep,
+    x_gitea_signature: str | None = Header(default=None),
+    x_gitea_event: str | None = Header(default=None),
+) -> dict[str, str]:
+    """Receive Gitea push webhooks.
+
+    URL: POST /api/v1/webhooks/gitea/{webhook_token}
+    Supported events:
+    - push → trigger build + deploy on configured branch
+    """
+    body = await request.body()
+    _verify_gitea_signature(body, settings.webhook_secret, x_gitea_signature)
+
+    event = x_gitea_event or ""
+
+    if event == "push":
+        return await _handle_gitea_push(webhook_token, request, db, k8s, gitops, argocd)
+
+    logger.info("Gitea webhook event %s ignored", event)
+    return {"status": "ignored", "reason": f"event={event}"}
+
+
+async def _handle_gitea_push(
+    webhook_token: str,
+    request: Request,
+    db: DBSession,
+    k8s: K8sDep,
+    gitops: GitOpsDep,
+    argocd: ArgoCDDep,
+) -> dict[str, str]:
+    result = await db.execute(select(Application).where(Application.webhook_token == webhook_token))
+    app = result.scalar_one_or_none()
+    if app is None:
+        raise HTTPException(status_code=404, detail="No application found for this webhook token")
+
+    payload: dict[str, Any] = await request.json()
+    ref: str = payload.get("ref", "")
+    commit_sha: str = payload.get("after", "unknown")
+    branch = ref.removeprefix("refs/heads/")
+
+    if branch != app.branch:
+        logger.info("Gitea push webhook ignored: branch %s != configured %s", branch, app.branch)
+        return {"status": "ignored", "reason": "branch mismatch"}
+
+    if not app.auto_deploy:
+        logger.info("Gitea push webhook ignored: auto_deploy disabled for app %s", app.slug)
+        return {"status": "ignored", "reason": "auto_deploy disabled"}
+
+    tenant = await db.get(Tenant, app.tenant_id)
+    if tenant is None:
+        raise HTTPException(status_code=500, detail="Tenant not found for application")
+
+    deployment = Deployment(
+        application_id=app.id,
+        commit_sha=commit_sha,
+        status=DeploymentStatus.PENDING,
+    )
+    db.add(deployment)
+    await db.commit()
+    await db.refresh(deployment)
+
+    logger.info(
+        "Gitea push deployment queued: app=%s tenant=%s branch=%s commit=%s",
+        app.slug,
+        tenant.slug,
+        branch,
+        commit_sha,
+    )
+
+    asyncio.create_task(
+        run_pipeline(
+            deployment_id=deployment.id,
+            app_id=app.id,
+            repo_url=app.repo_url,
+            branch=branch,
+            commit_sha=commit_sha,
+            app_slug=app.slug,
+            tenant_slug=tenant.slug,
+            namespace=tenant.namespace,
+            tenant_id=tenant.id,
+            env_vars=dict(app.env_vars),
+            replicas=app.replicas,
+            port=app.port,
+            session_factory=get_session_factory(),
+            k8s=k8s,
+            github_token=None,
+            gitops=gitops,
+            argocd=argocd,
+            dockerfile_path=app.dockerfile_path,
+            build_context=app.build_context,
+            use_dockerfile=app.use_dockerfile,
+            custom_domain=app.custom_domain or "",
+            health_check_path=app.health_check_path or "",
+            resource_cpu_request=app.resource_cpu_request,
+            resource_cpu_limit=app.resource_cpu_limit,
+            resource_memory_request=app.resource_memory_request,
+            resource_memory_limit=app.resource_memory_limit,
+            min_replicas=app.min_replicas,
+            max_replicas=app.max_replicas,
+            cpu_threshold=app.cpu_threshold,
+            app_type=app.app_type or "web",
+        ),
+        name=f"pipeline-{deployment.id}",
+    )
+
+    return {"status": "queued", "deployment_id": str(deployment.id)}

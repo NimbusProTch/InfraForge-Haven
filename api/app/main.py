@@ -28,6 +28,7 @@ from app.routers import (
     events,
     gdpr,
     gitea,
+    gitea_repos,
     github,
     health,
     members,
@@ -335,6 +336,7 @@ app.include_router(cronjobs.router, prefix=settings.api_prefix)
 app.include_router(pvcs.router, prefix=settings.api_prefix)
 app.include_router(clusters.router, prefix=settings.api_prefix)
 app.include_router(gitea.router, prefix=settings.api_prefix)
+app.include_router(gitea_repos.router, prefix=settings.api_prefix)
 app.include_router(queue_status.router, prefix=settings.api_prefix)
 app.include_router(build_queue.router, prefix=settings.api_prefix)
 app.include_router(events.router, prefix=settings.api_prefix)
