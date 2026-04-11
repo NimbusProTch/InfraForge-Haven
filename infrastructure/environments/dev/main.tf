@@ -646,6 +646,15 @@ resource "helm_release" "cert_manager" {
     value = "true"
   }
 
+  # Gateway API support: cert-manager v1.20+ needs config.enableGatewayAPI
+  # (the old featureGates flag was removed). Without this, ACME HTTP-01
+  # challenges stay "pending" with "gateway api is not enabled" and
+  # "skipping disabled controller: gateway-shim" in logs.
+  set {
+    name  = "config.enableGatewayAPI"
+    value = "true"
+  }
+
   depends_on = [helm_release.longhorn]
 }
 
