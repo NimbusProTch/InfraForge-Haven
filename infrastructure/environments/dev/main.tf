@@ -300,7 +300,7 @@ CILEOF
 mirrors:
   ${local.harbor_host}:
     endpoint:
-      - "http://${local.harbor_host}"
+      - "https://${local.harbor_host}"
 REGEOF
 
       curl -sfL https://get.rke2.io | INSTALL_RKE2_VERSION=${var.kubernetes_version} sh -
@@ -377,7 +377,7 @@ RKEEOF
 mirrors:
   ${local.harbor_host}:
     endpoint:
-      - "http://${local.harbor_host}"
+      - "https://${local.harbor_host}"
 REGEOF
 
       curl -sfL https://get.rke2.io | INSTALL_RKE2_VERSION=${var.kubernetes_version} sh -
@@ -420,7 +420,7 @@ RKEEOF
 mirrors:
   ${local.harbor_host}:
     endpoint:
-      - "http://${local.harbor_host}"
+      - "https://${local.harbor_host}"
 REGEOF
 
       curl -sfL https://get.rke2.io | INSTALL_RKE2_TYPE=agent INSTALL_RKE2_VERSION=${var.kubernetes_version} sh -
@@ -1472,6 +1472,33 @@ resource "ssh_resource" "gateway_resources" {
             allowedRoutes:
               namespaces:
                 from: All
+      YAML
+
+      # Certificate with all gateway SANs (Let's Encrypt HTTP-01)
+      cat <<'YAML' | $K apply -f -
+      apiVersion: cert-manager.io/v1
+      kind: Certificate
+      metadata:
+        name: haven-gateway-tls
+        namespace: haven-gateway
+      spec:
+        secretName: haven-gateway-tls
+        issuerRef:
+          name: letsencrypt-gateway
+          kind: ClusterIssuer
+        dnsNames:
+          - harbor.${local._sslip_suffix}
+          - keycloak.${local._sslip_suffix}
+          - argocd.${local._sslip_suffix}
+          - api.${local._sslip_suffix}
+          - app.${local._sslip_suffix}
+          - grafana.${local._sslip_suffix}
+          - minio.${local._sslip_suffix}
+          - s3.${local._sslip_suffix}
+          - everest.${local._sslip_suffix}
+          - gitea.${local._sslip_suffix}
+          - longhorn.${local._sslip_suffix}
+          - hubble.${local._sslip_suffix}
       YAML
     EOT
   ]

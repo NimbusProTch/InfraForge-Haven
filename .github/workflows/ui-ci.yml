@@ -80,14 +80,14 @@ jobs:
           docker build --platform linux/amd64 \
             --build-arg NEXT_PUBLIC_API_URL=${{ secrets.NEXT_PUBLIC_API_URL }} \
             -t "$TAG" -f ui/Dockerfile ui
-          # Login + push via crane (handles insecure HTTP registries)
-          crane auth login ${{ env.REGISTRY }} -u ${{ secrets.HARBOR_USER }} -p ${{ secrets.HARBOR_PASSWORD }} --insecure
+          # Login + push via crane (HTTPS with Let's Encrypt TLS)
+          crane auth login ${{ env.REGISTRY }} -u ${{ secrets.HARBOR_USER }} -p ${{ secrets.HARBOR_PASSWORD }}
           docker save "$TAG" -o /tmp/haven-ui.tar
-          crane push /tmp/haven-ui.tar "$TAG" --insecure
-          crane push /tmp/haven-ui.tar "$LATEST" --insecure
+          crane push /tmp/haven-ui.tar "$TAG"
+          crane push /tmp/haven-ui.tar "$LATEST"
           rm -f /tmp/haven-ui.tar
           # Get digest for manifest pinning
-          DIGEST=$(crane digest "$TAG" --insecure)
+          DIGEST=$(crane digest "$TAG")
           echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
 
   update-manifest:

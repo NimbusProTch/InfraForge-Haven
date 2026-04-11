@@ -112,14 +112,14 @@ jobs:
           LATEST="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest"
           # Build image
           docker build --platform linux/amd64 -t "$TAG" -f api/Dockerfile api
-          # Login + push via crane (handles insecure HTTP registries)
-          crane auth login ${{ env.REGISTRY }} -u ${{ secrets.HARBOR_USER }} -p ${{ secrets.HARBOR_PASSWORD }} --insecure
+          # Login + push via crane (HTTPS with Let's Encrypt TLS)
+          crane auth login ${{ env.REGISTRY }} -u ${{ secrets.HARBOR_USER }} -p ${{ secrets.HARBOR_PASSWORD }}
           docker save "$TAG" -o /tmp/haven-api.tar
-          crane push /tmp/haven-api.tar "$TAG" --insecure
-          crane push /tmp/haven-api.tar "$LATEST" --insecure
+          crane push /tmp/haven-api.tar "$TAG"
+          crane push /tmp/haven-api.tar "$LATEST"
           rm -f /tmp/haven-api.tar
           # Get digest for manifest pinning
-          DIGEST=$(crane digest "$TAG" --insecure)
+          DIGEST=$(crane digest "$TAG")
           echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
 
   update-manifest:

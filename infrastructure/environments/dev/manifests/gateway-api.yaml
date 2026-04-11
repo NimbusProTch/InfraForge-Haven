@@ -77,6 +77,8 @@ spec:
     - grafana.46.225.42.2.sslip.io
     - longhorn.46.225.42.2.sslip.io
     - hubble.46.225.42.2.sslip.io
+    - app.46.225.42.2.sslip.io
+    - gitea.46.225.42.2.sslip.io
 
 ---
 # Gateway: HTTP (port 80) + HTTPS (port 443) listeners

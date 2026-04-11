@@ -57,17 +57,10 @@ resource "hcloud_server" "runner" {
     apt-get update -qq
     apt-get install -y -qq curl git jq unzip docker.io python3 python3-pip python3-venv build-essential
 
-    # Docker: insecure registries for Harbor (HTTP-only)
-    mkdir -p /etc/docker
-    cat > /etc/docker/daemon.json <<'DOCKER_JSON'
-    {
-      "insecure-registries": ["harbor.46.225.42.2.sslip.io"]
-    }
-    DOCKER_JSON
+    # Docker (Harbor uses HTTPS with Let's Encrypt TLS, no insecure config needed)
     systemctl enable --now docker
-    systemctl restart docker
 
-    # Install crane for insecure registry push (Harbor HTTP-only dev)
+    # Install crane for Harbor image push (docker save → crane push)
     curl -sL https://github.com/google/go-containerregistry/releases/download/v0.20.3/go-containerregistry_Linux_x86_64.tar.gz | tar xz -C /usr/local/bin crane
 
     # Node.js 20 LTS
