@@ -72,7 +72,8 @@ Thumbs.db
 
 # ===== Logs =====
 *.log
-logs/
+logs/*
+!logs/.gitkeep
 
 # ===== Misc =====
 tsconfig.tsbuildinfo
@@ -84,3 +85,4 @@ playwright-report/
 keycloak/haven-realm.rendered.json
 keycloak/*.rendered.json
 *.rendered.json
+scripts/bootstrap-iyziops.sh
