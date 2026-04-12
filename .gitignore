@@ -67,7 +67,8 @@ Thumbs.db
 
 # ===== Helm =====
 *.tgz
-charts/
+# Note: charts/ directory is NOT ignored — our internal Helm charts live there.
+# Only Helm package tarballs (*.tgz) are ignored.
 
 # ===== Logs =====
 *.log
