@@ -313,3 +313,62 @@ class TestPSARestricted:
 
         # Should NOT call patch_namespace (no retro-fit)
         assert not k8s.core_v1.patch_namespace.called
+
+
+class TestCiliumNetworkPolicy:
+    """Regression tests for the tenant-isolation CiliumNetworkPolicy template.
+
+    The CNP must allow ingress from the `ingress` entity so that the Cilium
+    Gateway API Envoy datapath can reach tenant pod backends. Without this,
+    external HTTPRoute traffic fails with "upstream connect error / connection
+    timeout" even though the live HTTPRoute/Service/Pod are all healthy.
+    """
+
+    @pytest.mark.asyncio
+    async def test_cnp_allows_cilium_ingress_entity(self):
+        """CNP ingress rules include fromEntities: [ingress]."""
+        k8s = _make_k8s()
+        svc = TenantService(k8s, harbor=_make_harbor_mock())
+
+        await svc._create_network_policy("tenant-newco")
+
+        call = k8s.custom_objects.create_namespaced_custom_object.call_args
+        body = call.kwargs.get("body") or call.args[-1]
+        ingress_rules = body["spec"]["ingress"]
+
+        # Collect all fromEntities across all ingress rules
+        entities: list[str] = []
+        for rule in ingress_rules:
+            entities.extend(rule.get("fromEntities", []))
+
+        assert "ingress" in entities, "CNP must allow ingress entity for Cilium Gateway API backends"
+
+    @pytest.mark.asyncio
+    async def test_cnp_still_denies_cross_tenant_traffic(self):
+        """CNP ingress rules do NOT include other tenant namespaces.
+
+        Specifically: no fromEndpoints with a namespace label matching
+        another tenant, and no wildcard fromEndpoints ({}).
+        """
+        k8s = _make_k8s()
+        svc = TenantService(k8s, harbor=_make_harbor_mock())
+
+        await svc._create_network_policy("tenant-newco")
+
+        call = k8s.custom_objects.create_namespaced_custom_object.call_args
+        body = call.kwargs.get("body") or call.args[-1]
+        ingress_rules = body["spec"]["ingress"]
+
+        allowed_ns = set()
+        for rule in ingress_rules:
+            for ep in rule.get("fromEndpoints", []):
+                ns = ep.get("matchLabels", {}).get("io.kubernetes.pod.namespace")
+                if ns is not None:
+                    allowed_ns.add(ns)
+                # Wildcard fromEndpoints {} or no matchLabels is a leak
+                assert ep.get("matchLabels"), "fromEndpoints must have matchLabels (no wildcard)"
+
+        # Only allowed: self, haven-system, monitoring
+        assert allowed_ns == {"tenant-newco", "haven-system", "monitoring"}, (
+            f"Unexpected ingress namespaces: {allowed_ns}"
+        )

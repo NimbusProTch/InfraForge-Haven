@@ -67,6 +67,12 @@ _CILIUM_NETPOL_TEMPLATE: dict = {
                 # Prometheus (monitoring namespace) → tenant pod /metrics scraping
                 "fromEndpoints": [{"matchLabels": {"io.kubernetes.pod.namespace": "monitoring"}}]
             },
+            {
+                # Cilium Ingress/Gateway controller → tenant pod backends
+                # Without this, external HTTPRoute traffic times out with "upstream connect error"
+                # because the Cilium Envoy datapath identity is `ingress`, not `host`.
+                "fromEntities": ["ingress"]
+            },
         ],
         "egress": [
             {
