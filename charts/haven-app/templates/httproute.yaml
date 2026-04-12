@@ -7,7 +7,9 @@ metadata:
     {{- include "haven-app.labels" . | nindent 4 }}
 spec:
   parentRefs:
-    - name: {{ .Values.httproute.gateway.name }}
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: {{ .Values.httproute.gateway.name }}
       namespace: {{ .Values.httproute.gateway.namespace }}
   hostnames:
     - {{ include "haven-app.hostname" . | quote }}
@@ -20,6 +22,9 @@ spec:
             type: PathPrefix
             value: /
       backendRefs:
-        - name: {{ include "haven-app.fullname" . }}
+        - group: ""
+          kind: Service
+          name: {{ include "haven-app.fullname" . }}
           port: 80
+          weight: 1
 {{- end }}
