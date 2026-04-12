@@ -1,128 +1,64 @@
-terraform {
-  required_providers {
-    hcloud = {
-      source  = "hetznercloud/hcloud"
-      version = "~> 1.49"
-    }
-  }
+# =============================================================================
+#  iyziops CI runner — main
+# =============================================================================
+#  Single Hetzner VM hosting var.runner_count parallel GitHub Actions runner
+#  systemd units. The VM has its own SSH key (separate blast radius from
+#  the platform cluster) and its own state bucket (iyziops-tfstate-runner).
+#
+#  The cloud-init template lives under templates/ so the main.tf stays free
+#  of inline shell.
+# =============================================================================
+
+# ----- SSH key (generated, written to logs/ for SCP) ------------------------
+#  Persistent, NOT scratch: operator needs this to SSH into the runner for
+#  debugging. Lives under logs/ which is gitignored.
+
+resource "tls_private_key" "runner" {
+  algorithm = "ED25519"
 }
 
-provider "hcloud" {
-  token = var.hcloud_token
-}
-
-variable "hcloud_token" {
-  type      = string
-  sensitive = true
-}
-
-variable "ssh_public_key" {
-  type        = string
-  description = "SSH public key for runner access"
-}
-
-variable "github_runner_token" {
-  type        = string
-  sensitive   = true
-  description = "GitHub Actions runner registration token"
-}
-
-variable "github_repo" {
-  type    = string
-  default = "NimbusProTch/InfraForge-Haven"
-}
-
-variable "runner_count" {
-  type    = number
-  default = 3
+resource "local_sensitive_file" "ssh_private_key" {
+  filename        = "${path.root}/../logs/iyziops-runner-ssh.pem"
+  content         = tls_private_key.runner.private_key_openssh
+  file_permission = "0600"
 }
 
 resource "hcloud_ssh_key" "runner" {
-  name       = "haven-ci-runner"
-  public_key = var.ssh_public_key
+  name       = var.name
+  public_key = tls_private_key.runner.public_key_openssh
 }
 
+# ----- Cloud-init template render ------------------------------------------
+
+locals {
+  runner_cloud_init = templatefile("${path.module}/templates/runner-cloud-init.yaml.tpl", {
+    name                = var.name
+    github_repo         = var.github_repo
+    github_runner_token = var.github_runner_token
+    runner_count        = var.runner_count
+    runner_labels       = join(",", var.runner_labels)
+    runner_version      = var.runner_version
+  })
+}
+
+# ----- Runner VM ------------------------------------------------------------
+
 resource "hcloud_server" "runner" {
-  name        = "haven-ci-runner"
-  server_type = "cx23"
-  image       = "ubuntu-22.04"
-  location    = "fsn1"
-  ssh_keys    = [hcloud_ssh_key.runner.id]
+  name        = var.name
+  server_type = var.server_type
+  image       = var.os_image
+  location    = var.location
 
-  user_data = <<-CLOUD_INIT
-    #!/bin/bash
-    set -euo pipefail
+  ssh_keys  = [hcloud_ssh_key.runner.id]
+  user_data = local.runner_cloud_init
 
-    # System packages
-    apt-get update -qq
-    apt-get install -y -qq curl git jq unzip docker.io python3 python3-pip python3-venv build-essential
-
-    # Docker (Harbor uses HTTPS with Let's Encrypt TLS, no insecure config needed)
-    systemctl enable --now docker
-
-    # Install crane for Harbor image push (docker save → crane push)
-    curl -sL https://github.com/google/go-containerregistry/releases/download/v0.20.3/go-containerregistry_Linux_x86_64.tar.gz | tar xz -C /usr/local/bin crane
-
-    # Node.js 20 LTS
-    curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
-    apt-get install -y -qq nodejs
-
-    # Runner user
-    useradd -m -s /bin/bash -G docker runner
-
-    # GitHub Actions Runner
-    RUNNER_VERSION="2.321.0"
-    RUNNER_TAR="actions-runner-linux-x64-$${RUNNER_VERSION}.tar.gz"
-
-    su - runner -c "
-      curl -sL https://github.com/actions/runner/releases/download/v$${RUNNER_VERSION}/$${RUNNER_TAR} -o /tmp/$${RUNNER_TAR}
-    "
-
-    # Install N runner instances
-    for i in $(seq 1 ${var.runner_count}); do
-      su - runner -c "
-        mkdir -p actions-runner-$$i && cd actions-runner-$$i
-        tar xz -f /tmp/$${RUNNER_TAR}
-        ./config.sh --unattended \
-          --url https://github.com/${var.github_repo} \
-          --token ${var.github_runner_token} \
-          --name haven-runner-$$i \
-          --labels self-hosted,haven \
-          --work _work \
-          --replace
-      "
-
-      # Systemd service for each runner
-      cat > /etc/systemd/system/github-runner-$$i.service <<SYSTEMD
-    [Unit]
-    Description=GitHub Actions Runner $$i
-    After=network.target docker.service
-
-    [Service]
-    Type=simple
-    User=runner
-    WorkingDirectory=/home/runner/actions-runner-$$i
-    ExecStart=/home/runner/actions-runner-$$i/run.sh
-    Restart=always
-    RestartSec=5
-
-    [Install]
-    WantedBy=multi-user.target
-    SYSTEMD
-
-      systemctl daemon-reload
-      systemctl enable --now github-runner-$$i
-    done
-
-    rm -f /tmp/$${RUNNER_TAR}
-  CLOUD_INIT
+  public_net {
+    ipv4_enabled = true
+    ipv6_enabled = true
+  }
 
   labels = {
     role    = "ci-runner"
-    project = "haven"
+    project = "iyziops"
   }
-}
-
-output "runner_ip" {
-  value = hcloud_server.runner.ipv4_address
 }
