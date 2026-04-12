@@ -891,6 +891,43 @@ spec:
             - podAffinityTerm: {topologyKey: kubernetes.io/hostname}
               weight: 1
 YAML
+
+      # Approve all Manual-mode OLM InstallPlans in the everest namespace.
+      # Everest 1.13 ships Percona operator subscriptions with Manual approval;
+      # without this step the Percona PG/MongoDB/XtraDB operators never get
+      # installed and DatabaseEngine CRs stay in "not installed" state forever,
+      # blocking all tenant DB provisioning. Idempotent: skips already-approved.
+      # Hard-fails if 3 Percona pods are not Running within 5 min so CI catches
+      # regressions early (instead of silently leaving the cluster broken).
+      echo "Approving Everest OLM InstallPlans..."
+      PERCONA_READY=0
+      for i in $(seq 1 30); do
+        IPS=$($K get installplans -n everest -o jsonpath="{.items[*].metadata.name}" 2>/dev/null || echo "")
+        if [ -n "$IPS" ]; then
+          for IP in $IPS; do
+            APPROVED=$($K get installplan $IP -n everest -o jsonpath="{.spec.approved}" 2>/dev/null || echo "false")
+            if [ "$APPROVED" != "true" ]; then
+              $K patch installplan $IP -n everest --type=merge -p "{\"spec\":{\"approved\":true}}" >/dev/null 2>&1 || true
+              echo "  approved $IP"
+            fi
+          done
+        fi
+        READY=$($K get pods -n everest --no-headers 2>/dev/null | grep -c "1/1" 2>/dev/null || echo 0)
+        if [ -z "$READY" ]; then READY=0; fi
+        if [ "$READY" -ge "3" ]; then
+          echo "PERCONA_OPERATORS_READY: $READY/3 pods running"
+          PERCONA_READY=1
+          break
+        fi
+        echo "  waiting for Percona operators ($READY/3 ready, attempt $i)"
+        sleep 10
+      done
+      if [ "$PERCONA_READY" != "1" ]; then
+        echo "ERROR: Percona operators did not become Running within 5 minutes."
+        echo "Check: kubectl get pods -n everest; kubectl get installplans -n everest"
+        exit 1
+      fi
+
       echo "Everest setup complete."
     '
   EOT
@@ -912,6 +949,76 @@ resource "helm_release" "redis_operator" {
   wait             = true
 
   depends_on = [ssh_resource.namespace_security_labels]
+}
+
+# --- 18b. Platform Redis (haven-redis) ---
+# Shared Redis instance used by haven-api for: slowapi rate limiting storage,
+# git-worker FIFO queue, and other platform-level caches. Passwordless by
+# design — tenant isolation is via CNP, and the Redis port is not exposed
+# outside the cluster. For prod: switch to password auth + ACLs.
+resource "ssh_resource" "platform_redis" {
+  count       = var.enable_redis_operator ? 1 : 0
+  host        = hcloud_server.master[0].ipv4_address
+  user        = local.node_username
+  private_key = tls_private_key.global_key.private_key_pem
+  timeout     = "3m"
+
+  commands = [nonsensitive(<<-EOT
+    bash -c '
+      export KUBECONFIG=/etc/rancher/rke2/rke2.yaml
+      K=/var/lib/rancher/rke2/bin/kubectl
+
+      echo "Waiting for Redis operator CRD to be established..."
+      for i in $(seq 1 30); do
+        if $K get crd redis.redis.redis.opstreelabs.in >/dev/null 2>&1; then
+          break
+        fi
+        sleep 2
+      done
+
+      echo "Applying platform haven-redis CR..."
+      cat <<REDIS | $K apply --server-side --force-conflicts -f -
+apiVersion: redis.redis.opstreelabs.in/v1beta2
+kind: Redis
+metadata:
+  name: haven-redis
+  namespace: redis-system
+spec:
+  kubernetesConfig:
+    image: quay.io/opstree/redis:v7.0.15
+    imagePullPolicy: IfNotPresent
+    resources:
+      requests:
+        cpu: 50m
+        memory: 64Mi
+      limits:
+        cpu: 200m
+        memory: 256Mi
+  redisExporter:
+    enabled: false
+    image: quay.io/opstree/redis-exporter:v1.44.0
+REDIS
+
+      echo "Waiting for haven-redis-0 pod Running..."
+      REDIS_READY=0
+      for i in $(seq 1 30); do
+        STATUS=$($K get pod haven-redis-0 -n redis-system -o jsonpath="{.status.phase}" 2>/dev/null || echo "")
+        if [ "$STATUS" = "Running" ]; then
+          echo "PLATFORM_REDIS_READY"
+          REDIS_READY=1
+          break
+        fi
+        sleep 5
+      done
+      if [ "$REDIS_READY" != "1" ]; then
+        echo "ERROR: haven-redis-0 did not become Running within 150s."
+        exit 1
+      fi
+    '
+  EOT
+  )]
+
+  depends_on = [helm_release.redis_operator]
 }
 
 # --- 19. RabbitMQ Cluster Operator (official, NOT Bitnami) ---
