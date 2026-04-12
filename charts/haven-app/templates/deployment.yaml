@@ -54,6 +54,7 @@ spec:
             {{- end }}
           {{- if .Values.containerSecurityContext.enabled }}
           securityContext:
+            privileged: false
             allowPrivilegeEscalation: {{ .Values.containerSecurityContext.allowPrivilegeEscalation }}
             readOnlyRootFilesystem: {{ .Values.containerSecurityContext.readOnlyRootFilesystem }}
             capabilities:
