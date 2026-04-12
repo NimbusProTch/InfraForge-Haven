@@ -1,0 +1,36 @@
+---
+# =============================================================================
+#  iyziops — iyziops-apps App
+# =============================================================================
+#  The iyziops platform itself (API + UI). Watches
+#  platform/argocd/apps/iyziops/ which currently holds the existing
+#  haven-api.yaml + haven-ui.yaml Application manifests (file names keep
+#  the haven- prefix until the dedicated rename sprint — contents unchanged
+#  from PR #124).
+# =============================================================================
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: iyziops-apps
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: iyziops-platform
+  source:
+    repoURL: git@github.com:NimbusProTch/InfraForge-Haven.git
+    targetRevision: main
+    path: platform/argocd/apps/iyziops
+    directory:
+      recurse: true
+      include: '*.yaml'
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=false
+      - ApplyOutOfSyncOnly=true

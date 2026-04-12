@@ -1,0 +1,39 @@
+---
+# =============================================================================
+#  iyziops — platform-operators App
+# =============================================================================
+#  Scaffolding placeholder for the operators tier. Watches
+#  platform/argocd/apps/operators/ and applies every ArgoCD Application
+#  manifest found there (recurse:true). Next sprint will promote this to a
+#  real ApplicationSet with a git directory generator; for now an App-of-Apps
+#  child Application is enough to bootstrap the structure.
+#
+#  Future residents: External Secrets + Vault, Kyverno, Gateway API CRDs,
+#  CNPG, Everest, Redis Operator, RabbitMQ Operator.
+# =============================================================================
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: platform-operators
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: iyziops-platform
+  source:
+    repoURL: git@github.com:NimbusProTch/InfraForge-Haven.git
+    targetRevision: main
+    path: platform/argocd/apps/operators
+    directory:
+      recurse: true
+      include: '*.yaml'
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=false
+      - ApplyOutOfSyncOnly=true

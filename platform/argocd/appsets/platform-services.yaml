@@ -1,0 +1,34 @@
+---
+# =============================================================================
+#  iyziops — platform-services App
+# =============================================================================
+#  Watches platform/argocd/apps/services/. Future residents: monitoring
+#  (Prometheus, Grafana), Loki, Hubble UI, Harbor, MinIO, Gitea,
+#  External-DNS, Keycloak (+ realm import Job), platform CNPG Cluster.
+# =============================================================================
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: platform-services
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: iyziops-platform
+  source:
+    repoURL: git@github.com:NimbusProTch/InfraForge-Haven.git
+    targetRevision: main
+    path: platform/argocd/apps/services
+    directory:
+      recurse: true
+      include: '*.yaml'
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=false
+      - ApplyOutOfSyncOnly=true
