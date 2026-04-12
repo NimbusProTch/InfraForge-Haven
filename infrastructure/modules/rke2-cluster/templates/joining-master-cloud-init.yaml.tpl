@@ -1,10 +1,10 @@
 #cloud-config
 # =============================================================================
-#  iyziops — first master node (cluster bootstrap)
+#  iyziops — additional master node (HA join)
 # =============================================================================
-#  Cloud-config format. Drops every Helm Controller manifest into
-#  /var/lib/rancher/rke2/server/manifests/ BEFORE RKE2 starts, so the
-#  Helm Controller applies them when the API comes up.
+#  Joins the cluster via the first master's private IP on port 9345. Does
+#  NOT write any Helm Controller manifests — etcd replicates them from the
+#  bootstrap master once the new master registers.
 # =============================================================================
 
 package_update: true
@@ -16,7 +16,6 @@ packages:
   - wireguard-tools
 
 write_files:
-  # ---------- sysctl for RKE2 CIS profile ----------
   - path: /etc/sysctl.d/90-rke2.conf
     permissions: '0644'
     content: |
@@ -25,7 +24,6 @@ write_files:
       kernel.panic=10
       kernel.panic_on_oops=1
 
-  # ---------- kube-apiserver audit policy ----------
   - path: /etc/rancher/rke2/audit-policy.yaml
     permissions: '0600'
     content: |
@@ -36,40 +34,18 @@ write_files:
       rules:
         - level: None
           verbs: ["get", "list", "watch"]
-          resources:
-            - group: ""
-              resources: ["events", "endpoints", "services", "pods/log", "pods/status"]
-            - group: "coordination.k8s.io"
-              resources: ["leases"]
         - level: RequestResponse
           resources:
             - group: "rbac.authorization.k8s.io"
               resources: ["clusterroles", "clusterrolebindings", "roles", "rolebindings"]
         - level: Metadata
-          resources:
-            - group: ""
-              resources: ["secrets"]
-        - level: RequestResponse
-          resources:
-            - group: ""
-              resources: ["namespaces"]
-        - level: Metadata
-          resources:
-            - group: ""
-              resources: ["serviceaccounts/token"]
-        - level: Metadata
-          resources:
-            - group: "argoproj.io"
-              resources: ["applications", "applicationsets"]
-        - level: Metadata
           verbs: ["create", "update", "patch", "delete"]
 
-  # ---------- RKE2 config template (PRIVATE_IP filled at runtime) ----------
   - path: /etc/rancher/rke2/config.yaml.tpl
     permissions: '0600'
     content: |
       token: "${cluster_token}"
-      cluster-init: true
+      server: "https://${first_master_private_ip}:9345"
       node-ip: "__PRIVATE_IP__"
       node-external-ip: "__PUBLIC_IP__"
       cni: cilium
@@ -102,7 +78,6 @@ write_files:
         - "audit-log-maxsize=100"
       etcd-snapshot-schedule-cron: "${etcd_snapshot_schedule}"
       etcd-snapshot-retention: ${etcd_snapshot_retention}
-      etcd-snapshot-dir: /var/lib/rancher/rke2/server/db/snapshots
       %{ if etcd_s3_enabled ~}
       etcd-s3: true
       etcd-s3-endpoint: "${etcd_s3_endpoint}"
@@ -111,57 +86,6 @@ write_files:
       etcd-s3-access-key: "${etcd_s3_access_key}"
       etcd-s3-secret-key: "${etcd_s3_secret_key}"
       %{ endif ~}
-
-  # ---------- Helm Controller manifests (base64) ----------
-  - path: /var/lib/rancher/rke2/server/manifests/rke2-cilium-config.yaml
-    permissions: '0600'
-    encoding: b64
-    content: ${manifest_cilium_config_b64}
-
-  - path: /var/lib/rancher/rke2/server/manifests/longhorn.yaml
-    permissions: '0600'
-    encoding: b64
-    content: ${manifest_longhorn_b64}
-
-  - path: /var/lib/rancher/rke2/server/manifests/cert-manager.yaml
-    permissions: '0600'
-    encoding: b64
-    content: ${manifest_cert_manager_b64}
-
-  - path: /var/lib/rancher/rke2/server/manifests/cloudflare-token-secret.yaml
-    permissions: '0600'
-    encoding: b64
-    content: ${manifest_cloudflare_token_secret_b64}
-
-  - path: /var/lib/rancher/rke2/server/manifests/letsencrypt-issuers.yaml
-    permissions: '0600'
-    encoding: b64
-    content: ${manifest_letsencrypt_issuers_b64}
-
-  - path: /var/lib/rancher/rke2/server/manifests/iyziops-wildcard-cert.yaml
-    permissions: '0600'
-    encoding: b64
-    content: ${manifest_wildcard_cert_b64}
-
-  - path: /var/lib/rancher/rke2/server/manifests/argocd.yaml
-    permissions: '0600'
-    encoding: b64
-    content: ${manifest_argocd_b64}
-
-  - path: /var/lib/rancher/rke2/server/manifests/argocd-projects.yaml
-    permissions: '0600'
-    encoding: b64
-    content: ${manifest_argocd_projects_b64}
-
-  - path: /var/lib/rancher/rke2/server/manifests/argocd-repo-secret.yaml
-    permissions: '0600'
-    encoding: b64
-    content: ${manifest_argocd_repo_secret_b64}
-
-  - path: /var/lib/rancher/rke2/server/manifests/argocd-root-app.yaml
-    permissions: '0600'
-    encoding: b64
-    content: ${manifest_argocd_root_app_b64}
 
 runcmd:
   - useradd -r -c "etcd user" -s /sbin/nologin -M etcd 2>/dev/null || true
@@ -186,6 +110,11 @@ runcmd:
     chmod 0600 /etc/rancher/rke2/config.yaml
   - |
     set -eu
+    until curl -skf "https://${first_master_private_ip}:9345/ping" >/dev/null 2>&1; do
+      echo "waiting for first master supervisor 9345..."
+      sleep 10
+    done
+  - |
     for i in 1 2 3 4 5; do
       curl -sfL https://get.rke2.io | INSTALL_RKE2_VERSION="${kubernetes_version}" INSTALL_RKE2_TYPE=server sh - && break
       sleep 10

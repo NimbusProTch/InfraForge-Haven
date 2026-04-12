@@ -1,43 +1,45 @@
-# ============================================================
-# Hetzner Cloud Infra Module
-# ============================================================
-# Base infrastructure: SSH key, network, firewall, load balancer.
-# No management node — RKE2 installed directly on master/worker.
-# Firewall hardened: only HTTP/S + K8s API public, rest private.
-# ============================================================
+# =============================================================================
+#  iyziops — Hetzner base infrastructure
+# =============================================================================
+#  SSH key, private network, subnet, public firewall, and the single
+#  tofu-managed load balancer that fronts both the Kubernetes API (6443) and
+#  the Cilium Gateway (80/443). LB targets are attached in the environment
+#  level (not here) because they reference server IDs.
+#
+#  Node-to-node traffic goes over the private network and is NOT filtered
+#  by hcloud_firewall — Hetzner firewalls only apply to public ingress. That
+#  is why this file contains no rules for VXLAN, kubelet, or the RKE2
+#  supervisor port: cluster-internal traffic stays on 10.x and never touches
+#  the public firewall.
+# =============================================================================
 
-# --- SSH Key ---
-resource "hcloud_ssh_key" "haven" {
-  name       = "haven-${var.environment}"
+resource "hcloud_ssh_key" "this" {
+  name       = "${var.cluster_name}-${var.environment}"
   public_key = var.ssh_public_key
 }
 
-# --- Private Network ---
-resource "hcloud_network" "haven" {
-  name     = "haven-${var.environment}"
+resource "hcloud_network" "this" {
+  name     = "${var.cluster_name}-${var.environment}"
   ip_range = var.network_cidr
 }
 
-resource "hcloud_network_subnet" "haven" {
-  network_id   = hcloud_network.haven.id
+resource "hcloud_network_subnet" "this" {
+  network_id   = hcloud_network.this.id
   type         = "cloud"
-  network_zone = "eu-central"
+  network_zone = var.network_zone
   ip_range     = var.subnet_cidr
 }
 
-# --- Firewall (Hardened) ---
-# Inter-node traffic flows over private network (node-ip config).
-# Only public-facing ports open: SSH, HTTP/S, K8s API.
-#
-# H1b-1 (P4.1): operator-only ports (SSH 22, K8s API 6443, RKE2
-# supervisor 9345) are restricted to var.operator_cidrs. Public web
-# ports (80, 443) remain world-open because the platform serves customer
-# tenant apps to the internet via Cilium Gateway API. Set operator_cidrs
-# in terraform.tfvars to your VPN/office egress CIDRs before applying.
-resource "hcloud_firewall" "haven" {
-  name = "haven-${var.environment}"
+# -----------------------------------------------------------------------------
+#  Public firewall
+# -----------------------------------------------------------------------------
+#  Rules are intentionally minimal. Everything else (kubelet, VXLAN, etcd,
+#  RKE2 supervisor on 9345, LB → node traffic) is private-network only.
+# -----------------------------------------------------------------------------
+resource "hcloud_firewall" "this" {
+  name = "${var.cluster_name}-${var.environment}"
 
-  # SSH — operator only
+  # SSH — operator shell access only
   rule {
     direction  = "in"
     protocol   = "tcp"
@@ -45,7 +47,15 @@ resource "hcloud_firewall" "haven" {
     source_ips = var.operator_cidrs
   }
 
-  # HTTP — public (Let's Encrypt ACME + tenant apps via Gateway API)
+  # Kubernetes API — operator kubectl (direct, bypassing the LB)
+  rule {
+    direction  = "in"
+    protocol   = "tcp"
+    port       = "6443"
+    source_ips = var.operator_cidrs
+  }
+
+  # HTTP — public (Let's Encrypt HTTP-01 + tenant apps via Cilium Gateway)
   rule {
     direction  = "in"
     protocol   = "tcp"
@@ -53,86 +63,50 @@ resource "hcloud_firewall" "haven" {
     source_ips = ["0.0.0.0/0", "::/0"]
   }
 
-  # HTTPS — public (tenant apps via Gateway API)
+  # HTTPS — public (tenant apps via Cilium Gateway)
   rule {
     direction  = "in"
     protocol   = "tcp"
     port       = "443"
     source_ips = ["0.0.0.0/0", "::/0"]
   }
-
-  # Kubernetes API — operator + node-to-node (Cilium routes via public IPs)
-  rule {
-    direction  = "in"
-    protocol   = "tcp"
-    port       = "6443"
-    source_ips = ["0.0.0.0/0", "::/0"]
-  }
-
-  # RKE2 supervisor / remotedialer tunnel (workers → masters)
-  # Node-to-node: workers connect to masters via public IP on port 9345.
-  # Open to all IPs because node IPs are dynamic (assigned at create time).
-  # RKE2 token-based auth protects against unauthorized joins.
-  rule {
-    direction  = "in"
-    protocol   = "tcp"
-    port       = "9345"
-    source_ips = ["0.0.0.0/0", "::/0"]
-  }
-
-  # kubelet API (10250) — node-to-node
-  # Required for apiserver → kubelet proxy (logs, exec, port-forward).
-  # Without this, kubectl logs/exec return 502 Bad Gateway.
-  rule {
-    direction  = "in"
-    protocol   = "tcp"
-    port       = "10250"
-    source_ips = ["0.0.0.0/0", "::/0"]
-  }
-
-  # VXLAN / Cilium overlay (8472) — node-to-node
-  rule {
-    direction  = "in"
-    protocol   = "udp"
-    port       = "8472"
-    source_ips = ["0.0.0.0/0", "::/0"]
-  }
-
-  # NodePort range for gateway proxy (LB uses private IP, bypasses firewall,
-  # but Hetzner health checks come from public — need this for HC to pass)
-  rule {
-    direction  = "in"
-    protocol   = "tcp"
-    port       = "30000-32767"
-    source_ips = ["0.0.0.0/0", "::/0"]
-  }
 }
 
-# --- Load Balancer (K8s API + HTTP/S Ingress) ---
-resource "hcloud_load_balancer" "haven" {
-  name               = "haven-lb-${var.environment}"
-  load_balancer_type = "lb11"
+# -----------------------------------------------------------------------------
+#  Load balancer — single public entry point
+# -----------------------------------------------------------------------------
+#  Listens on 6443/80/443. Targets (servers on private IPs) are attached in
+#  the environment layer. Services use the private target IP via
+#  use_private_ip = true on hcloud_load_balancer_target (see environments/).
+# -----------------------------------------------------------------------------
+resource "hcloud_load_balancer" "this" {
+  name               = "${var.cluster_name}-${var.environment}"
+  load_balancer_type = var.lb_type
   location           = var.location_primary
 }
 
-resource "hcloud_load_balancer_network" "haven" {
-  load_balancer_id = hcloud_load_balancer.haven.id
-  subnet_id        = hcloud_network_subnet.haven.id
+resource "hcloud_load_balancer_network" "this" {
+  load_balancer_id = hcloud_load_balancer.this.id
+  subnet_id        = hcloud_network_subnet.this.id
 }
 
-# K8s API service
 resource "hcloud_load_balancer_service" "k8s_api" {
-  load_balancer_id = hcloud_load_balancer.haven.id
+  load_balancer_id = hcloud_load_balancer.this.id
   protocol         = "tcp"
   listen_port      = 6443
   destination_port = 6443
+
+  health_check {
+    protocol = "tcp"
+    port     = 6443
+    interval = 15
+    timeout  = 10
+    retries  = 3
+  }
 }
 
-# HTTP service → nginx proxy NodePort
-# Chain: LB:80 → node:NodePort → nginx proxy pod → Cilium Gateway ClusterIP
-# Health check must probe destination_port, NOT listen_port (Hetzner defaults to listen_port)
 resource "hcloud_load_balancer_service" "http" {
-  load_balancer_id = hcloud_load_balancer.haven.id
+  load_balancer_id = hcloud_load_balancer.this.id
   protocol         = "tcp"
   listen_port      = 80
   destination_port = var.gateway_http_nodeport
@@ -146,9 +120,8 @@ resource "hcloud_load_balancer_service" "http" {
   }
 }
 
-# HTTPS service → Cilium Gateway NodePort (TLS terminated by Cilium Envoy)
 resource "hcloud_load_balancer_service" "https" {
-  load_balancer_id = hcloud_load_balancer.haven.id
+  load_balancer_id = hcloud_load_balancer.this.id
   protocol         = "tcp"
   listen_port      = 443
   destination_port = var.gateway_https_nodeport

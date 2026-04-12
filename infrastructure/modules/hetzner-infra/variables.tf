@@ -1,56 +1,98 @@
-variable "environment" {
-  type = string
+# =============================================================================
+#  iyziops — Hetzner base infrastructure (variables)
+# =============================================================================
+#  No defaults for env-specific values. Everything comes from the environment
+#  layer's tfvars file. Sensitive inputs are marked accordingly.
+# =============================================================================
+
+variable "cluster_name" {
+  description = "Cluster identifier used as a resource name prefix (e.g. iyziops)"
+  type        = string
+
+  validation {
+    condition     = can(regex("^[a-z][a-z0-9-]{1,30}[a-z0-9]$", var.cluster_name))
+    error_message = "cluster_name must be lowercase, 3-32 chars, start with a letter, end with a letter or digit."
+  }
 }
 
-variable "location_primary" {
-  type    = string
-  default = "nbg1"
+variable "environment" {
+  description = "Environment identifier (e.g. prod). Single-env model — there is no dev."
+  type        = string
+
+  validation {
+    condition     = contains(["prod"], var.environment)
+    error_message = "environment must be one of: prod."
+  }
 }
 
 variable "ssh_public_key" {
-  description = "SSH public key content"
+  description = "SSH public key (OpenSSH format) installed on every node"
+  type        = string
+}
+
+variable "location_primary" {
+  description = "Hetzner primary datacenter location (e.g. fsn1, nbg1, hel1)"
+  type        = string
+}
+
+variable "network_zone" {
+  description = "Hetzner network zone for the private subnet (e.g. eu-central)"
   type        = string
 }
 
 variable "network_cidr" {
-  type    = string
-  default = "10.0.0.0/16"
+  description = "CIDR of the private network that holds cluster nodes and LB"
+  type        = string
 }
 
 variable "subnet_cidr" {
-  type    = string
-  default = "10.0.1.0/24"
+  description = "CIDR of the private subnet (must be inside network_cidr)"
+  type        = string
 }
 
-# H1b-1 (P4.1): operator IP allow-list for SSH + K8s API + RKE2 supervisor.
-# Pre-fix every public-facing port was open to 0.0.0.0/0 — that included
-# port 9345 (RKE2 supervisor / remotedialer tunnel) which is a rogue
-# worker join vector. Set this to your office/VPN egress CIDR(s) before
-# applying. Use ["0.0.0.0/0", "::/0"] only if you have a deliberate
-# reason (e.g. emergency dev cluster with no VPN).
-#
-# Example terraform.tfvars:
-#   operator_cidrs = ["203.0.113.0/24", "198.51.100.7/32"]
-#
-# A SAFE default is empty list, which would deny all SSH/9345/6443 traffic
-# from outside the LB and force you to set the variable explicitly. We
-# default to the unsafe value temporarily to avoid breaking existing dev
-# environments — Sprint H1b-1 morning task: set operator_cidrs in tfvars.
+variable "lb_type" {
+  description = "Hetzner load balancer type (e.g. lb11 for small prod, lb21 for customer-facing prod)"
+  type        = string
+
+  validation {
+    condition     = contains(["lb11", "lb21", "lb31"], var.lb_type)
+    error_message = "lb_type must be one of: lb11, lb21, lb31."
+  }
+}
+
 variable "operator_cidrs" {
-  description = "Allow-list CIDRs for SSH, K8s API direct, and RKE2 supervisor (port 9345)"
+  description = "Allow-list CIDRs for public SSH (22) and direct kubectl (6443). Must not contain 0.0.0.0/0."
   type        = list(string)
-  default     = ["0.0.0.0/0", "::/0"]   # H1b-1 morning TODO: replace with operator IPs
+
+  validation {
+    condition     = !contains(var.operator_cidrs, "0.0.0.0/0") && !contains(var.operator_cidrs, "::/0")
+    error_message = "operator_cidrs must not contain 0.0.0.0/0 or ::/0 — use explicit VPN/office CIDRs only."
+  }
+
+  validation {
+    condition     = length(var.operator_cidrs) > 0
+    error_message = "operator_cidrs cannot be empty — set your VPN or office egress CIDR."
+  }
 }
 
 variable "gateway_http_nodeport" {
-  description = "nginx DaemonSet hostPort for HTTP (gateway-proxy)"
+  description = "NodePort that the Cilium Gateway exposes for HTTP (LB destination_port for :80)"
   type        = number
-  default     = 80
+  default     = 30080
+
+  validation {
+    condition     = var.gateway_http_nodeport >= 30000 && var.gateway_http_nodeport <= 32767
+    error_message = "gateway_http_nodeport must be inside the default NodePort range 30000-32767."
+  }
 }
 
 variable "gateway_https_nodeport" {
-  description = "nginx DaemonSet hostPort for HTTPS (gateway-proxy)"
+  description = "NodePort that the Cilium Gateway exposes for HTTPS (LB destination_port for :443)"
   type        = number
-  default     = 443
-}
+  default     = 30443
 
+  validation {
+    condition     = var.gateway_https_nodeport >= 30000 && var.gateway_https_nodeport <= 32767
+    error_message = "gateway_https_nodeport must be inside the default NodePort range 30000-32767."
+  }
+}
