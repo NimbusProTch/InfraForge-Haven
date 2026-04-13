@@ -8,10 +8,10 @@ metadata:
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:
-  project: default
+  project: iyziops-platform
   source:
     repoURL: https://github.com/NimbusProTch/InfraForge-Haven
-    targetRevision: main
+    targetRevision: refactor/iyziops-option-b-2lb-ccm
     path: platform/manifests/haven-api
   destination:
     server: https://kubernetes.default.svc

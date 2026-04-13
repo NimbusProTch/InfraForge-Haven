@@ -27,6 +27,10 @@ data:
   REDIS_URL: "redis://haven-redis.redis-system.svc.cluster.local:6379/0"
   EVEREST_URL: "http://everest.everest-system.svc.cluster.local:8080"
   EVEREST_NAMESPACE: "everest"
+  # Everest admin user is always "admin" (bootstrap user created by Everest helm
+  # install). Password is in haven-api-secrets.EVEREST_ADMIN_PASSWORD, driven by
+  # var.everest_admin_password in IaC (same source for Everest secret override).
+  EVEREST_ADMIN_USER: "admin"
   # Vault (sensitive env var storage)
   VAULT_URL: "http://vault.vault-system.svc:8200"
   # ArgoCD ApplicationSet — cluster-internal Gitea URL

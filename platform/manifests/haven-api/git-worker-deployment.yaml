@@ -7,7 +7,9 @@ metadata:
     app: haven-git-worker
     haven.io/component: git-worker
 spec:
-  replicas: 1
+  # Scaled to 0 on iyziops until the haven-api image is rebuilt against an
+  # iyziops-accessible registry. See haven-api/deployment.yaml for context.
+  replicas: 0
   selector:
     matchLabels:
       app: haven-git-worker
@@ -18,6 +20,13 @@ spec:
         haven.io/component: git-worker
     spec:
       serviceAccountName: haven-api
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: git-worker
           image: harbor.46.225.42.2.sslip.io/library/haven-api@sha256:ee72fb4702af177f1e374d2fe512f05682979358fdd25b7c281001091a0309f7
@@ -38,5 +47,15 @@ spec:
             limits:
               cpu: 500m
               memory: 256Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            runAsNonRoot: true
+            runAsUser: 1000
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop:
+                - ALL
+            seccompProfile:
+              type: RuntimeDefault
       tolerations:
         - operator: Exists
