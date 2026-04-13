@@ -74,17 +74,6 @@ write_files:
     encoding: b64
     content: ${rke2_config_b64}
 
-  # ---------- Gateway API CRDs (base64) ----------
-  # Pulled from upstream kubernetes-sigs/gateway-api at tofu plan time
-  # (data "http") and embedded here. runcmd applies it server-side AFTER
-  # rke2-server is up and BEFORE cilium-operator's one-shot CRD readiness
-  # check completes — eliminating the bootstrap race that otherwise leaves
-  # Gateway resources stuck in PROGRAMMED=Unknown forever.
-  - path: /var/lib/iyziops/gateway-api-crds.yaml
-    permissions: '0644'
-    encoding: b64
-    content: ${gateway_api_crds_b64}
-
   # ---------- Helm Controller manifests (base64) — MINIMAL BOOTSTRAP SET ----------
   # Only what the cluster cannot start without (Cilium CNI + Hetzner CCM)
   # plus the ArgoCD bootstrap chain. Longhorn, cert-manager, ClusterIssuers,
@@ -166,19 +155,29 @@ runcmd:
   - systemctl enable --now rke2-server
 
   # ---------- Pre-install Gateway API CRDs + restart Cilium operator ----------
-  # Wait for kubectl + apiserver, server-side apply the CRD bundle (too big
-  # for client-side apply due to the 256k last-applied-configuration cap),
-  # then bounce cilium-operator so its CRD readiness check sees the new
-  # types. Idempotent: re-running the sequence is a no-op once CRDs exist.
+  # Wait for kubectl + apiserver, fetch the upstream Gateway API
+  # experimental-install bundle from kubernetes-sigs (pinned tag), and
+  # apply it server-side. The bundle is ~600KB (well over Hetzner's 32KB
+  # cloud-init user_data limit) so we fetch at runtime instead of embedding
+  # via base64. Then bounce cilium-operator so its one-shot CRD readiness
+  # check picks up the new types — without this restart, Gateway resources
+  # stay PROGRAMMED=Unknown forever. Idempotent: re-running is a no-op.
   - |
     set -eu
     KUBECTL=/var/lib/rancher/rke2/bin/kubectl
     KUBECONFIG=/etc/rancher/rke2/rke2.yaml
     export KUBECONFIG
+    GW_API_VERSION="${gateway_api_version}"
+    GW_API_URL="https://github.com/kubernetes-sigs/gateway-api/releases/download/$${GW_API_VERSION}/experimental-install.yaml"
+    mkdir -p /var/lib/iyziops
     for i in $(seq 1 60); do
       if [ -x "$KUBECTL" ] && [ -f "$KUBECONFIG" ] && $KUBECTL get nodes >/dev/null 2>&1; then
         break
       fi
+      sleep 5
+    done
+    for i in 1 2 3 4 5; do
+      curl -sfL "$GW_API_URL" -o /var/lib/iyziops/gateway-api-crds.yaml && break
       sleep 5
     done
     $KUBECTL apply --server-side --force-conflicts -f /var/lib/iyziops/gateway-api-crds.yaml
