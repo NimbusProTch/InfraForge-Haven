@@ -118,6 +118,12 @@ locals {
     is_first_master = false
   }))
 
+  rke2_config_worker = templatefile("${path.module}/templates/rke2-config-worker.yaml.tpl", {
+    cluster_token           = var.cluster_token
+    first_master_private_ip = var.first_master_private_ip
+    enable_cis_profile      = var.enable_cis_profile
+  })
+
   # ---------------------------------------------------------------------------
   #  Cloud-init strings
   # ---------------------------------------------------------------------------
@@ -147,9 +153,8 @@ locals {
   }))
 
   worker_cloud_init = templatefile("${path.module}/templates/worker-cloud-init.yaml.tpl", {
-    cluster_token           = var.cluster_token
     kubernetes_version      = var.kubernetes_version
     first_master_private_ip = var.first_master_private_ip
-    enable_cis_profile      = var.enable_cis_profile
+    rke2_config_b64         = base64encode(local.rke2_config_worker)
   })
 }

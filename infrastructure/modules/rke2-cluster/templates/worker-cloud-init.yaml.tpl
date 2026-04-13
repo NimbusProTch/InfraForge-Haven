@@ -23,17 +23,11 @@ write_files:
       kernel.panic=10
       kernel.panic_on_oops=1
 
+  # ---------- RKE2 config template (base64, runtime IPs substituted in runcmd) ----------
   - path: /etc/rancher/rke2/config.yaml.tpl
     permissions: '0600'
-    content: |
-      token: "${cluster_token}"
-      server: "https://${first_master_private_ip}:9345"
-      node-ip: "__PRIVATE_IP__"
-      node-external-ip: "__PUBLIC_IP__"
-      %{ if enable_cis_profile ~}
-      profile: cis
-      protect-kernel-defaults: true
-      %{ endif ~}
+    encoding: b64
+    content: ${rke2_config_b64}
 
 runcmd:
   - sysctl --system
