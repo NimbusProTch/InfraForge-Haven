@@ -22,7 +22,7 @@ spec:
   project: iyziops-platform
   source:
     repoURL: https://github.com/NimbusProTch/InfraForge-Haven.git
-    targetRevision: refactor/iyziops-option-b-2lb-ccm
+    targetRevision: main
     path: platform/argocd/apps/ingress
     directory:
       recurse: true

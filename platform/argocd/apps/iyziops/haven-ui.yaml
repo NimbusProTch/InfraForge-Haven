@@ -11,7 +11,7 @@ spec:
   project: iyziops-platform
   source:
     repoURL: https://github.com/NimbusProTch/InfraForge-Haven
-    targetRevision: refactor/iyziops-option-b-2lb-ccm
+    targetRevision: main
     path: platform/manifests/haven-ui
   destination:
     server: https://kubernetes.default.svc
