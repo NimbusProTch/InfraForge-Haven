@@ -15,6 +15,7 @@ spec:
     - https://argoproj.github.io/argo-helm
     - https://charts.bitnami.com/bitnami
     - https://percona.github.io/percona-helm-charts
+    - https://kyverno.github.io/kyverno
     - https://kyverno.github.io/kyverno/
     - https://prometheus-community.github.io/helm-charts
     - https://grafana.github.io/helm-charts

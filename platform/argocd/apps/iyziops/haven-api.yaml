@@ -16,11 +16,9 @@ spec:
   destination:
     server: https://kubernetes.default.svc
     namespace: haven-system
-  ignoreDifferences:
-    - group: gateway.networking.k8s.io
-      kind: HTTPRoute
-      jsonPointers:
-        - /spec/parentRefs
+  # ignoreDifferences for HTTPRoute parentRefs removed — on the iyziops
+  # cluster the parentRefs are owned by git (no external patcher), so
+  # letting ArgoCD enforce them is correct.
   syncPolicy:
     automated:
       prune: true
@@ -28,5 +26,3 @@ spec:
     syncOptions:
       - CreateNamespace=true
       - ServerSideApply=true
-      - ServerSideDiff=true
-      - RespectIgnoreDifferences=true
