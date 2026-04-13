@@ -21,7 +21,7 @@ spec:
   generators:
     - git:
         repoURL: https://github.com/NimbusProTch/InfraForge-Haven.git
-        revision: refactor/iyziops-kubernetes-stack
+        revision: refactor/iyziops-option-b-2lb-ccm
         directories:
           - path: gitops/tenants/*
   template:
@@ -33,7 +33,7 @@ spec:
       project: iyziops-tenants
       source:
         repoURL: https://github.com/NimbusProTch/InfraForge-Haven.git
-        targetRevision: refactor/iyziops-kubernetes-stack
+        targetRevision: refactor/iyziops-option-b-2lb-ccm
         path: '{{path}}'
         directory:
           recurse: true

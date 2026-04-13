@@ -22,7 +22,7 @@ spec:
   project: iyziops-platform
   source:
     repoURL: https://github.com/NimbusProTch/InfraForge-Haven.git
-    targetRevision: refactor/iyziops-kubernetes-stack
+    targetRevision: refactor/iyziops-option-b-2lb-ccm
     path: platform/argocd/apps/operators
     directory:
       recurse: true
