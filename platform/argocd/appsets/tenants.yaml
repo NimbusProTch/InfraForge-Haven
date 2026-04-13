@@ -21,7 +21,7 @@ spec:
   generators:
     - git:
         repoURL: https://github.com/NimbusProTch/InfraForge-Haven.git
-        revision: main
+        revision: refactor/iyziops-kubernetes-stack
         directories:
           - path: gitops/tenants/*
   template:

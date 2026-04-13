@@ -18,7 +18,7 @@ spec:
   project: iyziops-platform
   source:
     repoURL: https://github.com/NimbusProTch/InfraForge-Haven.git
-    targetRevision: main
+    targetRevision: refactor/iyziops-kubernetes-stack
     path: platform/argocd/apps/ingress
     directory:
       recurse: true

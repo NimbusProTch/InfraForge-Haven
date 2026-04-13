@@ -20,6 +20,8 @@ metadata:
   name: platform-services
   namespace: argocd
 spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
   generators:
     - list:
         elements:
@@ -64,24 +66,25 @@ spec:
                 replicaCount: 2
   template:
     metadata:
-      name: '{{name}}'
+      name: '{{.name}}'
       namespace: argocd
       annotations:
-        argocd.argoproj.io/sync-wave: '{{syncWave}}'
+        argocd.argoproj.io/sync-wave: '{{.syncWave}}'
       finalizers:
         - resources-finalizer.argocd.argoproj.io
     spec:
       project: iyziops-platform
       source:
-        repoURL: '{{repoURL}}'
-        chart: '{{chart}}'
-        targetRevision: '{{targetRevision}}'
+        repoURL: '{{.repoURL}}'
+        chart: '{{.chart}}'
+        targetRevision: '{{.targetRevision}}'
         helm:
-          releaseName: '{{name}}'
-          values: '{{values}}'
+          releaseName: '{{.name}}'
+          values: |
+            {{.values | nindent 12}}
       destination:
         server: https://kubernetes.default.svc
-        namespace: '{{namespace}}'
+        namespace: '{{.namespace}}'
       syncPolicy:
         automated:
           prune: true
@@ -113,6 +116,8 @@ metadata:
   name: platform-services-config
   namespace: argocd
 spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
   generators:
     - list:
         elements:
@@ -122,21 +127,21 @@ spec:
             path: platform/argocd/apps/services/cert-manager-config
   template:
     metadata:
-      name: '{{name}}'
+      name: '{{.name}}'
       namespace: argocd
       annotations:
-        argocd.argoproj.io/sync-wave: '{{syncWave}}'
+        argocd.argoproj.io/sync-wave: '{{.syncWave}}'
       finalizers:
         - resources-finalizer.argocd.argoproj.io
     spec:
       project: iyziops-platform
       source:
         repoURL: https://github.com/NimbusProTch/InfraForge-Haven.git
-        targetRevision: main
-        path: '{{path}}'
+        targetRevision: refactor/iyziops-kubernetes-stack
+        path: '{{.path}}'
       destination:
         server: https://kubernetes.default.svc
-        namespace: '{{namespace}}'
+        namespace: '{{.namespace}}'
       syncPolicy:
         automated:
           prune: true
