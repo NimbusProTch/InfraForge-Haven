@@ -47,12 +47,19 @@ resource "hcloud_firewall" "this" {
     source_ips = var.operator_cidrs
   }
 
-  # Kubernetes API — operator kubectl (direct, bypassing the LB)
+  # Kubernetes API (6443). Public like 9345 because RKE2's agent-lb on every
+  # worker and joining master discovers apiserver endpoints via the
+  # kubernetes Service, which returns each master's ExternalIP (set via
+  # --node-external-ip). Agents then health-check these endpoints directly;
+  # if the public 6443 ingress is closed, workers flap forever in the
+  # "activating" state and never join. Apiserver auth is TLS client
+  # certificates + Bearer tokens, so the public exposure adds no real
+  # attack surface beyond what the tofu-managed LB already exposes on :6443.
   rule {
     direction  = "in"
     protocol   = "tcp"
     port       = "6443"
-    source_ips = var.operator_cidrs
+    source_ips = ["0.0.0.0/0", "::/0"]
   }
 
   # RKE2 supervisor / agent-tunnel (websocket registration + remotedialer).
