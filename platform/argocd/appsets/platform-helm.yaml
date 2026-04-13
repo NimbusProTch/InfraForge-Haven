@@ -168,6 +168,160 @@ spec:
                   enabled: true
                   namespace: kyverno-system
 
+          # ----- Wave 3: Observability — metrics (kube-prometheus-stack) --
+          # Prometheus Operator + kube-state-metrics + node-exporter + Grafana
+          # + Alertmanager. Node-exporter DaemonSet needs hostPath/hostNetwork
+          # → monitoring namespace is PSA `baseline` (see platform-raw apps/
+          # platform/namespaces/monitoring.yaml). Grafana datasources include
+          # Prometheus (self) + Loki (logging.svc.cluster.local) for unified
+          # metrics+logs in one pane. Grafana admin password: chart-generated
+          # random secret (`kube-prometheus-stack-grafana`), retrieve via
+          # `kubectl get secret -n monitoring kube-prometheus-stack-grafana`.
+          - name: kube-prometheus-stack
+            namespace: monitoring
+            syncWave: "3"
+            repoURL: https://prometheus-community.github.io/helm-charts
+            chart: kube-prometheus-stack
+            targetRevision: "66.3.1"
+            values: |
+              crds:
+                enabled: true
+              defaultRules:
+                create: true
+              global:
+                rbac:
+                  create: true
+                  pspEnabled: false
+              alertmanager:
+                enabled: true
+                alertmanagerSpec:
+                  replicas: 1
+                  storage:
+                    volumeClaimTemplate:
+                      spec:
+                        storageClassName: longhorn
+                        accessModes: ["ReadWriteOnce"]
+                        resources:
+                          requests:
+                            storage: 10Gi
+                  resources:
+                    requests:
+                      cpu: 50m
+                      memory: 128Mi
+                    limits:
+                      memory: 512Mi
+              prometheus:
+                enabled: true
+                prometheusSpec:
+                  replicas: 1
+                  retention: 15d
+                  retentionSize: "40GB"
+                  resources:
+                    requests:
+                      cpu: 200m
+                      memory: 1Gi
+                    limits:
+                      memory: 4Gi
+                  storageSpec:
+                    volumeClaimTemplate:
+                      spec:
+                        storageClassName: longhorn
+                        accessModes: ["ReadWriteOnce"]
+                        resources:
+                          requests:
+                            storage: 50Gi
+                  serviceMonitorSelectorNilUsesHelmValues: false
+                  podMonitorSelectorNilUsesHelmValues: false
+                  ruleSelectorNilUsesHelmValues: false
+                  probeSelectorNilUsesHelmValues: false
+                  scrapeConfigSelectorNilUsesHelmValues: false
+              grafana:
+                enabled: true
+                replicas: 1
+                defaultDashboardsEnabled: true
+                persistence:
+                  enabled: true
+                  type: pvc
+                  storageClassName: longhorn
+                  size: 10Gi
+                  accessModes: ["ReadWriteOnce"]
+                resources:
+                  requests:
+                    cpu: 100m
+                    memory: 256Mi
+                  limits:
+                    memory: 1Gi
+                # Let chart generate random admin password into the
+                # kube-prometheus-stack-grafana secret. Phase 3 (Vault + ESO)
+                # will migrate this to an ExternalSecret.
+                admin:
+                  existingSecret: ""
+                service:
+                  type: ClusterIP
+                  port: 80
+                grafana.ini:
+                  server:
+                    root_url: https://grafana.iyziops.com
+                    serve_from_sub_path: false
+                  auth.anonymous:
+                    enabled: false
+                  analytics:
+                    reporting_enabled: false
+                    check_for_updates: false
+                additionalDataSources:
+                  - name: Loki
+                    type: loki
+                    uid: loki
+                    url: http://loki.logging.svc.cluster.local:3100
+                    access: proxy
+                    isDefault: false
+                    jsonData:
+                      maxLines: 1000
+              kubeStateMetrics:
+                enabled: true
+              kube-state-metrics:
+                resources:
+                  requests:
+                    cpu: 50m
+                    memory: 128Mi
+                  limits:
+                    memory: 256Mi
+              nodeExporter:
+                enabled: true
+              prometheus-node-exporter:
+                resources:
+                  requests:
+                    cpu: 50m
+                    memory: 64Mi
+                  limits:
+                    memory: 128Mi
+                hostRootFsMount:
+                  enabled: true
+                  mountPropagation: HostToContainer
+              prometheusOperator:
+                enabled: true
+                resources:
+                  requests:
+                    cpu: 50m
+                    memory: 128Mi
+                  limits:
+                    memory: 512Mi
+              # Disable kube-apiserver/kubelet/etc ServiceMonitors that scrape
+              # control-plane components we don't expose metrics on (RKE2 pins
+              # these behind auth). Prometheus would error-out otherwise.
+              kubeApiServer:
+                enabled: true
+              kubelet:
+                enabled: true
+              kubeControllerManager:
+                enabled: false
+              kubeScheduler:
+                enabled: false
+              kubeProxy:
+                enabled: false
+              kubeEtcd:
+                enabled: false
+
           # ----- Wave 3: Observability (log aggregation) ----------------
           # Loki Monolithic mode (SingleBinary) with Longhorn persistent
           # storage. 14-day retention. auth_enabled=false for in-cluster

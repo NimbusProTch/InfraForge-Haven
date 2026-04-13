@@ -1,0 +1,18 @@
+---
+# =============================================================================
+#  monitoring namespace (kube-prometheus-stack: Prometheus + Grafana + AM)
+# =============================================================================
+#  Pod Security Admission: `baseline` — node-exporter DaemonSet requires
+#  hostPath access to /proc, /sys, /, and host network/PID namespaces.
+#  `restricted` blocks hostPath + hostNetwork. `baseline` allows both.
+#  Warnings still at `restricted` so new workloads flag above baseline.
+# =============================================================================
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: monitoring
+  labels:
+    pod-security.kubernetes.io/enforce: baseline
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
+    iyziops.io/layer: observability

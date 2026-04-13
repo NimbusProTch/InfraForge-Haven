@@ -1,0 +1,56 @@
+---
+# =============================================================================
+#  grafana.iyziops.com — HTTPRoute
+# =============================================================================
+#  Routes the https listener on iyziops-gateway to the kube-prometheus-stack
+#  Grafana Service in the monitoring namespace. Grafana runs HTTP on port 80
+#  internally; TLS is terminated by the Gateway upstream.
+#
+#  ReferenceGrant lets the HTTPRoute (iyziops-gateway ns) point at the Grafana
+#  Service (monitoring ns). Without it, cross-namespace backendRefs are
+#  rejected by the Gateway controller.
+# =============================================================================
+apiVersion: gateway.networking.k8s.io/v1beta1
+kind: ReferenceGrant
+metadata:
+  name: iyziops-gateway-to-grafana
+  namespace: monitoring
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+spec:
+  from:
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      namespace: iyziops-gateway
+  to:
+    - group: ""
+      kind: Service
+      name: kube-prometheus-stack-grafana
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: grafana
+  namespace: iyziops-gateway
+  annotations:
+    argocd.argoproj.io/sync-wave: "4"
+spec:
+  parentRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: iyziops-gateway
+      sectionName: https
+  hostnames:
+    - grafana.iyziops.com
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - group: ""
+          kind: Service
+          name: kube-prometheus-stack-grafana
+          namespace: monitoring
+          port: 80
+          weight: 1
