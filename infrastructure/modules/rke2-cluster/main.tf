@@ -48,11 +48,12 @@ locals {
   manifest_cilium_config = templatefile("${path.module}/manifests/rke2-cilium-config.yaml.tpl", {
     cilium_operator_replicas = var.cilium_operator_replicas
     enable_hubble            = var.enable_hubble
-    ipv4_native_routing_cidr = var.ipv4_native_routing_cidr
     lb_private_ip            = var.lb_private_ip
   })
 
   manifest_cert_manager_namespace = templatefile("${path.module}/manifests/cert-manager-namespace.yaml.tpl", {})
+
+  manifest_longhorn_namespace = templatefile("${path.module}/manifests/longhorn-namespace.yaml.tpl", {})
 
   manifest_cloudflare_token_secret = templatefile("${path.module}/manifests/cloudflare-token-secret.yaml.tpl", {
     cloudflare_api_token = var.cloudflare_api_token
@@ -142,6 +143,7 @@ locals {
     rke2_config_b64                      = base64encode(local.rke2_config_first_master)
     manifest_cilium_config_b64           = base64encode(local.manifest_cilium_config)
     manifest_cert_manager_namespace_b64  = base64encode(local.manifest_cert_manager_namespace)
+    manifest_longhorn_namespace_b64      = base64encode(local.manifest_longhorn_namespace)
     manifest_cloudflare_token_secret_b64 = base64encode(local.manifest_cloudflare_token_secret)
     manifest_argocd_b64                  = base64encode(local.manifest_argocd)
     manifest_argocd_projects_b64         = base64encode(local.manifest_argocd_projects)

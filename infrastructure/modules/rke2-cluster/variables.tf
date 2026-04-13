@@ -41,11 +41,6 @@ variable "lb_private_ip" {
   type        = string
 }
 
-variable "ipv4_native_routing_cidr" {
-  description = "Cilium ipv4NativeRoutingCIDR — equals the Hetzner subnet CIDR"
-  type        = string
-}
-
 # ----- Cilium ---------------------------------------------------------------
 
 variable "enable_hubble" {

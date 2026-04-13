@@ -9,13 +9,12 @@
 module "rke2_cluster" {
   source = "../../modules/rke2-cluster"
 
-  cluster_name             = var.cluster_name
-  kubernetes_version       = var.kubernetes_version
-  cluster_token            = random_password.cluster_token.result
-  first_master_private_ip  = local.first_master_private_ip
-  lb_ip                    = module.hetzner_infra.load_balancer_ipv4
-  lb_private_ip            = module.hetzner_infra.load_balancer_private_ipv4
-  ipv4_native_routing_cidr = var.subnet_cidr
+  cluster_name            = var.cluster_name
+  kubernetes_version      = var.kubernetes_version
+  cluster_token           = random_password.cluster_token.result
+  first_master_private_ip = local.first_master_private_ip
+  lb_ip                   = module.hetzner_infra.load_balancer_ipv4
+  lb_private_ip           = module.hetzner_infra.load_balancer_private_ipv4
 
   enable_cis_profile       = var.enable_cis_profile
   enable_hubble            = var.enable_hubble

@@ -91,6 +91,11 @@ write_files:
     encoding: b64
     content: ${manifest_cert_manager_namespace_b64}
 
+  - path: /var/lib/rancher/rke2/server/manifests/longhorn-namespace.yaml
+    permissions: '0600'
+    encoding: b64
+    content: ${manifest_longhorn_namespace_b64}
+
   - path: /var/lib/rancher/rke2/server/manifests/cloudflare-token-secret.yaml
     permissions: '0600'
     encoding: b64
