@@ -33,7 +33,7 @@ spec:
       project: iyziops-tenants
       source:
         repoURL: https://github.com/NimbusProTch/InfraForge-Haven.git
-        targetRevision: main
+        targetRevision: refactor/iyziops-kubernetes-stack
         path: '{{path}}'
         directory:
           recurse: true
