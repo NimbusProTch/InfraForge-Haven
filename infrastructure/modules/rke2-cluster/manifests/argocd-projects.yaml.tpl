@@ -21,6 +21,7 @@ spec:
     - https://grafana.github.io/helm-charts
     - https://helm.goharbor.io
     - https://operator.min.io
+    - https://charts.min.io
     - https://dl.gitea.com/charts/
     - https://helm.releases.hashicorp.com
     - https://charts.external-secrets.io
