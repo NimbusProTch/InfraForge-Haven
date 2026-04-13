@@ -498,7 +498,7 @@ spec:
             syncWave: "4"
             repoURL: https://charts.bitnami.com/bitnami
             chart: minio
-            targetRevision: "14.10.5"
+            targetRevision: "14.8.5"
             values: |
               global:
                 security:
