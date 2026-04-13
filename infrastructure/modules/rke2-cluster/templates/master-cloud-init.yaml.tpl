@@ -29,6 +29,20 @@ write_files:
       kernel.panic=10
       kernel.panic_on_oops=1
 
+  # ---------- sysctl so cilium-envoy can bind 80/443 in hostNetwork mode ----------
+  - path: /etc/sysctl.d/91-iyziops-gateway.conf
+    permissions: '0644'
+    content: |
+      # Cilium Gateway API hostNetwork mode: cilium-envoy runs non-root and
+      # binds the Gateway listener ports directly on the node. Standard
+      # Linux forbids unprivileged processes from binding ports < 1024, so
+      # we lower the unprivileged start port to 0. Without this, envoy
+      # logs "cannot bind '0.0.0.0:80': Permission denied" and the Gateway
+      # Programmed condition stays False. CIS hardening is unaffected —
+      # root still owns all privileged operations; this only concerns
+      # which ports user-space can listen on.
+      net.ipv4.ip_unprivileged_port_start=0
+
   # ---------- kube-apiserver audit policy ----------
   - path: /etc/rancher/rke2/audit-policy.yaml
     permissions: '0600'

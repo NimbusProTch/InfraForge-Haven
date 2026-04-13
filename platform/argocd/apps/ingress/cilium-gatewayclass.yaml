@@ -1,0 +1,16 @@
+---
+# =============================================================================
+#  GatewayClass — tells Gateway API that Cilium is the controller for any
+#  Gateway with gatewayClassName=cilium. Cilium's operator matches on the
+#  controllerName below. We create this manually because Cilium 1.16 does
+#  not auto-create the GatewayClass when gatewayAPI.enabled=true in the
+#  Helm values — the operator only reacts to existing GatewayClasses.
+# =============================================================================
+apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: cilium
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  controllerName: io.cilium/gateway-controller

@@ -45,8 +45,8 @@ etcd_snapshot_retention = 30
 etcd_s3_enabled         = false
 
 # ----- Platform -------------------------------------------------------------
-platform_apex_domain   = "iyziops.com"
-gitops_repo_url        = "https://github.com/NimbusProTch/InfraForge-Haven.git"
+platform_apex_domain = "iyziops.com"
+gitops_repo_url      = "https://github.com/NimbusProTch/InfraForge-Haven.git"
 # TEMP: point at the in-flight refactor branch until we verify the GitOps
 # layout (AppSets + cert-manager-config) and merge it to main. Flip back
 # to "main" on the follow-up apply after merge.

@@ -129,11 +129,11 @@ resource "hcloud_load_balancer_service" "http" {
   load_balancer_id = hcloud_load_balancer.this.id
   protocol         = "tcp"
   listen_port      = 80
-  destination_port = var.gateway_http_nodeport
+  destination_port = var.gateway_http_port
 
   health_check {
     protocol = "tcp"
-    port     = var.gateway_http_nodeport
+    port     = var.gateway_http_port
     interval = 15
     timeout  = 10
     retries  = 3
@@ -144,11 +144,11 @@ resource "hcloud_load_balancer_service" "https" {
   load_balancer_id = hcloud_load_balancer.this.id
   protocol         = "tcp"
   listen_port      = 443
-  destination_port = var.gateway_https_nodeport
+  destination_port = var.gateway_https_port
 
   health_check {
     protocol = "tcp"
-    port     = var.gateway_https_nodeport
+    port     = var.gateway_https_port
     interval = 15
     timeout  = 10
     retries  = 3

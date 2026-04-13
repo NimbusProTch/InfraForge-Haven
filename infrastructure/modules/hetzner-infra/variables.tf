@@ -75,24 +75,14 @@ variable "operator_cidrs" {
   }
 }
 
-variable "gateway_http_nodeport" {
-  description = "NodePort that the Cilium Gateway exposes for HTTP (LB destination_port for :80)"
+variable "gateway_http_port" {
+  description = "LB destination port for HTTP. Since the Cilium Gateway runs in hostNetwork mode, envoy binds directly to host port 80 (enabled by sysctl net.ipv4.ip_unprivileged_port_start=0 in cloud-init). No NodePort indirection."
   type        = number
-  default     = 30080
-
-  validation {
-    condition     = var.gateway_http_nodeport >= 30000 && var.gateway_http_nodeport <= 32767
-    error_message = "gateway_http_nodeport must be inside the default NodePort range 30000-32767."
-  }
+  default     = 80
 }
 
-variable "gateway_https_nodeport" {
-  description = "NodePort that the Cilium Gateway exposes for HTTPS (LB destination_port for :443)"
+variable "gateway_https_port" {
+  description = "LB destination port for HTTPS. Envoy binds host port 443 directly — see gateway_http_port."
   type        = number
-  default     = 30443
-
-  validation {
-    condition     = var.gateway_https_nodeport >= 30000 && var.gateway_https_nodeport <= 32767
-    error_message = "gateway_https_nodeport must be inside the default NodePort range 30000-32767."
-  }
+  default     = 443
 }

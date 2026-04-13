@@ -1,0 +1,51 @@
+---
+# =============================================================================
+#  argocd.iyziops.com — HTTPRoute
+# =============================================================================
+#  Routes the https listener on iyziops-gateway to argocd-server.argocd:80.
+#  argocd-server listens on 80/TCP (insecure=true in values — ArgoCD runs
+#  as plain HTTP inside the cluster because TLS is terminated by envoy).
+#
+#  ReferenceGrant below lets the HTTPRoute (iyziops-gateway ns) point at a
+#  Service living in the argocd namespace. Without it, cross-namespace
+#  backendRefs are rejected.
+# =============================================================================
+apiVersion: gateway.networking.k8s.io/v1beta1
+kind: ReferenceGrant
+metadata:
+  name: iyziops-gateway-to-argocd
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+spec:
+  from:
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      namespace: iyziops-gateway
+  to:
+    - group: ""
+      kind: Service
+      name: argocd-server
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: argocd
+  namespace: iyziops-gateway
+  annotations:
+    argocd.argoproj.io/sync-wave: "4"
+spec:
+  parentRefs:
+    - name: iyziops-gateway
+      sectionName: https
+  hostnames:
+    - argocd.iyziops.com
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: argocd-server
+          namespace: argocd
+          port: 80

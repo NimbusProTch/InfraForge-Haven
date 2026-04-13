@@ -41,6 +41,15 @@ spec:
       enabled: true
       enableAlpn: true
       enableAppProtocol: true
+      # hostNetwork mode makes cilium-envoy bind the Gateway listeners
+      # directly on host:80 and host:443 (no NodePort indirection, no
+      # Hetzner CCM LoadBalancer reconciler). Requires the kernel sysctl
+      # net.ipv4.ip_unprivileged_port_start=0 on every node because
+      # cilium-envoy runs non-root — that sysctl is set in cloud-init
+      # (/etc/sysctl.d/91-iyziops-gateway.conf) before rke2-server/agent
+      # starts, so envoy can bind 80/443 on its first reconcile.
+      hostNetwork:
+        enabled: true
     envoy:
       enabled: true
     hubble:

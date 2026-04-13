@@ -24,6 +24,13 @@ write_files:
       kernel.panic=10
       kernel.panic_on_oops=1
 
+  # cilium-envoy Gateway API hostNetwork binding — see master-cloud-init
+  # for the full rationale.
+  - path: /etc/sysctl.d/91-iyziops-gateway.conf
+    permissions: '0644'
+    content: |
+      net.ipv4.ip_unprivileged_port_start=0
+
   - path: /etc/rancher/rke2/audit-policy.yaml
     permissions: '0600'
     content: |

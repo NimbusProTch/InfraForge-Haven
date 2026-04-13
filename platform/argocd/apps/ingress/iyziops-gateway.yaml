@@ -1,0 +1,72 @@
+---
+# =============================================================================
+#  iyziops-gateway — dedicated namespace + Gateway resource
+# =============================================================================
+#  All platform and tenant-facing HTTPRoutes attach to this Gateway.
+#  Listener layout:
+#    - http  (TCP 80)  — plain HTTP, also used by Let's Encrypt HTTP-01 later
+#    - https (TCP 443) — TLS Terminate with the cluster wildcard certificate
+#                        (cert-manager-managed, ReferenceGrant below)
+#
+#  Cilium runs envoy in hostNetwork mode (see rke2-cilium-config.yaml.tpl),
+#  so the Hetzner LB forwards 80/443 directly to host:80/443 on every node
+#  without any NodePort or LoadBalancer Service indirection.
+# =============================================================================
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: iyziops-gateway
+  labels:
+    app.kubernetes.io/part-of: iyziops-platform
+    pod-security.kubernetes.io/enforce: privileged
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+---
+# Allow any Gateway in iyziops-gateway to reference the wildcard TLS
+# secret that lives in the cert-manager namespace.
+apiVersion: gateway.networking.k8s.io/v1beta1
+kind: ReferenceGrant
+metadata:
+  name: cert-manager-tls-to-gateway
+  namespace: cert-manager
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  from:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      namespace: iyziops-gateway
+  to:
+    - group: ""
+      kind: Secret
+      name: iyziops-wildcard-tls
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: iyziops-gateway
+  namespace: iyziops-gateway
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  gatewayClassName: cilium
+  listeners:
+    - name: http
+      port: 80
+      protocol: HTTP
+      allowedRoutes:
+        namespaces:
+          from: All
+    - name: https
+      port: 443
+      protocol: HTTPS
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - group: ""
+            kind: Secret
+            name: iyziops-wildcard-tls
+            namespace: cert-manager
+      allowedRoutes:
+        namespaces:
+          from: All
