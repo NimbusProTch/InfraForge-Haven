@@ -1,0 +1,18 @@
+---
+# =============================================================================
+#  minio-system namespace (MinIO S3 object storage)
+# =============================================================================
+#  Pod Security Admission: `baseline` — Bitnami MinIO runs as non-root
+#  (UID 1001) but requires `fsGroup` which works under baseline but not
+#  restricted without additional volume mount options. Baseline is safe
+#  for platform-managed object storage; tenants never land here.
+# =============================================================================
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: minio-system
+  labels:
+    pod-security.kubernetes.io/enforce: baseline
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
+    iyziops.io/layer: platform-storage

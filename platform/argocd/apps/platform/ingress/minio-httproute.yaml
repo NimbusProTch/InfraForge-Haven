@@ -1,0 +1,84 @@
+---
+# =============================================================================
+#  minio.iyziops.com (console) + s3.iyziops.com (S3 API) — HTTPRoutes
+# =============================================================================
+#  MinIO exposes two HTTP endpoints on two different ports:
+#    - 9000 : S3 API (the actual object store)
+#    - 9001 : management console (web UI)
+#
+#  Routed via two HTTPRoutes on the same iyziops-gateway, one per hostname.
+#  ReferenceGrant lets both HTTPRoutes (iyziops-gateway ns) point at the
+#  minio Service (minio-system ns).
+# =============================================================================
+apiVersion: gateway.networking.k8s.io/v1beta1
+kind: ReferenceGrant
+metadata:
+  name: iyziops-gateway-to-minio
+  namespace: minio-system
+  annotations:
+    argocd.argoproj.io/sync-wave: "4"
+spec:
+  from:
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      namespace: iyziops-gateway
+  to:
+    - group: ""
+      kind: Service
+      name: minio
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: minio-console
+  namespace: iyziops-gateway
+  annotations:
+    argocd.argoproj.io/sync-wave: "5"
+spec:
+  parentRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: iyziops-gateway
+      sectionName: https
+  hostnames:
+    - minio.iyziops.com
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - group: ""
+          kind: Service
+          name: minio
+          namespace: minio-system
+          port: 9001
+          weight: 1
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: minio-s3
+  namespace: iyziops-gateway
+  annotations:
+    argocd.argoproj.io/sync-wave: "5"
+spec:
+  parentRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: iyziops-gateway
+      sectionName: https
+  hostnames:
+    - s3.iyziops.com
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - group: ""
+          kind: Service
+          name: minio
+          namespace: minio-system
+          port: 9000
+          weight: 1
