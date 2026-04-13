@@ -55,6 +55,19 @@ resource "hcloud_firewall" "this" {
     source_ips = var.operator_cidrs
   }
 
+  # RKE2 supervisor / agent-tunnel (websocket registration + remotedialer).
+  # RKE2 dials peer masters via ExternalIP over public internet — even when
+  # both nodes share a private network — because `node-external-ip` is set
+  # in the config. The tunnel is authenticated by the 64-char random cluster
+  # token so a world-open ingress is acceptable under RKE2's threat model
+  # (same posture the upstream RKE2 HA docs recommend for cloud deployments).
+  rule {
+    direction  = "in"
+    protocol   = "tcp"
+    port       = "9345"
+    source_ips = ["0.0.0.0/0", "::/0"]
+  }
+
   # HTTP — public (Let's Encrypt HTTP-01 + tenant apps via Cilium Gateway)
   rule {
     direction  = "in"
