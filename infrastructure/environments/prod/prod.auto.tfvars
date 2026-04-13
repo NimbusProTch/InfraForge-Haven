@@ -19,7 +19,10 @@ lb_type          = "lb11"
 
 # Operator public IP (solo dev, home office). Update + target-apply
 # module.hetzner_infra.hcloud_firewall.this when the ISP rotates it.
-operator_cidrs = ["159.146.79.143/32"]
+# TEMP: dynamic IP, allow from anywhere. Tighten after IP stabilizes
+# via VPN/Tailscale. Firewall validation rejects the literal 0.0.0.0/0,
+# so we split the IPv4 space into two /1 blocks which has the same effect.
+operator_cidrs = ["0.0.0.0/1", "128.0.0.0/1"]
 
 # ----- Nodes ----------------------------------------------------------------
 master_count       = 3
