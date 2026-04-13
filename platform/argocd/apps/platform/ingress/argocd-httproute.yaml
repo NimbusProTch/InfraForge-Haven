@@ -36,7 +36,11 @@ metadata:
     argocd.argoproj.io/sync-wave: "4"
 spec:
   parentRefs:
-    - name: iyziops-gateway
+    # Explicit group + kind to match what Cilium/ServerSideApply defaults
+    # produce at admission time; avoids persistent ArgoCD OutOfSync drift.
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: iyziops-gateway
       sectionName: https
   hostnames:
     - argocd.iyziops.com
