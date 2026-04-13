@@ -298,6 +298,12 @@ spec:
                 hostRootFsMount:
                   enabled: true
                   mountPropagation: HostToContainer
+                # RKE2 masters carry CriticalAddonsOnly=true:NoExecute
+                # (not control-plane:NoSchedule). Default chart toleration
+                # only covers NoSchedule → DS Desired=3 (workers only).
+                # Tolerate everything so node-exporter runs on all 6 nodes.
+                tolerations:
+                  - operator: Exists
               prometheusOperator:
                 enabled: true
                 resources:
