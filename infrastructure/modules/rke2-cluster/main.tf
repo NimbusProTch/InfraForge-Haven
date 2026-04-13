@@ -22,8 +22,27 @@
 
 locals {
   # ---------------------------------------------------------------------------
-  #  Helm Controller manifests — rendered from sub-templates, base64-encoded
-  #  so they can be embedded cleanly into the cloud-init write_files block.
+  #  Helm Controller manifests dropped at cluster bootstrap — MINIMAL SET.
+  # ---------------------------------------------------------------------------
+  #  Only the things the cluster cannot start without, plus the ArgoCD
+  #  bootstrap. Everything else (Longhorn, cert-manager, ClusterIssuers,
+  #  wildcard certificate, platform services, platform apps) is delivered
+  #  by ArgoCD from the GitOps repo with proper sync-wave ordering so
+  #  we get a deterministic, race-free bring-up. See .claude/plans
+  #  section 5 "ArgoCD Hierarchy" for the wave layout.
+  #
+  #  In cloud-init at boot time:
+  #    1. Cilium HelmChartConfig  — CNI (no CNI → no pod networking)
+  #    2. Cloudflare API token Secret — pre-created in cert-manager ns
+  #       so the ArgoCD-managed ClusterIssuers can reference it by name
+  #    3. ArgoCD HelmChart         — GitOps bootstrap
+  #    4. ArgoCD AppProjects        — platform + tenants projects
+  #    5. ArgoCD repo Secret        — SSH deploy key for the private repo
+  #    6. ArgoCD root Application   — points at platform/argocd/appsets/
+  #
+  #  ArgoCD then reconciles the appsets directory, which drives Longhorn,
+  #  cert-manager, cert-manager-config, and every downstream service with
+  #  sync-wave annotations for ordering.
   # ---------------------------------------------------------------------------
 
   manifest_cilium_config = templatefile("${path.module}/manifests/rke2-cilium-config.yaml.tpl", {
@@ -33,25 +52,10 @@ locals {
     lb_private_ip            = var.lb_private_ip
   })
 
-  manifest_longhorn = templatefile("${path.module}/manifests/longhorn.yaml.tpl", {
-    longhorn_version       = var.longhorn_version
-    longhorn_replica_count = var.longhorn_replica_count
-  })
-
-  manifest_cert_manager = templatefile("${path.module}/manifests/cert-manager.yaml.tpl", {
-    cert_manager_version = var.cert_manager_version
-  })
+  manifest_cert_manager_namespace = templatefile("${path.module}/manifests/cert-manager-namespace.yaml.tpl", {})
 
   manifest_cloudflare_token_secret = templatefile("${path.module}/manifests/cloudflare-token-secret.yaml.tpl", {
     cloudflare_api_token = var.cloudflare_api_token
-  })
-
-  manifest_letsencrypt_issuers = templatefile("${path.module}/manifests/letsencrypt-issuers.yaml.tpl", {
-    letsencrypt_email = var.letsencrypt_email
-  })
-
-  manifest_wildcard_cert = templatefile("${path.module}/manifests/iyziops-wildcard-cert.yaml.tpl", {
-    platform_apex_domain = var.platform_apex_domain
   })
 
   manifest_argocd = templatefile("${path.module}/manifests/argocd.yaml.tpl", {
@@ -137,11 +141,8 @@ locals {
   first_master_cloud_init = templatefile("${path.module}/templates/master-cloud-init.yaml.tpl", merge(local.common_rke2_vars, {
     rke2_config_b64                      = base64encode(local.rke2_config_first_master)
     manifest_cilium_config_b64           = base64encode(local.manifest_cilium_config)
-    manifest_longhorn_b64                = base64encode(local.manifest_longhorn)
-    manifest_cert_manager_b64            = base64encode(local.manifest_cert_manager)
+    manifest_cert_manager_namespace_b64  = base64encode(local.manifest_cert_manager_namespace)
     manifest_cloudflare_token_secret_b64 = base64encode(local.manifest_cloudflare_token_secret)
-    manifest_letsencrypt_issuers_b64     = base64encode(local.manifest_letsencrypt_issuers)
-    manifest_wildcard_cert_b64           = base64encode(local.manifest_wildcard_cert)
     manifest_argocd_b64                  = base64encode(local.manifest_argocd)
     manifest_argocd_projects_b64         = base64encode(local.manifest_argocd_projects)
     manifest_argocd_repo_secret_b64      = base64encode(local.manifest_argocd_repo_secret)

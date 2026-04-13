@@ -74,36 +74,27 @@ write_files:
     encoding: b64
     content: ${rke2_config_b64}
 
-  # ---------- Helm Controller manifests (base64) ----------
+  # ---------- Helm Controller manifests (base64) — MINIMAL BOOTSTRAP SET ----------
+  # Only what the cluster cannot start without (Cilium CNI) plus the ArgoCD
+  # bootstrap chain. Longhorn, cert-manager, ClusterIssuers, wildcard cert,
+  # and every downstream service live in the GitOps repo as ArgoCD
+  # Applications with sync-wave ordering — no more Helm Controller race
+  # conditions.
+
   - path: /var/lib/rancher/rke2/server/manifests/rke2-cilium-config.yaml
     permissions: '0600'
     encoding: b64
     content: ${manifest_cilium_config_b64}
 
-  - path: /var/lib/rancher/rke2/server/manifests/longhorn.yaml
+  - path: /var/lib/rancher/rke2/server/manifests/cert-manager-namespace.yaml
     permissions: '0600'
     encoding: b64
-    content: ${manifest_longhorn_b64}
-
-  - path: /var/lib/rancher/rke2/server/manifests/cert-manager.yaml
-    permissions: '0600'
-    encoding: b64
-    content: ${manifest_cert_manager_b64}
+    content: ${manifest_cert_manager_namespace_b64}
 
   - path: /var/lib/rancher/rke2/server/manifests/cloudflare-token-secret.yaml
     permissions: '0600'
     encoding: b64
     content: ${manifest_cloudflare_token_secret_b64}
-
-  - path: /var/lib/rancher/rke2/server/manifests/letsencrypt-issuers.yaml
-    permissions: '0600'
-    encoding: b64
-    content: ${manifest_letsencrypt_issuers_b64}
-
-  - path: /var/lib/rancher/rke2/server/manifests/iyziops-wildcard-cert.yaml
-    permissions: '0600'
-    encoding: b64
-    content: ${manifest_wildcard_cert_b64}
 
   - path: /var/lib/rancher/rke2/server/manifests/argocd.yaml
     permissions: '0600'

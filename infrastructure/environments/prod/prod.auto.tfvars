@@ -47,9 +47,8 @@ gitops_repo_url        = "git@github.com:NimbusProTch/InfraForge-Haven.git"
 gitops_target_revision = "main"
 
 # ----- Helm chart versions --------------------------------------------------
-longhorn_version       = "1.8.0"
-longhorn_replica_count = 3
-cert_manager_version   = "v1.17.0"
+# Longhorn and cert-manager versions live in platform/argocd/apps/services/
+# (ArgoCD-managed, not bootstrap) per the GitOps architecture.
 argocd_version         = "7.7.3"
 argocd_server_replicas = 3
 argocd_ha_enabled      = true

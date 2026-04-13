@@ -1,15 +1,17 @@
 ---
 # =============================================================================
-#  iyziops — Let's Encrypt ClusterIssuers
+#  iyziops — Let's Encrypt ClusterIssuers (DNS-01 via Cloudflare)
 # =============================================================================
-#  DNS-01 via Cloudflare only. HTTP-01 is intentionally NOT provisioned
-#  because Cilium 1.16+ ships no classic Ingress controller under class
-#  "cilium" — certificate challenges would stall. Platform subdomains are
-#  covered by the wildcard certificate against *.iyziops.com. Tenant custom
-#  domains will get their own HTTP-01 issuer wired through a Gateway API
-#  HTTPRoute in a later sprint.
+#  Two issuers: staging (for testing) and prod (for real certificates).
+#  Both use DNS-01 via Cloudflare because HTTP-01 would require a working
+#  classic Ingress controller, and Cilium 1.16+ only ships Gateway API.
+#
+#  The Cloudflare API token lives in the secret `cloudflare-api-token`
+#  inside the `cert-manager` namespace. That secret is pre-created at
+#  cluster bootstrap by cloud-init (infrastructure/modules/rke2-cluster/
+#  manifests/cloudflare-token-secret.yaml.tpl) so it's already there when
+#  ArgoCD applies these ClusterIssuers on sync-wave 2.
 # =============================================================================
-
 apiVersion: cert-manager.io/v1
 kind: ClusterIssuer
 metadata:
@@ -17,7 +19,7 @@ metadata:
 spec:
   acme:
     server: https://acme-staging-v02.api.letsencrypt.org/directory
-    email: ${letsencrypt_email}
+    email: gashcin23@gmail.com
     privateKeySecretRef:
       name: letsencrypt-staging-key
     solvers:
@@ -34,7 +36,7 @@ metadata:
 spec:
   acme:
     server: https://acme-v02.api.letsencrypt.org/directory
-    email: ${letsencrypt_email}
+    email: gashcin23@gmail.com
     privateKeySecretRef:
       name: letsencrypt-prod-key
     solvers:

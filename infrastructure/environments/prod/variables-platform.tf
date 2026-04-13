@@ -21,22 +21,9 @@ variable "gitops_target_revision" {
 }
 
 # ----- Helm chart versions --------------------------------------------------
-
-variable "longhorn_version" {
-  description = "Longhorn chart version"
-  type        = string
-}
-
-variable "longhorn_replica_count" {
-  description = "Longhorn default replica count"
-  type        = number
-  default     = 3
-}
-
-variable "cert_manager_version" {
-  description = "cert-manager chart version"
-  type        = string
-}
+#  Longhorn + cert-manager versions now live in the ArgoCD Application
+#  manifests (platform/argocd/apps/services/) because those components
+#  are installed by ArgoCD after the cluster is ready, not at bootstrap.
 
 variable "argocd_version" {
   description = "ArgoCD chart version"

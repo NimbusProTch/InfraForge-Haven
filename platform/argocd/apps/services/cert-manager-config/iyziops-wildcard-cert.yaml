@@ -1,0 +1,28 @@
+---
+# =============================================================================
+#  iyziops — wildcard certificate for *.iyziops.com + iyziops.com
+# =============================================================================
+#  Issued by letsencrypt-prod (DNS-01 via Cloudflare). The resulting TLS
+#  Secret `iyziops-wildcard-tls` is referenced by the Cilium Gateway's
+#  HTTPS listener (see platform/argocd/apps/ingress/ next sprint).
+# =============================================================================
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: iyziops-wildcard
+  namespace: cert-manager
+spec:
+  secretName: iyziops-wildcard-tls
+  issuerRef:
+    name: letsencrypt-prod
+    kind: ClusterIssuer
+  commonName: "*.iyziops.com"
+  dnsNames:
+    - "iyziops.com"
+    - "*.iyziops.com"
+  duration: 2160h
+  renewBefore: 360h
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+    rotationPolicy: Always

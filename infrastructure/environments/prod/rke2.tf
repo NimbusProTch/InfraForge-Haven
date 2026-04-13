@@ -38,9 +38,6 @@ module "rke2_cluster" {
   letsencrypt_email    = var.letsencrypt_email
   cloudflare_api_token = var.cloudflare_api_token
 
-  cert_manager_version         = var.cert_manager_version
-  longhorn_version             = var.longhorn_version
-  longhorn_replica_count       = var.longhorn_replica_count
   argocd_version               = var.argocd_version
   argocd_server_replicas       = var.argocd_server_replicas
   argocd_ha_enabled            = var.argocd_ha_enabled

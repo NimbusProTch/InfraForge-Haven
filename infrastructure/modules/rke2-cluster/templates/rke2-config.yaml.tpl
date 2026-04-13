@@ -9,6 +9,13 @@ node-external-ip: "__PUBLIC_IP__"
 cni: cilium
 disable:
   - rke2-ingress-nginx
+# Taint masters so that only control-plane addons (with toleration) run
+# here. Tenant workloads, ArgoCD, cert-manager, Longhorn, Harbor, etc. go
+# to worker nodes only. RKE2 itself tolerates this taint on its static
+# pods (etcd, kube-apiserver, kube-controller-manager, kube-scheduler)
+# and on Cilium DaemonSet.
+node-taint:
+  - "CriticalAddonsOnly=true:NoExecute"
 tls-san:
   - "${lb_ip}"
   - "${lb_private_ip}"

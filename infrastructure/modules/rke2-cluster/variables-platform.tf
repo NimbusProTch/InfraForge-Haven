@@ -24,22 +24,9 @@ variable "cloudflare_api_token" {
 }
 
 # ----- Helm chart versions --------------------------------------------------
-
-variable "cert_manager_version" {
-  description = "cert-manager Helm chart version (e.g. v1.17.0)"
-  type        = string
-}
-
-variable "longhorn_version" {
-  description = "Longhorn Helm chart version (e.g. 1.8.0)"
-  type        = string
-}
-
-variable "longhorn_replica_count" {
-  description = "Longhorn default volume replica count"
-  type        = number
-  default     = 3
-}
+#  cert-manager, Longhorn, and every other platform service are now
+#  installed by ArgoCD (see platform/argocd/apps/services/). Only the
+#  ArgoCD chart itself is still installed at bootstrap via Helm Controller.
 
 variable "argocd_version" {
   description = "ArgoCD Helm chart version"

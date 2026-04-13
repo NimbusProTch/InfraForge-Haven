@@ -1,34 +1,152 @@
 ---
 # =============================================================================
-#  iyziops — platform-services App
+#  iyziops — platform-services (Helm-based platform components)
 # =============================================================================
-#  Watches platform/argocd/apps/services/. Future residents: monitoring
-#  (Prometheus, Grafana), Loki, Hubble UI, Harbor, MinIO, Gitea,
-#  External-DNS, Keycloak (+ realm import Job), platform CNPG Cluster.
+#  One ApplicationSet with a list generator. Each element is a Helm chart
+#  pulled directly from its upstream OCI/HTTP repo, so we never vendor
+#  chart YAML into our own git tree. sync-wave annotations guarantee
+#  ordering between dependent charts.
+#
+#  Wave 0 — Longhorn            (storage must exist before anything stateful)
+#  Wave 1 — cert-manager        (CRDs + controllers; config comes in wave 2)
+#
+#  The ClusterIssuers + wildcard Certificate + Cloudflare token reference
+#  live in the second ApplicationSet below (platform-services-config)
+#  because those are raw manifests, not a Helm chart.
 # =============================================================================
 apiVersion: argoproj.io/v1alpha1
-kind: Application
+kind: ApplicationSet
 metadata:
   name: platform-services
   namespace: argocd
-  finalizers:
-    - resources-finalizer.argocd.argoproj.io
 spec:
-  project: iyziops-platform
-  source:
-    repoURL: git@github.com:NimbusProTch/InfraForge-Haven.git
-    targetRevision: main
-    path: platform/argocd/apps/services
-    directory:
-      recurse: true
-      include: '*.yaml'
-  destination:
-    server: https://kubernetes.default.svc
-    namespace: argocd
-  syncPolicy:
-    automated:
-      prune: true
-      selfHeal: true
-    syncOptions:
-      - CreateNamespace=false
-      - ApplyOutOfSyncOnly=true
+  generators:
+    - list:
+        elements:
+          - name: longhorn
+            namespace: longhorn-system
+            syncWave: "0"
+            repoURL: https://charts.longhorn.io
+            chart: longhorn
+            targetRevision: 1.8.0
+            values: |
+              defaultSettings:
+                defaultReplicaCount: 3
+                defaultDataPath: /var/lib/longhorn/
+                storageOverProvisioningPercentage: 100
+                storageMinimalAvailablePercentage: 15
+                createDefaultDiskLabeledNodes: true
+              persistence:
+                defaultClass: true
+                defaultClassReplicaCount: 3
+                defaultDataLocality: best-effort
+                reclaimPolicy: Delete
+              longhornManager:
+                tolerations:
+                  - operator: Exists
+              longhornDriver:
+                tolerations:
+                  - operator: Exists
+          - name: cert-manager
+            namespace: cert-manager
+            syncWave: "1"
+            repoURL: https://charts.jetstack.io
+            chart: cert-manager
+            targetRevision: v1.17.0
+            values: |
+              installCRDs: true
+              prometheus:
+                enabled: false
+              replicaCount: 2
+              webhook:
+                replicaCount: 2
+              cainjector:
+                replicaCount: 2
+  template:
+    metadata:
+      name: '{{name}}'
+      namespace: argocd
+      annotations:
+        argocd.argoproj.io/sync-wave: '{{syncWave}}'
+      finalizers:
+        - resources-finalizer.argocd.argoproj.io
+    spec:
+      project: iyziops-platform
+      source:
+        repoURL: '{{repoURL}}'
+        chart: '{{chart}}'
+        targetRevision: '{{targetRevision}}'
+        helm:
+          releaseName: '{{name}}'
+          values: '{{values}}'
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: '{{namespace}}'
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true
+          - ServerSideApply=true
+        retry:
+          limit: 5
+          backoff:
+            duration: 10s
+            factor: 2
+            maxDuration: 5m
+---
+# =============================================================================
+#  iyziops — platform-services-config (raw manifests for platform services)
+# =============================================================================
+#  Separate ApplicationSet for non-Helm service configuration: the cert-
+#  manager ClusterIssuers + wildcard Certificate. These must apply AFTER
+#  cert-manager's webhook is reachable, so they run on sync-wave 2.
+#
+#  Each element is a subdirectory of platform/argocd/apps/services/ that
+#  holds raw YAML manifests (no Helm). Adding a new raw-manifest app is a
+#  one-line change here plus a new directory in the repo.
+# =============================================================================
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: platform-services-config
+  namespace: argocd
+spec:
+  generators:
+    - list:
+        elements:
+          - name: cert-manager-config
+            namespace: cert-manager
+            syncWave: "2"
+            path: platform/argocd/apps/services/cert-manager-config
+  template:
+    metadata:
+      name: '{{name}}'
+      namespace: argocd
+      annotations:
+        argocd.argoproj.io/sync-wave: '{{syncWave}}'
+      finalizers:
+        - resources-finalizer.argocd.argoproj.io
+    spec:
+      project: iyziops-platform
+      source:
+        repoURL: git@github.com:NimbusProTch/InfraForge-Haven.git
+        targetRevision: main
+        path: '{{path}}'
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: '{{namespace}}'
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=false
+          - ServerSideApply=true
+        retry:
+          limit: 10
+          backoff:
+            duration: 10s
+            factor: 2
+            maxDuration: 5m
