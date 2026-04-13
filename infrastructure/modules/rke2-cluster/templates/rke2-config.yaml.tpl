@@ -30,6 +30,14 @@ protect-kernel-defaults: true
 %{ endif ~}
 write-kubeconfig-mode: "0644"
 kube-apiserver-arg:
+  # Pin apiserver advertise-address to this node's PRIVATE IP. RKE2's
+  # default chooses the ExternalIP when --node-external-ip is set, which
+  # makes the `kubernetes` Service endpoints publish as public IPs and
+  # forces pod → apiserver traffic to go back out the public interface.
+  # With this override, endpoints stay on the private network, Cilium
+  # socket-LB redirects are cheap, and CoreDNS/helm-install-*/ArgoCD
+  # can reach 10.43.0.1:443 over 10.10.1.0/24 without masquerade.
+  - "advertise-address=__PRIVATE_IP__"
   - "oidc-issuer-url=${keycloak_oidc_issuer_url}"
   - "oidc-client-id=${keycloak_oidc_client_id}"
   - "oidc-username-claim=preferred_username"
