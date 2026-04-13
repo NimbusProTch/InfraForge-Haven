@@ -1,0 +1,27 @@
+---
+# =============================================================================
+#  vault-system namespace (HashiCorp Vault)
+# =============================================================================
+#  Pod Security Admission: `baseline` — Vault requires IPC_LOCK capability
+#  (mlock to prevent key material swap) which baseline allows but restricted
+#  blocks. Audit/warn at restricted so new workloads get flagged.
+# =============================================================================
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: vault-system
+  labels:
+    pod-security.kubernetes.io/enforce: baseline
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
+    iyziops.io/layer: platform-secrets
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: external-secrets
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
+    iyziops.io/layer: platform-secrets

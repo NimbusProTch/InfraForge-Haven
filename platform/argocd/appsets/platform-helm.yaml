@@ -556,6 +556,115 @@ spec:
                 securityContext:
                   enabled: false
 
+          # ----- Wave 4: Secrets management (Vault + ESO) ----------------
+          # HashiCorp Vault in standalone (file-storage) mode for platform
+          # secret material. Runs in dev-like mode BUT with real file
+          # backend so secrets persist across restarts. Operators run:
+          #   kubectl exec -n vault-system vault-0 -- vault operator init
+          #   kubectl exec -n vault-system vault-0 -- vault operator unseal
+          # to unseal on first boot. Root token + unseal keys stored in
+          # `vault-init` secret by post-install script (later).
+          #
+          # For Phase 3 we enable the internal dev listener (no TLS between
+          # Vault and ESO since both run in-cluster and traffic stays on
+          # the CNI overlay). Prod cutover adds TLS via cert-manager.
+          - name: vault
+            namespace: vault-system
+            syncWave: "4"
+            repoURL: https://helm.releases.hashicorp.com
+            chart: vault
+            targetRevision: "0.29.1"
+            values: |
+              global:
+                enabled: true
+                tlsDisable: true
+              injector:
+                enabled: false
+              server:
+                image:
+                  repository: hashicorp/vault
+                  tag: 1.18.2
+                dev:
+                  enabled: false
+                standalone:
+                  enabled: true
+                  config: |
+                    ui = true
+                    listener "tcp" {
+                      tls_disable = 1
+                      address = "[::]:8200"
+                      cluster_address = "[::]:8201"
+                    }
+                    storage "file" {
+                      path = "/vault/data"
+                    }
+                dataStorage:
+                  enabled: true
+                  size: 10Gi
+                  storageClass: longhorn
+                  accessMode: ReadWriteOnce
+                auditStorage:
+                  enabled: true
+                  size: 10Gi
+                  storageClass: longhorn
+                  accessMode: ReadWriteOnce
+                resources:
+                  requests:
+                    cpu: 100m
+                    memory: 256Mi
+                  limits:
+                    memory: 512Mi
+                readinessProbe:
+                  enabled: true
+                  path: "/v1/sys/health?standbyok=true&sealedcode=204&uninitcode=204"
+                livenessProbe:
+                  enabled: true
+                  path: "/v1/sys/health?standbyok=true"
+                  initialDelaySeconds: 60
+                serviceAccount:
+                  create: true
+                  name: vault
+              ui:
+                enabled: true
+                serviceType: ClusterIP
+                externalPort: 8200
+
+          # ----- Wave 4: External Secrets Operator -----------------------
+          # ESO controller that reconciles ExternalSecret CRDs into native
+          # K8s Secrets by reading from ClusterSecretStore (Vault).
+          - name: external-secrets
+            namespace: external-secrets
+            syncWave: "4"
+            repoURL: https://charts.external-secrets.io
+            chart: external-secrets
+            targetRevision: "0.10.7"
+            values: |
+              installCRDs: true
+              replicaCount: 1
+              leaderElect: true
+              resources:
+                requests:
+                  cpu: 50m
+                  memory: 128Mi
+                limits:
+                  memory: 256Mi
+              webhook:
+                replicaCount: 1
+                resources:
+                  requests:
+                    cpu: 50m
+                    memory: 128Mi
+                  limits:
+                    memory: 256Mi
+              certController:
+                replicaCount: 1
+                resources:
+                  requests:
+                    cpu: 50m
+                    memory: 128Mi
+                  limits:
+                    memory: 256Mi
+
           # ----- Wave 5: Data services (FUTURE — Sprint D1) -------------
           # - name: everest
           #   namespace: everest-system
