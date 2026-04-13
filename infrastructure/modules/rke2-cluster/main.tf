@@ -77,19 +77,27 @@ locals {
   })
 
   # ---------------------------------------------------------------------------
-  #  Master cloud-init receives every manifest + the cluster config.
-  #  The template encodes each manifest in base64 so write_files can drop
-  #  them at /var/lib/rancher/rke2/server/manifests/*.yaml verbatim.
+  #  RKE2 config.yaml template — rendered twice (first master vs joining)
   # ---------------------------------------------------------------------------
+  #  The RKE2 config body used to live inline inside the cloud-init
+  #  `content: |` block scalar. That broke because `%{ if x ~}` directives
+  #  inside a YAML block scalar concatenate the directive line's leading
+  #  whitespace with the next line's indent, producing a malformed config
+  #  with inconsistent indentation. RKE2 parsed it and crash-looped with
+  #  `yaml: line 12: did not find expected '-' indicator`.
+  #
+  #  Fix: render the config body as its own template, base64-encode it,
+  #  and drop it into the cloud-init write_files entry with `encoding: b64`.
+  #  The base64 blob is inert to cloud-init's YAML parser, so directive
+  #  strips work as designed.
 
-  common_rke2_vars = {
+  rke2_config_vars_common = {
     cluster_token            = var.cluster_token
-    kubernetes_version       = var.kubernetes_version
     first_master_private_ip  = var.first_master_private_ip
     lb_ip                    = var.lb_ip
     lb_private_ip            = var.lb_private_ip
-    enable_cis_profile       = var.enable_cis_profile
     disable_kube_proxy       = var.disable_kube_proxy
+    enable_cis_profile       = var.enable_cis_profile
     keycloak_oidc_issuer_url = var.keycloak_oidc_issuer_url
     keycloak_oidc_client_id  = var.keycloak_oidc_client_id
     etcd_snapshot_schedule   = var.etcd_snapshot_schedule
@@ -102,7 +110,26 @@ locals {
     etcd_s3_secret_key       = var.etcd_s3_secret_key
   }
 
+  rke2_config_first_master = templatefile("${path.module}/templates/rke2-config.yaml.tpl", merge(local.rke2_config_vars_common, {
+    is_first_master = true
+  }))
+
+  rke2_config_joining_master = templatefile("${path.module}/templates/rke2-config.yaml.tpl", merge(local.rke2_config_vars_common, {
+    is_first_master = false
+  }))
+
+  # ---------------------------------------------------------------------------
+  #  Cloud-init strings
+  # ---------------------------------------------------------------------------
+
+  common_rke2_vars = {
+    cluster_token           = var.cluster_token
+    kubernetes_version      = var.kubernetes_version
+    first_master_private_ip = var.first_master_private_ip
+  }
+
   first_master_cloud_init = templatefile("${path.module}/templates/master-cloud-init.yaml.tpl", merge(local.common_rke2_vars, {
+    rke2_config_b64                      = base64encode(local.rke2_config_first_master)
     manifest_cilium_config_b64           = base64encode(local.manifest_cilium_config)
     manifest_longhorn_b64                = base64encode(local.manifest_longhorn)
     manifest_cert_manager_b64            = base64encode(local.manifest_cert_manager)
@@ -115,7 +142,9 @@ locals {
     manifest_argocd_root_app_b64         = base64encode(local.manifest_argocd_root_app)
   }))
 
-  joining_master_cloud_init = templatefile("${path.module}/templates/joining-master-cloud-init.yaml.tpl", local.common_rke2_vars)
+  joining_master_cloud_init = templatefile("${path.module}/templates/joining-master-cloud-init.yaml.tpl", merge(local.common_rke2_vars, {
+    rke2_config_b64 = base64encode(local.rke2_config_joining_master)
+  }))
 
   worker_cloud_init = templatefile("${path.module}/templates/worker-cloud-init.yaml.tpl", {
     cluster_token           = var.cluster_token

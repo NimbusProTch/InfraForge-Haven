@@ -17,8 +17,9 @@ network_cidr     = "10.10.0.0/16"
 subnet_cidr      = "10.10.1.0/24"
 lb_type          = "lb11"
 
-# ⚠️  REPLACE before first apply — use your VPN / office egress CIDR.
-operator_cidrs = ["203.0.113.0/24"]
+# Operator public IP (solo dev, home office). Update + target-apply
+# module.hetzner_infra.hcloud_firewall.this when the ISP rotates it.
+operator_cidrs = ["159.146.79.143/32"]
 
 # ----- Nodes ----------------------------------------------------------------
 master_count       = 3

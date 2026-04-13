@@ -2,9 +2,13 @@
 # =============================================================================
 #  iyziops — first master node (cluster bootstrap)
 # =============================================================================
-#  Cloud-config format. Drops every Helm Controller manifest into
-#  /var/lib/rancher/rke2/server/manifests/ BEFORE RKE2 starts, so the
-#  Helm Controller applies them when the API comes up.
+#  Cloud-config format. Drops the RKE2 config body AND every Helm Controller
+#  manifest as base64 blobs into write_files. RKE2's in-cluster Helm Controller
+#  applies the manifests when rke2-server starts.
+#
+#  The RKE2 config blob lands at /etc/rancher/rke2/config.yaml.tpl with
+#  runtime placeholders __PRIVATE_IP__ and __PUBLIC_IP__ still intact. runcmd
+#  later seds those into place based on Hetzner metadata.
 # =============================================================================
 
 package_update: true
@@ -64,53 +68,11 @@ write_files:
         - level: Metadata
           verbs: ["create", "update", "patch", "delete"]
 
-  # ---------- RKE2 config template (PRIVATE_IP filled at runtime) ----------
+  # ---------- RKE2 config template (base64, runtime IPs substituted in runcmd) ----------
   - path: /etc/rancher/rke2/config.yaml.tpl
     permissions: '0600'
-    content: |
-      token: "${cluster_token}"
-      cluster-init: true
-      node-ip: "__PRIVATE_IP__"
-      node-external-ip: "__PUBLIC_IP__"
-      cni: cilium
-      disable:
-        - rke2-ingress-nginx
-      tls-san:
-        - "${lb_ip}"
-        - "${lb_private_ip}"
-        - "__PRIVATE_IP__"
-        - "__PUBLIC_IP__"
-      %{ if disable_kube_proxy ~}
-      disable-kube-proxy: true
-      %{ endif ~}
-      %{ if enable_cis_profile ~}
-      profile: cis
-      protect-kernel-defaults: true
-      %{ endif ~}
-      write-kubeconfig-mode: "0644"
-      kube-apiserver-arg:
-        - "oidc-issuer-url=${keycloak_oidc_issuer_url}"
-        - "oidc-client-id=${keycloak_oidc_client_id}"
-        - "oidc-username-claim=preferred_username"
-        - "oidc-username-prefix=oidc:"
-        - "oidc-groups-claim=groups"
-        - "oidc-groups-prefix=oidc:"
-        - "audit-policy-file=/etc/rancher/rke2/audit-policy.yaml"
-        - "audit-log-path=/var/log/kube-audit/audit.log"
-        - "audit-log-maxage=30"
-        - "audit-log-maxbackup=10"
-        - "audit-log-maxsize=100"
-      etcd-snapshot-schedule-cron: "${etcd_snapshot_schedule}"
-      etcd-snapshot-retention: ${etcd_snapshot_retention}
-      etcd-snapshot-dir: /var/lib/rancher/rke2/server/db/snapshots
-      %{ if etcd_s3_enabled ~}
-      etcd-s3: true
-      etcd-s3-endpoint: "${etcd_s3_endpoint}"
-      etcd-s3-bucket: "${etcd_s3_bucket}"
-      etcd-s3-region: "${etcd_s3_region}"
-      etcd-s3-access-key: "${etcd_s3_access_key}"
-      etcd-s3-secret-key: "${etcd_s3_secret_key}"
-      %{ endif ~}
+    encoding: b64
+    content: ${rke2_config_b64}
 
   # ---------- Helm Controller manifests (base64) ----------
   - path: /var/lib/rancher/rke2/server/manifests/rke2-cilium-config.yaml
