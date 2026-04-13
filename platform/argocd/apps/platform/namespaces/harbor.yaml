@@ -1,0 +1,18 @@
+---
+# =============================================================================
+#  harbor-system namespace (Harbor image registry)
+# =============================================================================
+#  Pod Security Admission: `baseline` — Harbor chart components (registry,
+#  core, portal, jobservice, exporter, redis, postgresql) run as non-root
+#  but some need writable host paths for buildah rootless runtime. Baseline
+#  is the safe floor. Audit/warn at restricted so new workloads get flagged.
+# =============================================================================
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: harbor-system
+  labels:
+    pod-security.kubernetes.io/enforce: baseline
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
+    iyziops.io/layer: platform-registry
