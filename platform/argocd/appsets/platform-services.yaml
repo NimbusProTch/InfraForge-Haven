@@ -32,6 +32,8 @@ spec:
             chart: longhorn
             targetRevision: 1.8.0
             values: |
+              preUpgradeChecker:
+                jobEnabled: false
               defaultSettings:
                 defaultReplicaCount: 3
                 defaultDataPath: /var/lib/longhorn/
