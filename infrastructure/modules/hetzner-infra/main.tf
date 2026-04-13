@@ -1,16 +1,24 @@
 # =============================================================================
 #  iyziops — Hetzner base infrastructure
 # =============================================================================
-#  SSH key, private network, subnet, public firewall, and the single
-#  tofu-managed load balancer that fronts both the Kubernetes API (6443) and
-#  the Cilium Gateway (80/443). LB targets are attached in the environment
-#  level (not here) because they reference server IDs.
+#  SSH key, private network, subnet, public firewall, and TWO load balancers:
+#
+#    1. api      — fully tofu-managed. Listens on 6443. Targets are the
+#                  master nodes (attached in the environment layer).
+#
+#    2. ingress  — shell only. Tofu creates the LB and attaches it to the
+#                  private network, but writes NO services and NO targets.
+#                  Hetzner CCM adopts this LB by name (annotation on the
+#                  Cilium Gateway → cilium-gateway-iyziops-gateway Service)
+#                  and reconciles services + targets declaratively. The
+#                  lifecycle{} block tells tofu to ignore CCM's writes.
+#
+#  This is the kube-hetzner / hcloud-k8s 2-LB pattern. CCM cannot share a
+#  single LB with tofu-managed services: ReconcileHCLBServices deletes any
+#  port not in the Service spec, so we keep the API LB completely separate.
 #
 #  Node-to-node traffic goes over the private network and is NOT filtered
-#  by hcloud_firewall — Hetzner firewalls only apply to public ingress. That
-#  is why this file contains no rules for VXLAN, kubelet, or the RKE2
-#  supervisor port: cluster-internal traffic stays on 10.x and never touches
-#  the public firewall.
+#  by hcloud_firewall — Hetzner firewalls only apply to public ingress.
 # =============================================================================
 
 resource "hcloud_ssh_key" "this" {
@@ -35,6 +43,12 @@ resource "hcloud_network_subnet" "this" {
 # -----------------------------------------------------------------------------
 #  Rules are intentionally minimal. Everything else (kubelet, VXLAN, etcd,
 #  RKE2 supervisor on 9345, LB → node traffic) is private-network only.
+#
+#  Note on 80/443: in the Option B architecture the ingress LB uses the
+#  private network for LB → node traffic (use-private-ip: true via CCM
+#  annotation) and the destination port is a NodePort, not 80/443. The
+#  public 80/443 rules below are therefore not strictly required, but kept
+#  open for direct-to-node debugging and as a no-op safety net.
 # -----------------------------------------------------------------------------
 resource "hcloud_firewall" "this" {
   name = "${var.cluster_name}-${var.environment}"
@@ -49,12 +63,9 @@ resource "hcloud_firewall" "this" {
 
   # Kubernetes API (6443). Public like 9345 because RKE2's agent-lb on every
   # worker and joining master discovers apiserver endpoints via the
-  # kubernetes Service, which returns each master's ExternalIP (set via
-  # --node-external-ip). Agents then health-check these endpoints directly;
-  # if the public 6443 ingress is closed, workers flap forever in the
-  # "activating" state and never join. Apiserver auth is TLS client
-  # certificates + Bearer tokens, so the public exposure adds no real
-  # attack surface beyond what the tofu-managed LB already exposes on :6443.
+  # kubernetes Service, which returns each master's ExternalIP. Apiserver
+  # auth is TLS client certs + Bearer tokens, so the public exposure adds
+  # no real attack surface beyond what the API LB already exposes on :6443.
   rule {
     direction  = "in"
     protocol   = "tcp"
@@ -64,10 +75,8 @@ resource "hcloud_firewall" "this" {
 
   # RKE2 supervisor / agent-tunnel (websocket registration + remotedialer).
   # RKE2 dials peer masters via ExternalIP over public internet — even when
-  # both nodes share a private network — because `node-external-ip` is set
-  # in the config. The tunnel is authenticated by the 64-char random cluster
-  # token so a world-open ingress is acceptable under RKE2's threat model
-  # (same posture the upstream RKE2 HA docs recommend for cloud deployments).
+  # both nodes share a private network — because `node-external-ip` is set.
+  # The tunnel is authenticated by the 64-char random cluster token.
   rule {
     direction  = "in"
     protocol   = "tcp"
@@ -75,7 +84,7 @@ resource "hcloud_firewall" "this" {
     source_ips = ["0.0.0.0/0", "::/0"]
   }
 
-  # HTTP — public (Let's Encrypt HTTP-01 + tenant apps via Cilium Gateway)
+  # HTTP — public (kept open as no-op safety net; LB→node uses private IP)
   rule {
     direction  = "in"
     protocol   = "tcp"
@@ -83,7 +92,7 @@ resource "hcloud_firewall" "this" {
     source_ips = ["0.0.0.0/0", "::/0"]
   }
 
-  # HTTPS — public (tenant apps via Cilium Gateway)
+  # HTTPS — public (kept open as no-op safety net; LB→node uses private IP)
   rule {
     direction  = "in"
     protocol   = "tcp"
@@ -93,25 +102,25 @@ resource "hcloud_firewall" "this" {
 }
 
 # -----------------------------------------------------------------------------
-#  Load balancer — single public entry point
+#  API load balancer — tofu fully manages
 # -----------------------------------------------------------------------------
-#  Listens on 6443/80/443. Targets (servers on private IPs) are attached in
-#  the environment layer. Services use the private target IP via
-#  use_private_ip = true on hcloud_load_balancer_target (see environments/).
+#  Listens on 6443. Master targets are attached in the environment layer.
+#  Services use the private target IP via use_private_ip = true on
+#  hcloud_load_balancer_target (see environments/).
 # -----------------------------------------------------------------------------
-resource "hcloud_load_balancer" "this" {
-  name               = "${var.cluster_name}-${var.environment}"
-  load_balancer_type = var.lb_type
+resource "hcloud_load_balancer" "api" {
+  name               = "${var.cluster_name}-${var.environment}-api"
+  load_balancer_type = var.api_lb_type
   location           = var.location_primary
 }
 
-resource "hcloud_load_balancer_network" "this" {
-  load_balancer_id = hcloud_load_balancer.this.id
+resource "hcloud_load_balancer_network" "api" {
+  load_balancer_id = hcloud_load_balancer.api.id
   subnet_id        = hcloud_network_subnet.this.id
 }
 
 resource "hcloud_load_balancer_service" "k8s_api" {
-  load_balancer_id = hcloud_load_balancer.this.id
+  load_balancer_id = hcloud_load_balancer.api.id
   protocol         = "tcp"
   listen_port      = 6443
   destination_port = 6443
@@ -125,32 +134,36 @@ resource "hcloud_load_balancer_service" "k8s_api" {
   }
 }
 
-resource "hcloud_load_balancer_service" "http" {
-  load_balancer_id = hcloud_load_balancer.this.id
-  protocol         = "tcp"
-  listen_port      = 80
-  destination_port = var.gateway_http_port
+# -----------------------------------------------------------------------------
+#  Ingress load balancer — shell only, CCM adopts and reconciles services
+# -----------------------------------------------------------------------------
+#  Tofu creates the LB resource and attaches it to the private network so
+#  CCM has something to adopt. CCM finds it by the literal name (set via
+#  the `load-balancer.hetzner.cloud/name` annotation on the Cilium Gateway
+#  Service) and writes 80/443 services + node targets declaratively.
+#
+#  The lifecycle ignore_changes block prevents tofu from fighting CCM:
+#    - targets: CCM writes the per-node targets
+#    - labels[hcloud-ccm/service-uid]: CCM writes this on adoption
+# -----------------------------------------------------------------------------
+resource "hcloud_load_balancer" "ingress" {
+  name               = "${var.cluster_name}-${var.environment}-ingress"
+  load_balancer_type = var.ingress_lb_type
+  location           = var.ingress_lb_location
 
-  health_check {
-    protocol = "tcp"
-    port     = var.gateway_http_port
-    interval = 15
-    timeout  = 10
-    retries  = 3
+  labels = {
+    "iyziops.com/purpose" = "ingress"
+  }
+
+  lifecycle {
+    ignore_changes = [
+      target,
+      labels["hcloud-ccm/service-uid"],
+    ]
   }
 }
 
-resource "hcloud_load_balancer_service" "https" {
-  load_balancer_id = hcloud_load_balancer.this.id
-  protocol         = "tcp"
-  listen_port      = 443
-  destination_port = var.gateway_https_port
-
-  health_check {
-    protocol = "tcp"
-    port     = var.gateway_https_port
-    interval = 15
-    timeout  = 10
-    retries  = 3
-  }
+resource "hcloud_load_balancer_network" "ingress" {
+  load_balancer_id = hcloud_load_balancer.ingress.id
+  subnet_id        = hcloud_network_subnet.this.id
 }

@@ -29,20 +29,6 @@ write_files:
       kernel.panic=10
       kernel.panic_on_oops=1
 
-  # ---------- sysctl so cilium-envoy can bind 80/443 in hostNetwork mode ----------
-  - path: /etc/sysctl.d/91-iyziops-gateway.conf
-    permissions: '0644'
-    content: |
-      # Cilium Gateway API hostNetwork mode: cilium-envoy runs non-root and
-      # binds the Gateway listener ports directly on the node. Standard
-      # Linux forbids unprivileged processes from binding ports < 1024, so
-      # we lower the unprivileged start port to 0. Without this, envoy
-      # logs "cannot bind '0.0.0.0:80': Permission denied" and the Gateway
-      # Programmed condition stays False. CIS hardening is unaffected —
-      # root still owns all privileged operations; this only concerns
-      # which ports user-space can listen on.
-      net.ipv4.ip_unprivileged_port_start=0
-
   # ---------- kube-apiserver audit policy ----------
   - path: /etc/rancher/rke2/audit-policy.yaml
     permissions: '0600'
@@ -89,16 +75,20 @@ write_files:
     content: ${rke2_config_b64}
 
   # ---------- Helm Controller manifests (base64) — MINIMAL BOOTSTRAP SET ----------
-  # Only what the cluster cannot start without (Cilium CNI) plus the ArgoCD
-  # bootstrap chain. Longhorn, cert-manager, ClusterIssuers, wildcard cert,
-  # and every downstream service live in the GitOps repo as ArgoCD
-  # Applications with sync-wave ordering — no more Helm Controller race
-  # conditions.
+  # Only what the cluster cannot start without (Cilium CNI + Hetzner CCM)
+  # plus the ArgoCD bootstrap chain. Longhorn, cert-manager, ClusterIssuers,
+  # wildcard cert, and every downstream service live in the GitOps repo as
+  # ArgoCD Applications with sync-wave ordering.
 
   - path: /var/lib/rancher/rke2/server/manifests/rke2-cilium-config.yaml
     permissions: '0600'
     encoding: b64
     content: ${manifest_cilium_config_b64}
+
+  - path: /var/lib/rancher/rke2/server/manifests/hetzner-ccm.yaml
+    permissions: '0600'
+    encoding: b64
+    content: ${manifest_hetzner_ccm_b64}
 
   - path: /var/lib/rancher/rke2/server/manifests/cert-manager-namespace.yaml
     permissions: '0600'

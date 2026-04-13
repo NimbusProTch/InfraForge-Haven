@@ -76,8 +76,13 @@ variable "subnet_cidr" {
   type        = string
 }
 
-variable "lb_type" {
-  description = "Hetzner LB type (lb11 / lb21 / lb31)"
+variable "api_lb_type" {
+  description = "Hetzner API LB type (6443). lb11 is sufficient for control-plane traffic."
+  type        = string
+}
+
+variable "ingress_lb_type" {
+  description = "Hetzner ingress LB type (80/443). lb11 dev, lb21+ for customer-facing prod."
   type        = string
 }
 

@@ -24,6 +24,7 @@ spec:
     - https://helm.releases.hashicorp.com
     - https://charts.external-secrets.io
     - https://charts.hetzner.cloud
+    - https://github.com/kubernetes-sigs/gateway-api
   destinations:
     - server: https://kubernetes.default.svc
       namespace: "*"

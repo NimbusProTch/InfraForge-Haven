@@ -8,14 +8,17 @@
 #  runs `cluster-init: true` and writes every Helm Controller manifest.
 #  Joining masters (index 1..N) wait for the first master on port 9345.
 #  Workers join the same way as agents.
+#
+#  LB topology (Option B / kube-hetzner pattern):
+#    - api LB     : 6443, masters only, fully tofu-managed
+#    - ingress LB : shell, no tofu services/targets, CCM adopts and
+#                   reconciles 80/443 + targets after Cilium Gateway boots
 # =============================================================================
 
 # ----- SSH key (generated, written to logs/ for SCP) ------------------------
 #  This pem is persistent, NOT scratch: it's required by `make kubeconfig`
 #  to SCP the RKE2 kubeconfig from the first master. It lives under logs/
-#  because logs/ is gitignored, so the private key never reaches git. Do
-#  not delete it between tasks — see .claude/rules/logs-directory.md for
-#  the task-end cleanup rule (it excludes this persistent file).
+#  because logs/ is gitignored, so the private key never reaches git.
 
 resource "tls_private_key" "cluster" {
   algorithm = "ED25519"
@@ -39,15 +42,17 @@ resource "random_password" "cluster_token" {
 module "hetzner_infra" {
   source = "../../modules/hetzner-infra"
 
-  cluster_name     = var.cluster_name
-  environment      = var.environment
-  ssh_public_key   = tls_private_key.cluster.public_key_openssh
-  location_primary = var.location_primary
-  network_zone     = var.network_zone
-  network_cidr     = var.network_cidr
-  subnet_cidr      = var.subnet_cidr
-  lb_type          = var.lb_type
-  operator_cidrs   = var.operator_cidrs
+  cluster_name        = var.cluster_name
+  environment         = var.environment
+  ssh_public_key      = tls_private_key.cluster.public_key_openssh
+  location_primary    = var.location_primary
+  network_zone        = var.network_zone
+  network_cidr        = var.network_cidr
+  subnet_cidr         = var.subnet_cidr
+  api_lb_type         = var.api_lb_type
+  ingress_lb_type     = var.ingress_lb_type
+  ingress_lb_location = var.location_primary
+  operator_cidrs      = var.operator_cidrs
 }
 
 # ----- Reserve a stable private IP for the first master --------------------
@@ -147,26 +152,18 @@ resource "hcloud_server_network" "worker" {
   subnet_id = module.hetzner_infra.subnet_id
 }
 
-# ----- LB targets -----------------------------------------------------------
+# ----- API LB targets (masters only) ----------------------------------------
+#  Worker targets do NOT belong on the API LB — workers don't run kube-apiserver.
+#  Ingress LB targets are written by Hetzner CCM (the LB shell has
+#  lifecycle ignore_changes = [targets]).
 
-resource "hcloud_load_balancer_target" "master" {
+resource "hcloud_load_balancer_target" "api_master" {
   count = var.master_count
 
-  load_balancer_id = module.hetzner_infra.load_balancer_id
+  load_balancer_id = module.hetzner_infra.load_balancer_api_id
   type             = "server"
   server_id        = hcloud_server.master[count.index].id
   use_private_ip   = true
 
   depends_on = [hcloud_server_network.master]
-}
-
-resource "hcloud_load_balancer_target" "worker" {
-  count = var.worker_count
-
-  load_balancer_id = module.hetzner_infra.load_balancer_id
-  type             = "server"
-  server_id        = hcloud_server.worker[count.index].id
-  use_private_ip   = true
-
-  depends_on = [hcloud_server_network.worker]
 }

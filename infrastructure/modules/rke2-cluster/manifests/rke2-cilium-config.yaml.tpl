@@ -13,11 +13,24 @@
 #
 #  Hetzner's private network advertises a /16 gateway (10.10.0.1), so
 #  the Linux kernel refuses to install per-node pod-CIDR routes as
-#  "direct". Cilium falls into degraded mode, pod-to-ClusterIP TCP
-#  silently breaks, helm-install / cert-manager webhook / argocd repo
-#  server all time out. Switching to VXLAN tunnel mode sidesteps the
-#  direct-route requirement entirely: pod packets are encapsulated
-#  and routed through the node's normal interface, no magic needed.
+#  "direct". Switching to VXLAN tunnel mode sidesteps the requirement
+#  entirely. (Native routing would also need Hetzner CCM's route-controller
+#  to write per-node routes into the private network — kube-hetzner default
+#  is also tunnel mode for this same reason.)
+#
+#  k8sServiceHost = 127.0.0.1 — every RKE2 node (server + agent) exposes
+#  the Kubernetes API on the loopback at port 6443 (servers run apiserver
+#  directly; agents run a local agent-lb). Pointing Cilium at the loopback
+#  removes any dependency on the Hetzner LB during early bootstrap, breaking
+#  the chicken-and-egg between CNI install and the API LB DNS resolution.
+#  This is the same pattern kube-hetzner uses (k8sServiceHost = 127.0.0.1
+#  on k3s 6444) and hcloud-k8s uses (KubePrism on 7445 for Talos).
+#
+#  Gateway API: enabled in standard mode — Cilium creates a LoadBalancer
+#  Service per Gateway. The Hetzner CCM (installed via hetzner-ccm.yaml)
+#  adopts the corresponding Hetzner LB by name and writes the 80/443
+#  services. No more hostNetwork mode, no more sysctl unprivileged port
+#  workaround — this is the upstream-recommended pathway.
 # =============================================================================
 apiVersion: helm.cattle.io/v1
 kind: HelmChartConfig
@@ -27,7 +40,7 @@ metadata:
 spec:
   valuesContent: |-
     kubeProxyReplacement: true
-    k8sServiceHost: "${lb_private_ip}"
+    k8sServiceHost: "127.0.0.1"
     k8sServicePort: 6443
     ipam:
       mode: kubernetes
@@ -35,21 +48,14 @@ spec:
     tunnelProtocol: vxlan
     bpf:
       masquerade: true
+    cni:
+      exclusive: true
     operator:
       replicas: ${cilium_operator_replicas}
     gatewayAPI:
       enabled: true
       enableAlpn: true
       enableAppProtocol: true
-      # hostNetwork mode makes cilium-envoy bind the Gateway listeners
-      # directly on host:80 and host:443 (no NodePort indirection, no
-      # Hetzner CCM LoadBalancer reconciler). Requires the kernel sysctl
-      # net.ipv4.ip_unprivileged_port_start=0 on every node because
-      # cilium-envoy runs non-root — that sysctl is set in cloud-init
-      # (/etc/sysctl.d/91-iyziops-gateway.conf) before rke2-server/agent
-      # starts, so envoy can bind 80/443 on its first reconcile.
-      hostNetwork:
-        enabled: true
     envoy:
       enabled: true
     hubble:

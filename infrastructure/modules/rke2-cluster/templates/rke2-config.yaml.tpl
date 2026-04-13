@@ -9,6 +9,10 @@ node-external-ip: "__PUBLIC_IP__"
 cni: cilium
 disable:
   - rke2-ingress-nginx
+# Disable RKE2's built-in cloud controller. We install hcloud-cloud-controller-manager
+# separately via the rke2-cluster manifests/ directory. RKE2 + external CCM is the
+# upstream-supported pattern for cloud providers (kube-hetzner, hcloud-k8s).
+disable-cloud-controller: true
 # Taint masters so that only control-plane addons (with toleration) run
 # here. Tenant workloads, ArgoCD, cert-manager, Longhorn, Harbor, etc. go
 # to worker nodes only. RKE2 itself tolerates this taint on its static
@@ -29,6 +33,13 @@ profile: cis
 protect-kernel-defaults: true
 %{ endif ~}
 write-kubeconfig-mode: "0644"
+# cloud-provider=external tells the kubelet to wait for an out-of-tree CCM
+# to set node providerID + topology labels and remove the
+# node.cloudprovider.kubernetes.io/uninitialized taint. Hetzner CCM is
+# installed via the bootstrap manifest (hetzner-ccm.yaml) and tolerates
+# this taint so it can schedule before the node is "initialized".
+kubelet-arg:
+  - "cloud-provider=external"
 kube-apiserver-arg:
   # Pin apiserver advertise-address to this node's PRIVATE IP. RKE2's
   # default chooses the ExternalIP when --node-external-ip is set, which

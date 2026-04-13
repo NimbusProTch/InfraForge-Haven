@@ -31,7 +31,7 @@ variable "ssh_public_key" {
 }
 
 variable "location_primary" {
-  description = "Hetzner primary datacenter location (e.g. fsn1, nbg1, hel1)"
+  description = "Hetzner primary datacenter location for masters/workers (e.g. fsn1, nbg1, hel1)"
   type        = string
 }
 
@@ -41,7 +41,7 @@ variable "network_zone" {
 }
 
 variable "network_cidr" {
-  description = "CIDR of the private network that holds cluster nodes and LB"
+  description = "CIDR of the private network that holds cluster nodes and LBs"
   type        = string
 }
 
@@ -50,14 +50,29 @@ variable "subnet_cidr" {
   type        = string
 }
 
-variable "lb_type" {
-  description = "Hetzner load balancer type (e.g. lb11 for small prod, lb21 for customer-facing prod)"
+variable "api_lb_type" {
+  description = "Hetzner load balancer type for the API LB (6443). lb11 is sufficient for control-plane traffic."
   type        = string
 
   validation {
-    condition     = contains(["lb11", "lb21", "lb31"], var.lb_type)
-    error_message = "lb_type must be one of: lb11, lb21, lb31."
+    condition     = contains(["lb11", "lb21", "lb31"], var.api_lb_type)
+    error_message = "api_lb_type must be one of: lb11, lb21, lb31."
   }
+}
+
+variable "ingress_lb_type" {
+  description = "Hetzner load balancer type for the ingress LB (80/443). lb11 dev, lb21 customer-facing prod."
+  type        = string
+
+  validation {
+    condition     = contains(["lb11", "lb21", "lb31"], var.ingress_lb_type)
+    error_message = "ingress_lb_type must be one of: lb11, lb21, lb31."
+  }
+}
+
+variable "ingress_lb_location" {
+  description = "Hetzner datacenter location for the ingress LB. Should match location_primary unless multi-region."
+  type        = string
 }
 
 variable "operator_cidrs" {
@@ -73,16 +88,4 @@ variable "operator_cidrs" {
     condition     = length(var.operator_cidrs) > 0
     error_message = "operator_cidrs cannot be empty — set your VPN or office egress CIDR."
   }
-}
-
-variable "gateway_http_port" {
-  description = "LB destination port for HTTP. Since the Cilium Gateway runs in hostNetwork mode, envoy binds directly to host port 80 (enabled by sysctl net.ipv4.ip_unprivileged_port_start=0 in cloud-init). No NodePort indirection."
-  type        = number
-  default     = 80
-}
-
-variable "gateway_https_port" {
-  description = "LB destination port for HTTPS. Envoy binds host port 443 directly — see gateway_http_port."
-  type        = number
-  default     = 443
 }

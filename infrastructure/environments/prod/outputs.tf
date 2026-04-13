@@ -2,14 +2,24 @@
 #  iyziops — prod outputs
 # =============================================================================
 
-output "load_balancer_ipv4" {
-  description = "Hetzner LB public IPv4 — DNS target and K8s API address"
-  value       = module.hetzner_infra.load_balancer_ipv4
+output "load_balancer_api_ipv4" {
+  description = "Hetzner API LB public IPv4 — kube-apiserver entry point (api.iyziops.com)"
+  value       = module.hetzner_infra.load_balancer_api_ipv4
 }
 
-output "load_balancer_private_ipv4" {
-  description = "Hetzner LB private IPv4 — Cilium k8sServiceHost"
-  value       = module.hetzner_infra.load_balancer_private_ipv4
+output "load_balancer_api_private_ipv4" {
+  description = "Hetzner API LB private IPv4 — apiserver tls-san for in-cluster kubectl paths"
+  value       = module.hetzner_infra.load_balancer_api_private_ipv4
+}
+
+output "load_balancer_ingress_ipv4" {
+  description = "Hetzner ingress LB public IPv4 — Cloudflare apex + wildcard target. Populated by Hetzner CCM after Cilium Gateway boots."
+  value       = module.hetzner_infra.load_balancer_ingress_ipv4
+}
+
+output "load_balancer_ingress_name" {
+  description = "Hetzner ingress LB literal name — must match the load-balancer.hetzner.cloud/name annotation on iyziops-gateway"
+  value       = module.hetzner_infra.load_balancer_ingress_name
 }
 
 output "first_master_public_ipv4" {

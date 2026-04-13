@@ -37,8 +37,36 @@ variable "lb_ip" {
 }
 
 variable "lb_private_ip" {
-  description = "Hetzner LB private IPv4 — Cilium k8sServiceHost"
+  description = "Hetzner API LB private IPv4 — added to apiserver tls-san for kubectl-from-cluster paths"
   type        = string
+}
+
+# ----- Hetzner CCM ----------------------------------------------------------
+#  CCM is installed via the Hetzner CCM HelmChart manifest (manifests/
+#  hetzner-ccm.yaml.tpl). It needs a Hetzner API token, the private network
+#  name to operate inside, and the LB location to use when reconciling
+#  LoadBalancer Services.
+
+variable "hcloud_token" {
+  description = "Hetzner Cloud API token — read by the CCM Secret to provision LBs and write node providerIDs"
+  type        = string
+  sensitive   = true
+}
+
+variable "network_name" {
+  description = "Hetzner private network literal name — passed to CCM via HCLOUD_NETWORK"
+  type        = string
+}
+
+variable "ingress_lb_location" {
+  description = "Hetzner datacenter location for the ingress LB — passed to CCM via HCLOUD_LOAD_BALANCERS_LOCATION"
+  type        = string
+}
+
+variable "hetzner_ccm_chart_version" {
+  description = "hcloud-cloud-controller-manager Helm chart version (charts.hetzner.cloud)"
+  type        = string
+  default     = "1.25.1"
 }
 
 # ----- Cilium ---------------------------------------------------------------

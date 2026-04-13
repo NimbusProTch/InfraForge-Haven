@@ -50,6 +50,21 @@ metadata:
     argocd.argoproj.io/sync-wave: "2"
 spec:
   gatewayClassName: cilium
+  # Cilium v1.15+ propagates spec.infrastructure.annotations onto the
+  # auto-generated cilium-gateway-iyziops-gateway LoadBalancer Service.
+  # Hetzner CCM watches Services with the load-balancer.hetzner.cloud/name
+  # annotation and adopts the matching pre-existing LB by literal name.
+  # The name MUST match infrastructure/modules/hetzner-infra/main.tf
+  # hcloud_load_balancer.ingress.name = "${cluster_name}-${env}-ingress"
+  # i.e. iyziops-prod-ingress for the prod environment.
+  infrastructure:
+    annotations:
+      load-balancer.hetzner.cloud/name: "iyziops-prod-ingress"
+      load-balancer.hetzner.cloud/use-private-ip: "true"
+      load-balancer.hetzner.cloud/disable-private-ingress: "true"
+      load-balancer.hetzner.cloud/type: "lb11"
+      load-balancer.hetzner.cloud/location: "fsn1"
+      load-balancer.hetzner.cloud/uses-proxyprotocol: "false"
   listeners:
     - name: http
       port: 80

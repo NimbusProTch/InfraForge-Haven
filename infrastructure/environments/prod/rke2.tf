@@ -3,7 +3,7 @@
 # =============================================================================
 #  rke2_cluster renders the three cloud-init strings consumed by hcloud_server
 #  in hetzner.tf. rke2_install blocks tofu apply until the K8s API is
-#  reachable via the LB.
+#  reachable via the API LB.
 # =============================================================================
 
 module "rke2_cluster" {
@@ -13,13 +13,19 @@ module "rke2_cluster" {
   kubernetes_version      = var.kubernetes_version
   cluster_token           = random_password.cluster_token.result
   first_master_private_ip = local.first_master_private_ip
-  lb_ip                   = module.hetzner_infra.load_balancer_ipv4
-  lb_private_ip           = module.hetzner_infra.load_balancer_private_ipv4
+  lb_ip                   = module.hetzner_infra.load_balancer_api_ipv4
+  lb_private_ip           = module.hetzner_infra.load_balancer_api_private_ipv4
 
   enable_cis_profile       = var.enable_cis_profile
   enable_hubble            = var.enable_hubble
   disable_kube_proxy       = var.disable_kube_proxy
   cilium_operator_replicas = 2
+
+  # Hetzner CCM bootstrap inputs — passed through to the hetzner-ccm.yaml
+  # HelmChart manifest dropped on the first master.
+  hcloud_token        = var.hcloud_token
+  network_name        = module.hetzner_infra.network_name
+  ingress_lb_location = var.location_primary
 
   keycloak_oidc_issuer_url = var.keycloak_oidc_issuer_url
   keycloak_oidc_client_id  = var.keycloak_oidc_client_id
@@ -50,10 +56,9 @@ module "rke2_cluster" {
 module "rke2_install" {
   source = "../../modules/rke2-install"
 
-  lb_ip = module.hetzner_infra.load_balancer_ipv4
+  lb_ip = module.hetzner_infra.load_balancer_api_ipv4
 
   depends_on = [
-    hcloud_load_balancer_target.master,
-    hcloud_load_balancer_target.worker,
+    hcloud_load_balancer_target.api_master,
   ]
 }

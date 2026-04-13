@@ -27,28 +27,33 @@ locals {
   #  Only the things the cluster cannot start without, plus the ArgoCD
   #  bootstrap. Everything else (Longhorn, cert-manager, ClusterIssuers,
   #  wildcard certificate, platform services, platform apps) is delivered
-  #  by ArgoCD from the GitOps repo with proper sync-wave ordering so
-  #  we get a deterministic, race-free bring-up. See .claude/plans
-  #  section 5 "ArgoCD Hierarchy" for the wave layout.
+  #  by ArgoCD from the GitOps repo with proper sync-wave ordering.
   #
   #  In cloud-init at boot time:
-  #    1. Cilium HelmChartConfig  — CNI (no CNI → no pod networking)
-  #    2. Cloudflare API token Secret — pre-created in cert-manager ns
-  #       so the ArgoCD-managed ClusterIssuers can reference it by name
-  #    3. ArgoCD HelmChart         — GitOps bootstrap
-  #    4. ArgoCD AppProjects        — platform + tenants projects
-  #    5. ArgoCD repo Secret        — SSH deploy key for the private repo
-  #    6. ArgoCD root Application   — points at platform/argocd/appsets/
-  #
-  #  ArgoCD then reconciles the appsets directory, which drives Longhorn,
-  #  cert-manager, cert-manager-config, and every downstream service with
-  #  sync-wave annotations for ordering.
+  #    1. Cilium HelmChartConfig          — CNI tuning overlay
+  #    2. Hetzner CCM HelmChart            — node init + LoadBalancer reconciler
+  #                                          (must be present before nodes
+  #                                          can leave the uninitialized
+  #                                          taint set by --cloud-provider=external)
+  #    3. cert-manager namespace            — pre-labelled for PSA restricted
+  #    4. longhorn namespace                — pre-labelled privileged
+  #    5. cloudflare API token Secret       — pre-created in cert-manager ns
+  #    6. ArgoCD HelmChart                  — GitOps bootstrap
+  #    7. ArgoCD AppProjects                 — platform + tenants projects
+  #    8. ArgoCD repo Secret                 — SSH deploy key
+  #    9. ArgoCD root Application            — points at platform/argocd/appsets/
   # ---------------------------------------------------------------------------
 
   manifest_cilium_config = templatefile("${path.module}/manifests/rke2-cilium-config.yaml.tpl", {
     cilium_operator_replicas = var.cilium_operator_replicas
     enable_hubble            = var.enable_hubble
-    lb_private_ip            = var.lb_private_ip
+  })
+
+  manifest_hetzner_ccm = templatefile("${path.module}/manifests/hetzner-ccm.yaml.tpl", {
+    hcloud_token        = var.hcloud_token
+    network_name        = var.network_name
+    ingress_lb_location = var.ingress_lb_location
+    ccm_chart_version   = var.hetzner_ccm_chart_version
   })
 
   manifest_cert_manager_namespace = templatefile("${path.module}/manifests/cert-manager-namespace.yaml.tpl", {})
@@ -84,17 +89,11 @@ locals {
   # ---------------------------------------------------------------------------
   #  RKE2 config.yaml template — rendered twice (first master vs joining)
   # ---------------------------------------------------------------------------
-  #  The RKE2 config body used to live inline inside the cloud-init
-  #  `content: |` block scalar. That broke because `%{ if x ~}` directives
-  #  inside a YAML block scalar concatenate the directive line's leading
-  #  whitespace with the next line's indent, producing a malformed config
-  #  with inconsistent indentation. RKE2 parsed it and crash-looped with
-  #  `yaml: line 12: did not find expected '-' indicator`.
-  #
-  #  Fix: render the config body as its own template, base64-encode it,
-  #  and drop it into the cloud-init write_files entry with `encoding: b64`.
-  #  The base64 blob is inert to cloud-init's YAML parser, so directive
-  #  strips work as designed.
+  #  The RKE2 config body is rendered to its own file, base64-encoded, and
+  #  dropped into cloud-init write_files with `encoding: b64`. Inline
+  #  block scalars break with %{ if } directives because the directive line's
+  #  leading whitespace concatenates with the next line's indent — base64
+  #  is inert to cloud-init's YAML parser so directive strips work cleanly.
 
   rke2_config_vars_common = {
     cluster_token            = var.cluster_token
@@ -142,6 +141,7 @@ locals {
   first_master_cloud_init = templatefile("${path.module}/templates/master-cloud-init.yaml.tpl", merge(local.common_rke2_vars, {
     rke2_config_b64                      = base64encode(local.rke2_config_first_master)
     manifest_cilium_config_b64           = base64encode(local.manifest_cilium_config)
+    manifest_hetzner_ccm_b64             = base64encode(local.manifest_hetzner_ccm)
     manifest_cert_manager_namespace_b64  = base64encode(local.manifest_cert_manager_namespace)
     manifest_longhorn_namespace_b64      = base64encode(local.manifest_longhorn_namespace)
     manifest_cloudflare_token_secret_b64 = base64encode(local.manifest_cloudflare_token_secret)

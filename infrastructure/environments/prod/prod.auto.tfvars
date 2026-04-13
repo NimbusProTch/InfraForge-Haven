@@ -15,7 +15,8 @@ location_primary = "fsn1"
 network_zone     = "eu-central"
 network_cidr     = "10.10.0.0/16"
 subnet_cidr      = "10.10.1.0/24"
-lb_type          = "lb11"
+api_lb_type      = "lb11"
+ingress_lb_type  = "lb11"
 
 # Operator public IP (solo dev, home office). Update + target-apply
 # module.hetzner_infra.hcloud_firewall.this when the ISP rotates it.
