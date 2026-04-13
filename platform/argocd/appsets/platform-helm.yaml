@@ -76,7 +76,12 @@ spec:
                 defaultDataPath: /var/lib/longhorn/
                 storageOverProvisioningPercentage: 100
                 storageMinimalAvailablePercentage: 15
-                createDefaultDiskLabeledNodes: true
+                # false = create default disk on every Longhorn node.
+                # Previously true, which required nodes to carry the label
+                # node.longhorn.io/create-default-disk=true. Our nodes
+                # didn't have that label so NO disks got provisioned,
+                # leaving volumes faulted with zero replicas schedulable.
+                createDefaultDiskLabeledNodes: false
                 # Allow Longhorn engine-image + instance-manager DaemonSets
                 # to run on master nodes. RKE2 applies CriticalAddonsOnly
                 # NoExecute taint (not the vanilla control-plane taint).
