@@ -221,7 +221,8 @@ CI green YETERLİ DEĞİL. Aşağıdakilerin HEPSİ tamamlanmalı:
 - **Sprint tarihçesi**: `docs/sprints/PHASE_HISTORY.md`
 - **Sprint backlog**: `docs/sprints/SPRINT_BACKLOG.md`
 - **Rename planı** (Haven → iyziops): `docs/sprints/RENAME_IYZIOPS_PLAN.md`
-- **Haven dev compliance snapshot**: `docs/haven-compliance-haven-dev.md`
+- **Haven compliance gate** (resmi VNG CLI wrapper): `haven/README.md` — `make haven` tek komutla 15/15 check. Pin `haven/VERSION` (şu an v12.8.0). Baseline `haven/reports/baseline-*.{txt,json}`. Known FAIL'ler `haven/remediation/`.
+- **Haven dev compliance snapshot** (tarihsel, arşiv): `docs/haven-compliance-haven-dev.md`
 - **Haven dev gotcha'ları arşivi**: `docs/gotchas-haven-dev.md`
 - **Haven dev cluster snapshot (2026-03-31)**: `docs/archive/haven-dev-snapshot-2026-03-31.md`
 - **Project map** (repo yapısı + test locations): `.claude/rules/project-map.md`

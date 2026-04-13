@@ -1,7 +1,8 @@
 # Haven Platform — Developer Makefile
 # Usage: make <target>
 
-.PHONY: help test lint ci api-test api-lint ui-lint ui-build e2e deploy-check logs clean
+.PHONY: help test lint ci api-test api-lint ui-lint ui-build e2e deploy-check logs clean \
+        haven haven-json haven-cis haven-all haven-rationale haven-install haven-version haven-check
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
@@ -87,19 +88,44 @@ api-check: ## Verify API is accessible
 pod-wait: ## Wait for haven-api pod rollout
 	kubectl --kubeconfig=$(KC) rollout status deploy/haven-api -n haven-system --timeout=120s
 
-haven-check: ## Run 15/15 Haven compliance checks
-	@echo "=== Multi-AZ ==="
-	kubectl --kubeconfig=$(KC) get nodes -L topology.kubernetes.io/zone
-	@echo "\n=== K8s Version ==="
-	kubectl --kubeconfig=$(KC) version --short
-	@echo "\n=== Cilium ==="
-	kubectl --kubeconfig=$(KC) get pods -n kube-system -l k8s-app=cilium
-	@echo "\n=== Longhorn ==="
-	kubectl --kubeconfig=$(KC) get storageclass
-	@echo "\n=== Certificates ==="
-	kubectl --kubeconfig=$(KC) get certificates -A
-	@echo "\n=== Kyverno ==="
-	kubectl --kubeconfig=$(KC) get clusterpolicy 2>/dev/null || echo "Kyverno not installed"
+# ============================================================
+# Haven Compliance Gate (official VNG Haven CLI)
+# ============================================================
+#  Source of truth: haven/ folder + haven/VERSION (pinned CLI version)
+#  Upstream:        https://gitlab.com/commonground/haven/haven
+#  Rationale:       zero custom check code, full delegation to upstream
+# ============================================================
+
+HAVEN_BIN := haven/bin/haven
+HAVEN_KC  := $(if $(wildcard /tmp/iyziops-kubeconfig),/tmp/iyziops-kubeconfig,$(KC))
+
+$(HAVEN_BIN): haven/install.sh haven/VERSION
+	@bash haven/install.sh
+
+haven: $(HAVEN_BIN) ## Run official Haven 15/15 compliance check (human output)
+	@KUBECONFIG=$(HAVEN_KC) $(HAVEN_BIN) check
+
+haven-json: $(HAVEN_BIN) ## Haven check with JSON output (pipeable to jq)
+	@KUBECONFIG=$(HAVEN_KC) $(HAVEN_BIN) check --output=json
+
+haven-cis: $(HAVEN_BIN) ## Haven check + external CIS Kubernetes Benchmark
+	@KUBECONFIG=$(HAVEN_KC) $(HAVEN_BIN) check --cis
+
+haven-all: $(HAVEN_BIN) ## Haven check + CIS + Kubescape (full external checks)
+	@KUBECONFIG=$(HAVEN_KC) $(HAVEN_BIN) check --cis --kubescape
+
+haven-rationale: $(HAVEN_BIN) ## Show rationale for each Haven check (does not run)
+	@$(HAVEN_BIN) check --rationale
+
+haven-install: ## Force re-install / upgrade Haven CLI binary (edit haven/VERSION first)
+	@rm -f $(HAVEN_BIN)
+	@bash haven/install.sh
+
+haven-version: $(HAVEN_BIN) ## Show installed Haven CLI version
+	@$(HAVEN_BIN) version
+
+haven-check: haven ## Legacy alias (deprecated, use 'make haven')
+	@echo "(haven-check is deprecated, prefer 'make haven')"
 
 # ============================================================
 # Git & PR

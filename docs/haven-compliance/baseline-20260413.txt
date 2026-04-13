@@ -1,0 +1,54 @@
+[I] [1mHaven v12.8.0 - Copyright © VNG Realisatie 2019-2023 - Licensed under the EUPL v1.2.
+[0m
+[I] Initializing at 2026-04-13T18:43:30Z UTC
+[I] Preflight: CNCF: Opted in. Enabled external CNCF compliancy check.
+[I] Preflight: CIS: Not opted in. Skipping external CIS suggested check.
+[I] Preflight: Kubescape: Not opted in. Skipping external Kubescape suggested check.
+[I] Kubernetes connection using KUBECONFIG: /tmp/iyziops-kubeconfig.
+[I] Cluster ID: bfdbc398-3138-4bc9-a5df-42dc2ea35da0
+[I] Kubernetes host platform: RKE
+[I] Kubernetes server version: v1.32.3+rke2r1
+[I] Latest Haven release: v12.8.0
+[I] Latest Kubernetes release: v1.35.3
+[I] Detecting Haven CRD and creating if necessary
+[I] Haven CRD was not installed yet and has now been deployed
+[I] [1mRunning checks in parallel...[0m
+[I] found the following remote hash: bf99fae39663c631cc9ce487192f164a8fabfad7da4a060308a384405b3d35bb in the releases.json
+[I] found current bin: bf99fae39663c631cc9ce487192f164a8fabfad7da4a060308a384405b3d35bb comparing and sending result
+[I] Check node security: Using fallback method with control-plane pod for 10-40 seconds.
+[I] Parsed e2e.log from https://api.github.com/repos/cncf/k8s-conformance/contents/v1.32/rke?ref=master | passed: 411 | failed 0 | total: 411
+[I] Check CNCF: has passed because the platform: RKE with version: v1.32.3+rke2r1 could be matched to the cncf/k8s-conformance github repo and you are therefor using a CNCF Certified Kubernetes instance
+[E] [31mResults: 12 out of 15 checks passed, 0 checks skipped, 0 checks unknown. This is NOT a Haven Compliant cluster.
+[0m
+[I] Compliancy checks results:
+
+┌────────────────┬──────────────────────────────────────────────────────────────────────────┬────────┐
+│    CATEGORY    │                                   NAME                                   │ PASSED │
+├────────────────┼──────────────────────────────────────────────────────────────────────────┼────────┤
+│ Fundamental    │ Self test: HCC version is latest major or within 3 months upgrade window │ YES    │
+│ Fundamental    │ Self test: does HCC have cluster-admin                                   │ YES    │
+│ Infrastructure │ Multiple availability zones in use                                       │ NO     │
+│ Infrastructure │ Running at least 3 master nodes                                          │ YES    │
+│ Infrastructure │ Running at least 3 worker nodes                                          │ YES    │
+│ Infrastructure │ Nodes have SELinux, Grsecurity, AppArmor, LKRG, Talos or Flatcar enabled │ YES    │
+│ Infrastructure │ Private networking topology                                              │ NO     │
+│ Cluster        │ Kubernetes version is latest stable or max 3 minor versions behind       │ YES    │
+│ Cluster        │ Role Based Access Control is enabled                                     │ YES    │
+│ Cluster        │ ReadWriteMany persistent volumes support                                 │ YES    │
+│ External       │ CNCF Kubernetes Conformance                                              │ YES    │
+│ Haven+         │ Automated HTTPS certificate provisioning                                 │ YES    │
+│ Haven+         │ Log aggregation is running                                               │ NO     │
+│ Haven+         │ Metrics-server is running                                                │ YES    │
+│ Validation     │ SHA has been validated                                                   │ YES    │
+└────────────────┴──────────────────────────────────────────────────────────────────────────┴────────┘
+
+[I] Suggested checks results:
+
+┌──────────┬───────────────────────────────────┬─────────┐
+│ CATEGORY │               NAME                │ PASSED  │
+├──────────┼───────────────────────────────────┼─────────┤
+│ External │ CIS Kubernetes Security Benchmark │ SKIPPED │
+│ External │ Kubescape                         │ SKIPPED │
+└──────────┴───────────────────────────────────┴─────────┘
+
+[I] Persisting results to cluster through the CRD
