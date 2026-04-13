@@ -723,3 +723,15 @@ spec:
             - .spec
             - .metadata.annotations
             - .metadata.labels
+        # K8s 1.32+ default-fills these StatefulSet fields at admission
+        # time (persistentVolumeClaimRetentionPolicy, ordinals, minReady-
+        # Seconds) which our chart manifests don't include, producing
+        # persistent OutOfSync drift on every generated StatefulSet app
+        # (vault, alertmanager, prometheus, loki singleBinary).
+        - group: apps
+          kind: StatefulSet
+          jqPathExpressions:
+            - .spec.persistentVolumeClaimRetentionPolicy
+            - .spec.ordinals
+            - .spec.minReadySeconds
+            - .spec.revisionHistoryLimit
