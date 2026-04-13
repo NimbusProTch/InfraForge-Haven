@@ -20,7 +20,43 @@
 #  characters from breaking the outer YAML.
 # =============================================================================
 
+# ---------------------------------------------------------------------------
+#  Gateway API CRDs — fetched from upstream at plan time
+# ---------------------------------------------------------------------------
+#  We pull the experimental-install.yaml bundle from the kubernetes-sigs
+#  release at plan time and embed the raw YAML into the bootstrap cloud-init
+#  via base64. The first master then writes the file and applies it
+#  server-side (via the rke2-bundled kubectl) BEFORE Cilium operator does
+#  its one-shot CRD readiness check.
+#
+#  Why not let ArgoCD install the CRDs?
+#    Cilium operator only checks for the CRDs once at startup. If they
+#    are not yet present, it logs "Required GatewayAPI resources are not
+#    found" and never re-checks. By the time ArgoCD has bootstrapped and
+#    synced the gateway-api-crds Application, Cilium operator has already
+#    given up. Result: Gateway resources stay PROGRAMMED=Unknown forever
+#    until somebody manually `kubectl rollout restart deploy/cilium-operator`.
+#
+#  Why not use a HelmChart resource?
+#    Same reason as Hetzner CCM — helm-install Job pods cannot tolerate
+#    the uninitialized taint. Even after CCM removes that taint, the
+#    timing is racy.
+#
+#  Pin: v1.2.0 experimental channel (includes TLSRoute / GRPCRoute /
+#  TCPRoute / UDPRoute, which Cilium's optional GVK list looks for).
+# ---------------------------------------------------------------------------
+
+data "http" "gateway_api_crds" {
+  url = "https://github.com/kubernetes-sigs/gateway-api/releases/download/${var.gateway_api_version}/experimental-install.yaml"
+
+  request_headers = {
+    Accept = "application/yaml,text/plain,*/*"
+  }
+}
+
 locals {
+  gateway_api_crds_b64 = base64encode(data.http.gateway_api_crds.response_body)
+
   # ---------------------------------------------------------------------------
   #  Helm Controller manifests dropped at cluster bootstrap — MINIMAL SET.
   # ---------------------------------------------------------------------------
@@ -139,6 +175,7 @@ locals {
 
   first_master_cloud_init = templatefile("${path.module}/templates/master-cloud-init.yaml.tpl", merge(local.common_rke2_vars, {
     rke2_config_b64                      = base64encode(local.rke2_config_first_master)
+    gateway_api_crds_b64                 = local.gateway_api_crds_b64
     manifest_cilium_config_b64           = base64encode(local.manifest_cilium_config)
     manifest_hetzner_ccm_b64             = base64encode(local.manifest_hetzner_ccm)
     manifest_cert_manager_namespace_b64  = base64encode(local.manifest_cert_manager_namespace)

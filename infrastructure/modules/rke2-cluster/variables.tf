@@ -69,6 +69,12 @@ variable "hetzner_ccm_version" {
   default     = "1.25.1"
 }
 
+variable "gateway_api_version" {
+  description = "kubernetes-sigs/gateway-api release tag — fetched at plan time and pre-installed on first master before Cilium starts"
+  type        = string
+  default     = "v1.2.0"
+}
+
 # ----- Cilium ---------------------------------------------------------------
 
 variable "enable_hubble" {

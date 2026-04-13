@@ -74,6 +74,17 @@ write_files:
     encoding: b64
     content: ${rke2_config_b64}
 
+  # ---------- Gateway API CRDs (base64) ----------
+  # Pulled from upstream kubernetes-sigs/gateway-api at tofu plan time
+  # (data "http") and embedded here. runcmd applies it server-side AFTER
+  # rke2-server is up and BEFORE cilium-operator's one-shot CRD readiness
+  # check completes — eliminating the bootstrap race that otherwise leaves
+  # Gateway resources stuck in PROGRAMMED=Unknown forever.
+  - path: /var/lib/iyziops/gateway-api-crds.yaml
+    permissions: '0644'
+    encoding: b64
+    content: ${gateway_api_crds_b64}
+
   # ---------- Helm Controller manifests (base64) — MINIMAL BOOTSTRAP SET ----------
   # Only what the cluster cannot start without (Cilium CNI + Hetzner CCM)
   # plus the ArgoCD bootstrap chain. Longhorn, cert-manager, ClusterIssuers,
@@ -153,3 +164,29 @@ runcmd:
       sleep 10
     done
   - systemctl enable --now rke2-server
+
+  # ---------- Pre-install Gateway API CRDs + restart Cilium operator ----------
+  # Wait for kubectl + apiserver, server-side apply the CRD bundle (too big
+  # for client-side apply due to the 256k last-applied-configuration cap),
+  # then bounce cilium-operator so its CRD readiness check sees the new
+  # types. Idempotent: re-running the sequence is a no-op once CRDs exist.
+  - |
+    set -eu
+    KUBECTL=/var/lib/rancher/rke2/bin/kubectl
+    KUBECONFIG=/etc/rancher/rke2/rke2.yaml
+    export KUBECONFIG
+    for i in $(seq 1 60); do
+      if [ -x "$KUBECTL" ] && [ -f "$KUBECONFIG" ] && $KUBECTL get nodes >/dev/null 2>&1; then
+        break
+      fi
+      sleep 5
+    done
+    $KUBECTL apply --server-side --force-conflicts -f /var/lib/iyziops/gateway-api-crds.yaml
+    # Wait for cilium-operator to exist before trying to restart it
+    for i in $(seq 1 60); do
+      if $KUBECTL -n kube-system get deploy cilium-operator >/dev/null 2>&1; then
+        $KUBECTL -n kube-system rollout restart deploy/cilium-operator
+        break
+      fi
+      sleep 5
+    done
