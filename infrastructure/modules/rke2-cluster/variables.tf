@@ -63,8 +63,8 @@ variable "ingress_lb_location" {
   type        = string
 }
 
-variable "hetzner_ccm_chart_version" {
-  description = "hcloud-cloud-controller-manager Helm chart version (charts.hetzner.cloud)"
+variable "hetzner_ccm_version" {
+  description = "hcloud-cloud-controller-manager image tag (matches the upstream ccm-networks.yaml release)"
   type        = string
   default     = "1.25.1"
 }

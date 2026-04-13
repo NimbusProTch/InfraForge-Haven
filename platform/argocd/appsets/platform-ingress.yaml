@@ -12,6 +12,10 @@ kind: Application
 metadata:
   name: platform-ingress
   namespace: argocd
+  annotations:
+    # Run after gateway-api-crds (sync-wave: -10) so the Gateway / HTTPRoute /
+    # ReferenceGrant resources in this Application can land successfully.
+    argocd.argoproj.io/sync-wave: "-5"
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:

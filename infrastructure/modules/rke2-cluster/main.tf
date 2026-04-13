@@ -53,7 +53,7 @@ locals {
     hcloud_token        = var.hcloud_token
     network_name        = var.network_name
     ingress_lb_location = var.ingress_lb_location
-    ccm_chart_version   = var.hetzner_ccm_chart_version
+    ccm_version         = var.hetzner_ccm_version
   })
 
   manifest_cert_manager_namespace = templatefile("${path.module}/manifests/cert-manager-namespace.yaml.tpl", {})
@@ -77,8 +77,7 @@ locals {
   })
 
   manifest_argocd_repo_secret = templatefile("${path.module}/manifests/argocd-repo-secret.yaml.tpl", {
-    gitops_repo_url               = var.gitops_repo_url
-    github_ssh_deploy_key_private = var.github_ssh_deploy_key_private
+    gitops_repo_url = var.gitops_repo_url
   })
 
   manifest_argocd_root_app = templatefile("${path.module}/manifests/argocd-root-app.yaml.tpl", {

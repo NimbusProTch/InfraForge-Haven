@@ -396,6 +396,22 @@ haven-platform/
 
 ## Teknik Gotchas
 
+### iyziops Option B (kube-hetzner 2-LB + Hetzner CCM) — bootstrap traps
+
+- **Hetzner CCM bootstrap deadlock**: A `helm.cattle.io/v1 HelmChart` resource for `hcloud-cloud-controller-manager` will NEVER complete on a fresh cluster with `--cloud-provider=external` because the helm-install Job pod uses RKE2's standard system addon pod template, which does NOT tolerate `node.cloudprovider.kubernetes.io/uninitialized:NoSchedule`. Every node has that taint until CCM runs, but CCM can't run until something tolerates the taint. **Fix**: install CCM as raw YAML (Deployment + ServiceAccount + ClusterRoleBinding) directly in `/var/lib/rancher/rke2/server/manifests/`. RKE2 applies raw manifests via the manifest applier (running inside rke2-server, not as a Pod), so no Job scheduling is involved. The CCM Deployment itself tolerates the uninitialized taint and runs `hostNetwork: true`. Source: `infrastructure/modules/rke2-cluster/manifests/hetzner-ccm.yaml.tpl`.
+
+- **Cilium operator CRD detection at startup only**: Cilium operator checks Gateway API CRD presence ONCE at startup. If the CRDs are installed AFTER cilium-operator has started, the operator logs `"Required GatewayAPI resources are not found"` and never re-checks. **Fix**: `kubectl rollout restart deploy/cilium-operator -n kube-system` after the gateway-api-crds Application syncs. This is unavoidable on a fresh cluster because Cilium boots before ArgoCD (which installs the CRDs from upstream kubernetes-sigs/gateway-api). Documented in the Option B verification flow.
+
+- **gateway-api-crds Application must NOT live in `platform/argocd/apps/ingress/`**: If you put the gateway-api-crds Application alongside Gateway/HTTPRoute/ReferenceGrant manifests in the same directory, ArgoCD's platform-ingress App tries to sync everything in a single transaction. The Gateway resources fail (CRDs missing) and ArgoCD never creates the Application. **Fix**: place the gateway-api-crds Application as a sibling under `platform/argocd/appsets/gateway-api-crds.yaml` (sync-wave: -10) so iyziops-root applies it before platform-ingress (sync-wave: -5).
+
+- **cert-manager + Cloudflare wildcard cert cleanup race**: After a fresh cluster bootstrap, the iyziops-wildcard certificate may get stuck in `Issuing` because cert-manager's Cloudflare DNS-01 cleanup fails with `for DELETE "/zones//dns_records/<id>"` (empty zone ID in URL). Stale `_acme-challenge.iyziops.com` TXT records pile up and block fresh order processing. **Fix**: manually delete leftover TXT records via `curl -X DELETE "https://api.cloudflare.com/client/v4/zones/$ZONE/dns_records/$ID"`, then `kubectl delete certificate -n cert-manager iyziops-wildcard` and `kubectl rollout restart deploy/cert-manager -n cert-manager`. The Cloudflare token used must have **Zone:Read + DNS:Edit** on the iyziops zone (User:Read NOT required despite the cert-manager warning logs).
+
+- **iyziops-platform-repo secret**: bootstrap manifest creates a repo Secret with `sshPrivateKey` field for the GitOps repo, but the repo is public over HTTPS. The vestigial `sshPrivateKey` field makes ArgoCD attempt SSH auth and fail with `ssh: no key found`. **Fix**: `kubectl patch secret -n argocd iyziops-platform-repo --type=json -p='[{"op":"remove","path":"/data/sshPrivateKey"}]'`. Long-term fix: drop sshPrivateKey from `infrastructure/modules/rke2-cluster/manifests/argocd-repo-secret.yaml.tpl` since the repo is public.
+
+- **kube-hetzner / hcloud-k8s 2-LB pattern**: Hetzner CCM cannot share a single LB with tofu-managed services because `ReconcileHCLBServices` deletes any port not in the Service spec. The pattern is two distinct LBs: API LB (tofu-managed, 6443) + ingress LB (tofu shell with `lifecycle ignore_changes = [target, labels["hcloud-ccm/service-uid"]]`, CCM adopts via the `load-balancer.hetzner.cloud/name` annotation on the auto-generated cilium-gateway-* Service). The annotation must match the literal Hetzner LB name exactly.
+
+### Original (Haven dev / older sprints)
+
 - Hetzner primary IP limit ~5 per account → request increase for 3+3 nodes
 - `HavenAdmin2026!` → `!` breaks in bash, never pass through shell
 - rancher2 provider v5.x → Rancher 2.9.x (version must match)
