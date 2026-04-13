@@ -4,9 +4,14 @@
 #  Three A records:
 #    1. apex  (iyziops.com)        → ingress LB IP — UI entry point + apex
 #    2. wildcard (*.iyziops.com)   → ingress LB IP — every platform subdomain
-#                                    (argocd, harbor, grafana, keycloak, etc.)
-#                                    and every tenant subdomain
-#    3. api   (api.iyziops.com)    → API LB IP — direct kubectl access
+#                                    (argocd, api, app, harbor, grafana,
+#                                    keycloak, etc.) and every tenant
+#                                    subdomain. Wildcard cert covers them.
+#    3. k8s   (k8s.iyziops.com)    → API LB IP — direct kubectl access only.
+#                                    NOT covered by the wildcard cert (the
+#                                    LB terminates TCP on 6443 directly to
+#                                    kube-apiserver which presents its own
+#                                    cluster CA cert).
 #
 #  The split exists because the ingress LB is CCM-adopted (carries 80/443
 #  services for the Cilium Gateway) and the API LB is tofu-managed (carries
@@ -42,12 +47,12 @@ resource "cloudflare_record" "wildcard" {
   comment = var.comment
 }
 
-resource "cloudflare_record" "api" {
+resource "cloudflare_record" "k8s" {
   zone_id = data.cloudflare_zone.this.id
-  name    = "api"
+  name    = "k8s"
   type    = "A"
   content = var.api_lb_ip
   ttl     = var.ttl
   proxied = false
-  comment = "${var.comment} — kube-apiserver"
+  comment = "${var.comment} — kube-apiserver (kubectl)"
 }
