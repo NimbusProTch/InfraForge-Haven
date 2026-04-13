@@ -26,3 +26,13 @@ output "wildcard_fqdn" {
   description = "Fully qualified domain name of the wildcard record"
   value       = cloudflare_record.wildcard.hostname
 }
+
+output "k8s_record_id" {
+  description = "ID of the k8s.iyziops.com A record (direct kubectl target)"
+  value       = cloudflare_record.k8s.id
+}
+
+output "k8s_fqdn" {
+  description = "Fully qualified domain name of the k8s record (api LB target)"
+  value       = cloudflare_record.k8s.hostname
+}

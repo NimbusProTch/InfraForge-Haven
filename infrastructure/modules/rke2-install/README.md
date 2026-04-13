@@ -1,6 +1,6 @@
 # rke2-install
 
-Blocks `tofu apply` until the Kubernetes API becomes reachable through the Hetzner LB.
+Blocks `tofu apply` until the Kubernetes API becomes reachable through the Hetzner **API** LB.
 
 ## Why this exists
 
@@ -12,9 +12,9 @@ This module solves that with a single `data "http"` resource pointing at `https:
 
 | Name | Type | Default | Description |
 |---|---|---|---|
-| `lb_ip` | string | — | Hetzner LB public IPv4 |
+| `lb_ip` | string | — | Hetzner **API** LB public IPv4 (6443) — the probe target |
 | `max_attempts` | number | `180` | Retry attempts before failing — at 10 s each that is ~30 min total |
-| `max_delay_ms` | number | `10000` | Max delay between retries |
+| `max_delay_ms` | number | `10000` | Max delay between retries in ms |
 
 ## Outputs
 
@@ -29,11 +29,11 @@ This module solves that with a single `data "http"` resource pointing at `https:
 module "rke2_install" {
   source = "../../modules/rke2-install"
 
-  lb_ip = module.hetzner_infra.load_balancer_ipv4
+  lb_ip = module.hetzner_infra.load_balancer_api_ipv4
 
   depends_on = [
     hcloud_server.master,
-    hcloud_load_balancer_target.master,
+    hcloud_load_balancer_target.api_master,
   ]
 }
 ```
