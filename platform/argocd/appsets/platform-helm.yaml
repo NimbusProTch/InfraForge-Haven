@@ -78,10 +78,12 @@ spec:
                 storageMinimalAvailablePercentage: 15
                 createDefaultDiskLabeledNodes: true
                 # Allow Longhorn engine-image + instance-manager DaemonSets
-                # to run on master nodes. Without this, they only land on
-                # workers (3 pods), starving volume replicas and causing
-                # faulted volumes when workloads request storage.
-                taintToleration: "node-role.kubernetes.io/control-plane:NoSchedule"
+                # to run on master nodes. RKE2 applies CriticalAddonsOnly
+                # NoExecute taint (not the vanilla control-plane taint).
+                # Without this, engine-image DS only lands on workers (3
+                # pods), starving volume replicas and causing faulted
+                # volumes when workloads request storage.
+                taintToleration: "CriticalAddonsOnly=true:NoExecute"
               persistence:
                 defaultClass: true
                 defaultClassReplicaCount: 3
