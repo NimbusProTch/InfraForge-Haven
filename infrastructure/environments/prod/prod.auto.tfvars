@@ -43,8 +43,11 @@ etcd_s3_enabled         = false
 
 # ----- Platform -------------------------------------------------------------
 platform_apex_domain   = "iyziops.com"
-gitops_repo_url        = "git@github.com:NimbusProTch/InfraForge-Haven.git"
-gitops_target_revision = "main"
+gitops_repo_url        = "https://github.com/NimbusProTch/InfraForge-Haven.git"
+# TEMP: point at the in-flight refactor branch until we verify the GitOps
+# layout (AppSets + cert-manager-config) and merge it to main. Flip back
+# to "main" on the follow-up apply after merge.
+gitops_target_revision = "refactor/iyziops-kubernetes-stack"
 
 # ----- Helm chart versions --------------------------------------------------
 # Longhorn and cert-manager versions live in platform/argocd/apps/services/

@@ -20,7 +20,7 @@ metadata:
 spec:
   generators:
     - git:
-        repoURL: git@github.com:NimbusProTch/InfraForge-Haven.git
+        repoURL: https://github.com/NimbusProTch/InfraForge-Haven.git
         revision: main
         directories:
           - path: gitops/tenants/*
@@ -32,7 +32,7 @@ spec:
     spec:
       project: iyziops-tenants
       source:
-        repoURL: git@github.com:NimbusProTch/InfraForge-Haven.git
+        repoURL: https://github.com/NimbusProTch/InfraForge-Haven.git
         targetRevision: main
         path: '{{path}}'
         directory:

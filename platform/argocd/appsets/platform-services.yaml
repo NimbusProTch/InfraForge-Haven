@@ -131,7 +131,7 @@ spec:
     spec:
       project: iyziops-platform
       source:
-        repoURL: git@github.com:NimbusProTch/InfraForge-Haven.git
+        repoURL: https://github.com/NimbusProTch/InfraForge-Haven.git
         targetRevision: main
         path: '{{path}}'
       destination:
