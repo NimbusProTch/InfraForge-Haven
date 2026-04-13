@@ -106,4 +106,9 @@ spec:
       selfHeal: true
     syncOptions:
       - CreateNamespace=true
+      # ServerSideApply alone is enough — Kyverno ships
+      # clusterpolicies.kyverno.io / policies.kyverno.io CRDs whose schema
+      # exceeds the 256k client-side last-applied-configuration cap. Mixing
+      # in Replace=true breaks SSA on these (kubectl falls back to client
+      # patching). Pure SSA bypasses the annotation cap entirely.
       - ServerSideApply=true
