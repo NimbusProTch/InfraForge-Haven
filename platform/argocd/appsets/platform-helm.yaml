@@ -209,6 +209,16 @@ spec:
                   limits:
                     cpu: 1
                     memory: 1Gi
+              # Chart validation: when deploymentMode=SingleBinary, all of
+              # these SSD-mode replicas must be zero, otherwise the chart
+              # refuses to render ("more than zero replicas configured for
+              # both single binary and simple scalable targets").
+              read:
+                replicas: 0
+              write:
+                replicas: 0
+              backend:
+                replicas: 0
               chunksCache:
                 enabled: false
               resultsCache:
