@@ -7,9 +7,12 @@
 #  single-source-type (git path only), which keeps kubectl dry-run validation
 #  working without goTemplate source-type conditionals.
 #
-#  Sync-wave layout:
-#    -5  ingress              (Gateway + HTTPRoute + ReferenceGrant)
-#                             — depends on gateway-api CRDs (cloud-init installed)
+#  Sync-wave layout (positive only — K8s label values cannot start with '-'):
+#     0  ingress              (Gateway + HTTPRoute + ReferenceGrant)
+#                             — depends on gateway-api CRDs (cloud-init installed).
+#                             — runs parallel with platform-helm wave 0 operators
+#                                because ingress resources have no hard dep on
+#                                cert-manager/longhorn/kyverno controllers.
 #     1  cert-manager-config  (ClusterIssuers + wildcard cert)
 #                             — depends on cert-manager webhook Ready (wave 0 in platform-helm)
 #     1  kyverno-policies     (5 ClusterPolicy, Audit mode)
@@ -36,7 +39,7 @@ spec:
         - matchExpressions:
             - key: argocd.argoproj.io/sync-wave
               operator: In
-              values: ["-5"]
+              values: ["0"]
           maxUpdate: 100%
         - matchExpressions:
             - key: argocd.argoproj.io/sync-wave
@@ -47,10 +50,12 @@ spec:
   generators:
     - list:
         elements:
-          # ----- Wave -5: Ingress (Gateway + HTTPRoute) -------------------
+          # ----- Wave 0: Ingress (Gateway + HTTPRoute) --------------------
+          # Parallel with platform-helm wave 0 operators. Ingress resources
+          # have no hard dep on cert-manager / longhorn / kyverno controllers.
           - name: platform-ingress
             namespace: argocd
-            syncWave: "-5"
+            syncWave: "0"
             path: platform/argocd/apps/platform/ingress
 
           # ----- Wave 1: Config (ClusterIssuers + ClusterPolicies) --------
@@ -100,3 +105,22 @@ spec:
             duration: 10s
             factor: 2
             maxDuration: 2m
+
+      # Kyverno admission controller mutates ClusterPolicy resources at
+      # admission time (adds admission:true, background:true, emitWarning,
+      # skipBackgroundRequests, allowExistingViolations defaults) and writes
+      # status.autogen.rules[] for auto-generated DaemonSet/CronJob rules.
+      # These fields are not in our git manifests, so ArgoCD reports OutOfSync
+      # on kyverno-policies forever. Ignoring them keeps the Application
+      # Synced while still detecting real drift on our declared fields.
+      # Only applies to ClusterPolicy kind; other elements in this appset
+      # (cert-manager-config, platform-ingress) are unaffected.
+      ignoreDifferences:
+        - group: kyverno.io
+          kind: ClusterPolicy
+          jqPathExpressions:
+            - .spec.admission
+            - .spec.background
+            - .spec.emitWarning
+            - .spec.rules[]?.skipBackgroundRequests
+            - .spec.rules[]?.validate.allowExistingViolations
