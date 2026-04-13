@@ -1,5 +1,0 @@
-apiVersion: v2
-name: haven-managed-service
-description: Haven Platform managed service chart (PostgreSQL, MySQL, MongoDB, Redis, RabbitMQ)
-version: 0.1.0
-type: application

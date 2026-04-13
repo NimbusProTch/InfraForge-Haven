@@ -68,7 +68,7 @@ e2e-ui: ## Run Playwright with browser UI
 # Deploy Verification
 # ============================================================
 
-KC ?= infrastructure/environments/dev/kubeconfig
+KC ?= infrastructure/environments/prod/kubeconfig
 
 deploy-check: ## Verify cluster deployment status
 	@echo "=== Nodes ==="

@@ -2,7 +2,7 @@
 
 > Bu dosya her session'da context'e yüklenir. Şişirilmemeli.
 >
-> - **Canlı durum** (kubeconfig, son session, next steps) → `memory/RESUME_HERE.md`
+> - **Canlı durum** (kubeconfig, son session, next steps) → Claude Code auto-memory `memory/RESUME_HERE.md` (repo dışı, kullanıcı home'u)
 > - **Mimari detay** (GitOps flow, 10 architectural decisions) → `.claude/CLAUDE.md`
 > - **Sprint tarihçesi** (tamamlanan phase'ler + test count'lar) → `docs/sprints/PHASE_HISTORY.md`
 
