@@ -1,0 +1,26 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: haven-ui
+  namespace: argocd
+  labels:
+    haven.io/component: ui
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: iyziops-platform
+  source:
+    repoURL: https://github.com/NimbusProTch/InfraForge-Haven
+    targetRevision: main
+    path: platform/manifests/haven-ui
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: haven-system
+  # ignoreDifferences for HTTPRoute parentRefs removed — see haven-api.yaml.
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true

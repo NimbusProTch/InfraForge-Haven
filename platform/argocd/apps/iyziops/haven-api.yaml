@@ -1,0 +1,28 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: haven-api
+  namespace: argocd
+  labels:
+    haven.io/component: api
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: iyziops-platform
+  source:
+    repoURL: https://github.com/NimbusProTch/InfraForge-Haven
+    targetRevision: main
+    path: platform/manifests/haven-api
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: haven-system
+  # ignoreDifferences for HTTPRoute parentRefs removed — on the iyziops
+  # cluster the parentRefs are owned by git (no external patcher), so
+  # letting ArgoCD enforce them is correct.
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true

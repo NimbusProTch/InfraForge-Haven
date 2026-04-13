@@ -1,0 +1,87 @@
+---
+# =============================================================================
+#  iyziops-gateway — dedicated namespace + Gateway resource
+# =============================================================================
+#  All platform and tenant-facing HTTPRoutes attach to this Gateway.
+#  Listener layout:
+#    - http  (TCP 80)  — plain HTTP, also used by Let's Encrypt HTTP-01 later
+#    - https (TCP 443) — TLS Terminate with the cluster wildcard certificate
+#                        (cert-manager-managed, ReferenceGrant below)
+#
+#  Cilium runs envoy in hostNetwork mode (see rke2-cilium-config.yaml.tpl),
+#  so the Hetzner LB forwards 80/443 directly to host:80/443 on every node
+#  without any NodePort or LoadBalancer Service indirection.
+# =============================================================================
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: iyziops-gateway
+  labels:
+    app.kubernetes.io/part-of: iyziops-platform
+    pod-security.kubernetes.io/enforce: privileged
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+---
+# Allow any Gateway in iyziops-gateway to reference the wildcard TLS
+# secret that lives in the cert-manager namespace.
+apiVersion: gateway.networking.k8s.io/v1beta1
+kind: ReferenceGrant
+metadata:
+  name: cert-manager-tls-to-gateway
+  namespace: cert-manager
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  from:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      namespace: iyziops-gateway
+  to:
+    - group: ""
+      kind: Secret
+      name: iyziops-wildcard-tls
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: iyziops-gateway
+  namespace: iyziops-gateway
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  gatewayClassName: cilium
+  # Cilium v1.15+ propagates spec.infrastructure.annotations onto the
+  # auto-generated cilium-gateway-iyziops-gateway LoadBalancer Service.
+  # Hetzner CCM watches Services with the load-balancer.hetzner.cloud/name
+  # annotation and adopts the matching pre-existing LB by literal name.
+  # The name MUST match infrastructure/modules/hetzner-infra/main.tf
+  # hcloud_load_balancer.ingress.name = "${cluster_name}-${env}-ingress"
+  # i.e. iyziops-prod-ingress for the prod environment.
+  infrastructure:
+    annotations:
+      load-balancer.hetzner.cloud/name: "iyziops-prod-ingress"
+      load-balancer.hetzner.cloud/use-private-ip: "true"
+      load-balancer.hetzner.cloud/disable-private-ingress: "true"
+      load-balancer.hetzner.cloud/type: "lb11"
+      load-balancer.hetzner.cloud/location: "fsn1"
+      load-balancer.hetzner.cloud/uses-proxyprotocol: "false"
+  listeners:
+    - name: http
+      port: 80
+      protocol: HTTP
+      allowedRoutes:
+        namespaces:
+          from: All
+    - name: https
+      port: 443
+      protocol: HTTPS
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - group: ""
+            kind: Secret
+            name: iyziops-wildcard-tls
+            namespace: cert-manager
+      allowedRoutes:
+        namespaces:
+          from: All

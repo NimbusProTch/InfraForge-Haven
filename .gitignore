@@ -33,6 +33,9 @@ out/
 *.tfplan
 terraform.tfvars
 *.auto.tfvars
+# Non-sensitive prod values are git-tracked — see .claude/rules/iac-discipline.md rule 9
+!infrastructure/environments/prod/prod.auto.tfvars
+!runner/runner.auto.tfvars
 crash.log
 override.tf
 override.tf.json
@@ -72,7 +75,8 @@ Thumbs.db
 
 # ===== Logs =====
 *.log
-logs/
+logs/*
+!logs/.gitkeep
 
 # ===== Misc =====
 tsconfig.tsbuildinfo
@@ -84,3 +88,4 @@ playwright-report/
 keycloak/haven-realm.rendered.json
 keycloak/*.rendered.json
 *.rendered.json
+scripts/bootstrap-iyziops.sh

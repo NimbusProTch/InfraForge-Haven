@@ -7,7 +7,9 @@ metadata:
     app: haven-ui
     haven.io/component: ui
 spec:
-  replicas: 2
+  # Scaled to 0 on iyziops until the haven-ui image is rebuilt against an
+  # iyziops-accessible registry. See haven-api/deployment.yaml for context.
+  replicas: 0
   selector:
     matchLabels:
       app: haven-ui
@@ -17,6 +19,13 @@ spec:
         app: haven-ui
         haven.io/component: ui
     spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
       tolerations:
         - operator: "Exists"
       affinity:
@@ -40,6 +49,7 @@ spec:
                 name: haven-ui-config
             - secretRef:
                 name: haven-ui-secrets
+                optional: true
           readinessProbe:
             httpGet:
               path: /api/auth/csrf
@@ -63,3 +73,11 @@ spec:
               memory: "256Mi"
           securityContext:
             allowPrivilegeEscalation: false
+            runAsNonRoot: true
+            runAsUser: 1000
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop:
+                - ALL
+            seccompProfile:
+              type: RuntimeDefault

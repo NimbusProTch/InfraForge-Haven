@@ -7,7 +7,15 @@ metadata:
     app: haven-api
     haven.io/component: api
 spec:
-  replicas: 2
+  # Scaled to 0 on iyziops until the image is rebuilt against an iyziops-
+  # accessible registry. The original image reference points at the old
+  # Haven Hetzner cluster Harbor (harbor.46.225.42.2.sslip.io) which does
+  # not exist here. To re-enable: push the haven-api image to a registry
+  # the iyziops cluster can pull (ghcr.io / docker.io / iyziops-internal
+  # Harbor when deployed), update the .image field below + db-migrate
+  # initContainer image, restore replicas to 2, populate haven-api-secrets
+  # (Keycloak realm, CNPG DSN, etc).
+  replicas: 0
   selector:
     matchLabels:
       app: haven-api
@@ -18,9 +26,18 @@ spec:
         haven.io/component: api
       annotations:
         # Force pod restart when ConfigMap changes (ArgoCD will update this annotation)
-        kubectl.kubernetes.io/restartedAt: "2026-04-06T06:45:00Z"
+        kubectl.kubernetes.io/restartedAt: "2026-04-13T09:00:00Z"
     spec:
       serviceAccountName: haven-api
+      # Pod-level security context — applies to every container by default.
+      # PSA restricted requires runAsNonRoot + seccompProfile at this level.
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
       tolerations:
         - operator: "Exists"
       affinity:
@@ -47,6 +64,7 @@ spec:
                 name: haven-api-config
             - secretRef:
                 name: haven-api-secrets
+                optional: true
           resources:
             requests:
               cpu: "100m"
@@ -54,6 +72,19 @@ spec:
             limits:
               cpu: "500m"
               memory: "256Mi"
+          # PSA restricted requires every container (including initContainers)
+          # to set these explicitly. Inheriting from pod-level securityContext
+          # is not enough for the admission check.
+          securityContext:
+            allowPrivilegeEscalation: false
+            runAsNonRoot: true
+            runAsUser: 1000
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop:
+                - ALL
+            seccompProfile:
+              type: RuntimeDefault
       containers:
         - name: haven-api
           image: harbor.46.225.42.2.sslip.io/library/haven-api@sha256:ee72fb4702af177f1e374d2fe512f05682979358fdd25b7c281001091a0309f7
@@ -69,6 +100,7 @@ spec:
                 name: haven-api-config
             - secretRef:
                 name: haven-api-secrets
+                optional: true
           readinessProbe:
             httpGet:
               path: /health
@@ -105,3 +137,5 @@ spec:
             capabilities:
               drop:
                 - ALL
+            seccompProfile:
+              type: RuntimeDefault

@@ -1,0 +1,49 @@
+---
+# =============================================================================
+#  iyziops — tenants ApplicationSet (skeleton)
+# =============================================================================
+#  This is the only appsets entry that will definitely be a real
+#  ApplicationSet: each tenant gets its own ArgoCD Application, generated
+#  from the git directory structure gitops/tenants/<slug>/. For now the
+#  gitops/tenants/ directory does not exist — the iyziops API will create
+#  per-tenant subdirectories on tenant provision. The ApplicationSet watches
+#  that path and auto-generates an Application per tenant.
+#
+#  Note: scoped to the iyziops-tenants AppProject so tenant workloads cannot
+#  touch cluster-level resources.
+# =============================================================================
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: tenants
+  namespace: argocd
+spec:
+  generators:
+    - git:
+        repoURL: https://github.com/NimbusProTch/InfraForge-Haven.git
+        revision: main
+        directories:
+          - path: gitops/tenants/*
+  template:
+    metadata:
+      name: 'tenant-{{path.basename}}'
+      finalizers:
+        - resources-finalizer.argocd.argoproj.io
+    spec:
+      project: iyziops-tenants
+      source:
+        repoURL: https://github.com/NimbusProTch/InfraForge-Haven.git
+        targetRevision: main
+        path: '{{path}}'
+        directory:
+          recurse: true
+          include: '*.yaml'
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: 'tenant-{{path.basename}}'
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true

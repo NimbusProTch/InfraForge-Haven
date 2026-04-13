@@ -1,230 +1,191 @@
-#!/bin/bash
-set -ex
-
-# ============================================================
-# RKE2 Master Node Setup (Haven Platform)
-# Runs as user-data script on Hetzner Cloud
-# ============================================================
-
-# Install dependencies
-apt-get update -qq
-apt-get install -y -qq curl jq open-iscsi
-
-# CIS profile requires etcd user/group
-useradd -r -c "etcd user" -s /sbin/nologin -M etcd 2>/dev/null || true
-
-# Apply kernel params for CIS hardening
-cat > /etc/sysctl.d/90-rke2.conf << 'SYSEOF'
-vm.panic_on_oom=0
-vm.overcommit_memory=1
-kernel.panic=10
-kernel.panic_on_oops=1
-SYSEOF
-sysctl --system
-
-# Enable iscsid for Longhorn
-systemctl enable --now iscsid
-
-# Detect private and public IPs
-PRIVATE_IP=""
-for i in $(seq 1 60); do
-  PRIVATE_IP=$(ip -4 addr show | grep -oP '(?<=inet\s)10\.\d+\.\d+\.\d+' | head -1 || echo "")
-  if [ -n "$PRIVATE_IP" ]; then break; fi
-  sleep 5
-done
-if [ -z "$PRIVATE_IP" ]; then
-  PRIVATE_IP=$(curl -sf http://169.254.169.254/hetzner/v1/metadata/private-networks 2>/dev/null | grep -oP 'ip-address: \K[\d.]+' | head -1 || echo "")
-fi
-if [ -z "$PRIVATE_IP" ]; then
-  echo "ERROR: Could not detect private IP" >&2
-  exit 1
-fi
-PUBLIC_IP=$(curl -sf http://169.254.169.254/hetzner/v1/metadata/public-ipv4 || hostname -I | awk '{print $1}')
-echo "Detected IPs: private=$PRIVATE_IP public=$PUBLIC_IP"
-
-# H1d (audit): write the kube-apiserver audit policy file BEFORE the
-# RKE2 config that references it. The policy logs RBAC mutations,
-# secret access, and namespace lifecycle at Metadata level — enough
-# for forensics, no customer data leaked.
-mkdir -p /etc/rancher/rke2 /var/log/kube-audit
-cat > /etc/rancher/rke2/audit-policy.yaml << 'AUDITEOF'
-apiVersion: audit.k8s.io/v1
-kind: Policy
-# Drop boring stuff so the log is human-readable
-omitStages:
-  - "RequestReceived"
-rules:
-  # Don't log get/list/watch on read-mostly resources
-  - level: None
-    verbs: ["get", "list", "watch"]
-    resources:
-      - group: ""
-        resources: ["events", "endpoints", "services", "pods/log", "pods/status"]
-      - group: "coordination.k8s.io"
-        resources: ["leases"]
-  # RBAC mutations — high signal, log at RequestResponse
-  - level: RequestResponse
-    resources:
-      - group: "rbac.authorization.k8s.io"
-        resources: ["clusterroles", "clusterrolebindings", "roles", "rolebindings"]
-  # Secret access (read + write) — log at Metadata (no body)
-  - level: Metadata
-    resources:
-      - group: ""
-        resources: ["secrets"]
-  # Namespace lifecycle (tenant create/delete)
-  - level: RequestResponse
-    resources:
-      - group: ""
-        resources: ["namespaces"]
-  # Service account token requests
-  - level: Metadata
-    resources:
-      - group: ""
-        resources: ["serviceaccounts/token"]
-  # ApplicationSet + Application (ArgoCD) — tenant deploy lifecycle
-  - level: Metadata
-    resources:
-      - group: "argoproj.io"
-        resources: ["applications", "applicationsets"]
-  # Everest DatabaseCluster (managed DB lifecycle) — tenant DB ops
-  - level: Metadata
-    resources:
-      - group: "everest.percona.com"
-        resources: ["databaseclusters", "databaseclusterbackups", "databaseclusterrestores"]
-  # Default: log everything else at Metadata level (mutations only)
-  - level: Metadata
-    verbs: ["create", "update", "patch", "delete"]
-AUDITEOF
-
-# Write RKE2 config
-cat > /etc/rancher/rke2/config.yaml << RKEEOF
-token: "${cluster_token}"
-${ is_first_master ? "cluster-init: true" : "server: https://${first_master_private_ip}:9345" }
-node-ip: "$PRIVATE_IP"
-node-external-ip: "$PUBLIC_IP"
-tls-san:
-  - "${lb_ip}"
-  - "$PRIVATE_IP"
-  - "$PUBLIC_IP"
-cni: cilium
-disable:
-  - rke2-ingress-nginx
-${ disable_kube_proxy ? "disable-kube-proxy: true" : "" }
-${ enable_cis_profile ? "profile: cis\nprotect-kernel-defaults: true" : "" }
-write-kubeconfig-mode: "0644"
-# H1a-2: Keycloak OIDC integration for kubectl. Pre-fix the dev cluster
-# had ZERO --oidc-* flags on kube-apiserver, so tenant admins could not
-# use their Keycloak token with `kubectl`. tenant_service.py was creating
-# RoleBindings against subjects like `oidc:tenant_{slug}_admin` but
-# kube-apiserver had no OIDC verifier so those bindings were inert.
+#cloud-config
+# =============================================================================
+#  iyziops — first master node (cluster bootstrap)
+# =============================================================================
+#  Cloud-config format. Drops the RKE2 config body AND every Helm Controller
+#  manifest as base64 blobs into write_files. RKE2's in-cluster Helm Controller
+#  applies the manifests when rke2-server starts.
 #
-# Activates: tenant admin gets a Keycloak token via the `haven-kubectl`
-# client, kubectl sends it as a Bearer, kube-apiserver verifies signature
-# against Keycloak's JWKS, extracts `preferred_username` (prefixed with
-# `oidc:`) and the `groups` claim (also prefixed `oidc:`), and matches
-# them against tenant RoleBindings.
-#
-# IMPORTANT: the keycloak_url here MUST match the issuer the JWT was
-# signed with. The realm import (keycloak/haven-realm.json) emits the
-# `groups` protocolMapper that fills the claim.
-kube-apiserver-arg:
-  - "oidc-issuer-url=${keycloak_oidc_issuer_url}"
-  - "oidc-client-id=${keycloak_oidc_client_id}"
-  - "oidc-username-claim=preferred_username"
-  - "oidc-username-prefix=oidc:"
-  - "oidc-groups-claim=groups"
-  - "oidc-groups-prefix=oidc:"
-  # H1d (audit): kube-apiserver audit logging. Pre-fix the cluster had
-  # ZERO audit log — incident response was impossible (who deleted what,
-  # who escalated privileges, who exfiltrated secrets — all unknowable).
-  # SOC2/DORA mandate audit trails for production multi-tenant SaaS.
-  #
-  # The policy file is written to /etc/rancher/rke2/audit-policy.yaml in
-  # the writefiles section below. It logs RBAC mutations, secret access,
-  # and tenant namespace lifecycle at `Metadata` level (no request body)
-  # — enough for forensics without storing customer data.
-  #
-  # Output: /var/log/kube-audit/audit.log on each master, rotated by
-  # the apiserver's built-in maxage/maxbackup/maxsize. Loki promtail
-  # picks the file up via the existing logging stack (volumeMount in
-  # promtail daemonset), no additional config needed if the path is
-  # in promtail's positions.
-  - "audit-policy-file=/etc/rancher/rke2/audit-policy.yaml"
-  - "audit-log-path=/var/log/kube-audit/audit.log"
-  - "audit-log-maxage=30"
-  - "audit-log-maxbackup=10"
-  - "audit-log-maxsize=100"
-# H1b-2 (P4.2): etcd snapshot schedule. Pre-fix the cluster had ZERO
-# automated backups — total cluster loss = total data loss for every
-# tenant + Harbor + Gitea + Keycloak. Snapshots are written to
-# /var/lib/rancher/rke2/server/db/snapshots and (if etcd-s3 is enabled
-# below) shipped to an off-cluster S3-compatible bucket.
-#
-# Defaults: daily at 02:00 UTC, keep 30 most recent snapshots locally.
-# Override via the cluster module variables.
-etcd-snapshot-schedule-cron: "${etcd_snapshot_schedule}"
-etcd-snapshot-retention: ${etcd_snapshot_retention}
-etcd-snapshot-dir: /var/lib/rancher/rke2/server/db/snapshots
-%{ if etcd_s3_enabled ~}
-# H1b-2: off-cluster snapshot upload. The S3 endpoint MUST be off the
-# Hetzner cluster — uploading to in-cluster MinIO defeats the purpose
-# (cluster dies → MinIO dies → snapshots lost). Recommended: Cloudflare
-# R2 (free 10 GB tier) or a dedicated VPS-hosted MinIO.
-etcd-s3: true
-etcd-s3-endpoint: "${etcd_s3_endpoint}"
-etcd-s3-bucket: "${etcd_s3_bucket}"
-etcd-s3-folder: "${etcd_s3_folder}"
-etcd-s3-region: "${etcd_s3_region}"
-etcd-s3-access-key: "${etcd_s3_access_key}"
-etcd-s3-secret-key: "${etcd_s3_secret_key}"
-%{ endif ~}
-RKEEOF
+#  The RKE2 config blob lands at /etc/rancher/rke2/config.yaml.tpl with
+#  runtime placeholders __PRIVATE_IP__ and __PUBLIC_IP__ still intact. runcmd
+#  later seds those into place based on Hetzner metadata.
+# =============================================================================
 
-# Write Cilium HelmChartConfig
-mkdir -p /var/lib/rancher/rke2/server/manifests
-cat > /var/lib/rancher/rke2/server/manifests/rke2-cilium-config.yaml << 'CILEOF'
-apiVersion: helm.cattle.io/v1
-kind: HelmChartConfig
-metadata:
-  name: rke2-cilium
-  namespace: kube-system
-spec:
-  valuesContent: |-
-    kubeProxyReplacement: true
-    k8sServiceHost: "__CILIUM_IP__"
-    k8sServicePort: "6443"
-    operator:
-      replicas: ${cilium_operator_replicas}
-    gatewayAPI:
-      enabled: true
-    hubble:
-      enabled: ${enable_hubble}
-      relay:
-        enabled: ${enable_hubble}
-      ui:
-        enabled: ${enable_hubble}
-    ipam:
-      mode: "kubernetes"
-    tolerations:
-      - operator: "Exists"
-CILEOF
-sed -i "s/__CILIUM_IP__/$PRIVATE_IP/g" /var/lib/rancher/rke2/server/manifests/rke2-cilium-config.yaml
+package_update: true
+package_upgrade: false
+packages:
+  - curl
+  - jq
+  - open-iscsi
+  - wireguard-tools
 
-# Install RKE2
-curl -sfL https://get.rke2.io | INSTALL_RKE2_VERSION="${kubernetes_version}" sh -
-systemctl enable rke2-server.service
-systemctl start rke2-server.service
+write_files:
+  # ---------- sysctl for RKE2 CIS profile ----------
+  - path: /etc/sysctl.d/90-rke2.conf
+    permissions: '0644'
+    content: |
+      vm.panic_on_oom=0
+      vm.overcommit_memory=1
+      kernel.panic=10
+      kernel.panic_on_oops=1
 
-# Wait for RKE2 to be ready
-export KUBECONFIG=/etc/rancher/rke2/rke2.yaml
-export PATH=$PATH:/var/lib/rancher/rke2/bin
-for i in $(seq 1 120); do
-  if kubectl get nodes >/dev/null 2>&1; then
-    echo "RKE2 API ready"
-    break
-  fi
-  sleep 5
-done
+  # ---------- kube-apiserver audit policy ----------
+  - path: /etc/rancher/rke2/audit-policy.yaml
+    permissions: '0600'
+    content: |
+      apiVersion: audit.k8s.io/v1
+      kind: Policy
+      omitStages:
+        - RequestReceived
+      rules:
+        - level: None
+          verbs: ["get", "list", "watch"]
+          resources:
+            - group: ""
+              resources: ["events", "endpoints", "services", "pods/log", "pods/status"]
+            - group: "coordination.k8s.io"
+              resources: ["leases"]
+        - level: RequestResponse
+          resources:
+            - group: "rbac.authorization.k8s.io"
+              resources: ["clusterroles", "clusterrolebindings", "roles", "rolebindings"]
+        - level: Metadata
+          resources:
+            - group: ""
+              resources: ["secrets"]
+        - level: RequestResponse
+          resources:
+            - group: ""
+              resources: ["namespaces"]
+        - level: Metadata
+          resources:
+            - group: ""
+              resources: ["serviceaccounts/token"]
+        - level: Metadata
+          resources:
+            - group: "argoproj.io"
+              resources: ["applications", "applicationsets"]
+        - level: Metadata
+          verbs: ["create", "update", "patch", "delete"]
 
-echo "Master setup complete!"
+  # ---------- RKE2 config template (base64, runtime IPs substituted in runcmd) ----------
+  - path: /etc/rancher/rke2/config.yaml.tpl
+    permissions: '0600'
+    encoding: b64
+    content: ${rke2_config_b64}
+
+  # ---------- Helm Controller manifests (base64) — MINIMAL BOOTSTRAP SET ----------
+  # Only what the cluster cannot start without (Cilium CNI + Hetzner CCM)
+  # plus the ArgoCD bootstrap chain. Longhorn, cert-manager, ClusterIssuers,
+  # wildcard cert, and every downstream service live in the GitOps repo as
+  # ArgoCD Applications with sync-wave ordering.
+
+  - path: /var/lib/rancher/rke2/server/manifests/rke2-cilium-config.yaml
+    permissions: '0600'
+    encoding: b64
+    content: ${manifest_cilium_config_b64}
+
+  - path: /var/lib/rancher/rke2/server/manifests/hetzner-ccm.yaml
+    permissions: '0600'
+    encoding: b64
+    content: ${manifest_hetzner_ccm_b64}
+
+  - path: /var/lib/rancher/rke2/server/manifests/cert-manager-namespace.yaml
+    permissions: '0600'
+    encoding: b64
+    content: ${manifest_cert_manager_namespace_b64}
+
+  - path: /var/lib/rancher/rke2/server/manifests/longhorn-namespace.yaml
+    permissions: '0600'
+    encoding: b64
+    content: ${manifest_longhorn_namespace_b64}
+
+  - path: /var/lib/rancher/rke2/server/manifests/cloudflare-token-secret.yaml
+    permissions: '0600'
+    encoding: b64
+    content: ${manifest_cloudflare_token_secret_b64}
+
+  - path: /var/lib/rancher/rke2/server/manifests/argocd.yaml
+    permissions: '0600'
+    encoding: b64
+    content: ${manifest_argocd_b64}
+
+  - path: /var/lib/rancher/rke2/server/manifests/argocd-projects.yaml
+    permissions: '0600'
+    encoding: b64
+    content: ${manifest_argocd_projects_b64}
+
+  - path: /var/lib/rancher/rke2/server/manifests/argocd-repo-secret.yaml
+    permissions: '0600'
+    encoding: b64
+    content: ${manifest_argocd_repo_secret_b64}
+
+  - path: /var/lib/rancher/rke2/server/manifests/argocd-root-app.yaml
+    permissions: '0600'
+    encoding: b64
+    content: ${manifest_argocd_root_app_b64}
+
+runcmd:
+  - useradd -r -c "etcd user" -s /sbin/nologin -M etcd 2>/dev/null || true
+  - sysctl --system
+  - systemctl enable --now iscsid
+  - mkdir -p /var/log/kube-audit
+  - |
+    set -eu
+    PRIVATE_IP=""
+    for i in $(seq 1 60); do
+      PRIVATE_IP=$(ip -4 addr show | grep -oP '(?<=inet\s)10\.\d+\.\d+\.\d+' | head -1 || echo "")
+      if [ -n "$PRIVATE_IP" ]; then break; fi
+      sleep 5
+    done
+    if [ -z "$PRIVATE_IP" ]; then
+      echo "ERROR: could not detect private IP" >&2
+      exit 1
+    fi
+    PUBLIC_IP=$(curl -sf http://169.254.169.254/hetzner/v1/metadata/public-ipv4 || hostname -I | awk '{print $1}')
+    sed "s|__PRIVATE_IP__|$PRIVATE_IP|g; s|__PUBLIC_IP__|$PUBLIC_IP|g" \
+      /etc/rancher/rke2/config.yaml.tpl > /etc/rancher/rke2/config.yaml
+    chmod 0600 /etc/rancher/rke2/config.yaml
+  - |
+    set -eu
+    for i in 1 2 3 4 5; do
+      curl -sfL https://get.rke2.io | INSTALL_RKE2_VERSION="${kubernetes_version}" INSTALL_RKE2_TYPE=server sh - && break
+      sleep 10
+    done
+  - systemctl enable --now rke2-server
+
+  # ---------- Pre-install Gateway API CRDs + restart Cilium operator ----------
+  # Wait for kubectl + apiserver, fetch the upstream Gateway API
+  # experimental-install bundle from kubernetes-sigs (pinned tag), and
+  # apply it server-side. The bundle is ~600KB (well over Hetzner's 32KB
+  # cloud-init user_data limit) so we fetch at runtime instead of embedding
+  # via base64. Then bounce cilium-operator so its one-shot CRD readiness
+  # check picks up the new types — without this restart, Gateway resources
+  # stay PROGRAMMED=Unknown forever. Idempotent: re-running is a no-op.
+  - |
+    set -eu
+    KUBECTL=/var/lib/rancher/rke2/bin/kubectl
+    KUBECONFIG=/etc/rancher/rke2/rke2.yaml
+    export KUBECONFIG
+    GW_API_VERSION="${gateway_api_version}"
+    GW_API_URL="https://github.com/kubernetes-sigs/gateway-api/releases/download/$${GW_API_VERSION}/experimental-install.yaml"
+    mkdir -p /var/lib/iyziops
+    for i in $(seq 1 60); do
+      if [ -x "$KUBECTL" ] && [ -f "$KUBECONFIG" ] && $KUBECTL get nodes >/dev/null 2>&1; then
+        break
+      fi
+      sleep 5
+    done
+    for i in 1 2 3 4 5; do
+      curl -sfL "$GW_API_URL" -o /var/lib/iyziops/gateway-api-crds.yaml && break
+      sleep 5
+    done
+    $KUBECTL apply --server-side --force-conflicts -f /var/lib/iyziops/gateway-api-crds.yaml
+    # Wait for cilium-operator to exist before trying to restart it
+    for i in $(seq 1 60); do
+      if $KUBECTL -n kube-system get deploy cilium-operator >/dev/null 2>&1; then
+        $KUBECTL -n kube-system rollout restart deploy/cilium-operator
+        break
+      fi
+      sleep 5
+    done
