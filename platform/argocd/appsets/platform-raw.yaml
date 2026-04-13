@@ -50,6 +50,15 @@ spec:
   generators:
     - list:
         elements:
+          # ----- Wave 0: Namespaces (must exist before workloads land) ----
+          # Namespaces with PSA labels that downstream Helm charts need.
+          # Created with CreateNamespace=false because the PSA metadata
+          # matters — ArgoCD should manage the full Namespace resource.
+          - name: platform-namespaces
+            namespace: default
+            syncWave: "0"
+            path: platform/argocd/apps/platform/namespaces
+
           # ----- Wave 0: Ingress (Gateway + HTTPRoute) --------------------
           # Parallel with platform-helm wave 0 operators. Ingress resources
           # have no hard dep on cert-manager / longhorn / kyverno controllers.

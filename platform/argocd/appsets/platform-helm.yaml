@@ -34,12 +34,11 @@ spec:
               operator: In
               values: ["0"]
           maxUpdate: 100%
-        # Future waves 3, 4 will uncomment as elements are added
-        # - matchExpressions:
-        #     - key: argocd.argoproj.io/sync-wave
-        #       operator: In
-        #       values: ["3"]
-        #   maxUpdate: 100%
+        - matchExpressions:
+            - key: argocd.argoproj.io/sync-wave
+              operator: In
+              values: ["3"]
+          maxUpdate: 100%
 
   generators:
     - list:
@@ -157,25 +156,146 @@ spec:
                   enabled: true
                   namespace: kyverno-system
 
-          # ----- Wave 3: Observability (FUTURE — Sprint M1/M2) ----------
-          # Uncomment when ready; see docs/sprints/ARGOCD_RESTRUCTURE_PLAN.md
-          # - name: kube-prometheus-stack
-          #   namespace: monitoring
-          #   syncWave: "3"
-          #   repoURL: https://prometheus-community.github.io/helm-charts
-          #   chart: kube-prometheus-stack
-          #   targetRevision: 83.4.1
-          #   values: |
-          #     (see Sprint M1 values)
-          #
-          # - name: loki
-          #   namespace: logging
-          #   syncWave: "3"
-          #   repoURL: https://grafana-community.github.io/helm-charts
-          #   chart: loki
-          #   targetRevision: 6.55.0
-          #   values: |
-          #     (see Sprint M2 values)
+          # ----- Wave 3: Observability (log aggregation) ----------------
+          # Loki Monolithic mode (SingleBinary) with Longhorn persistent
+          # storage. 14-day retention. auth_enabled=false for in-cluster
+          # consumers (ArgoCD, Alloy, Grafana). Gateway disabled — internal
+          # traffic only.
+          - name: loki
+            namespace: logging
+            syncWave: "3"
+            repoURL: https://grafana.github.io/helm-charts
+            chart: loki
+            targetRevision: "6.55.0"
+            values: |
+              deploymentMode: SingleBinary
+              loki:
+                auth_enabled: false
+                commonConfig:
+                  replication_factor: 1
+                schemaConfig:
+                  configs:
+                    - from: "2024-04-01"
+                      store: tsdb
+                      object_store: filesystem
+                      schema: v13
+                      index:
+                        prefix: loki_index_
+                        period: 24h
+                storage:
+                  type: filesystem
+                limits_config:
+                  retention_period: 336h
+                  reject_old_samples: true
+                  reject_old_samples_max_age: 168h
+                compactor:
+                  working_directory: /var/loki/compactor
+                  retention_enabled: true
+                  delete_request_store: filesystem
+                pattern_ingester:
+                  enabled: false
+                ruler:
+                  enable_api: true
+              singleBinary:
+                replicas: 1
+                persistence:
+                  enabled: true
+                  storageClass: longhorn
+                  size: 50Gi
+                resources:
+                  requests:
+                    cpu: 100m
+                    memory: 256Mi
+                  limits:
+                    cpu: 1
+                    memory: 1Gi
+              chunksCache:
+                enabled: false
+              resultsCache:
+                enabled: false
+              gateway:
+                enabled: false
+              monitoring:
+                selfMonitoring:
+                  enabled: false
+                  grafanaAgent:
+                    installOperator: false
+                lokiCanary:
+                  enabled: false
+              test:
+                enabled: false
+              minio:
+                enabled: false
+
+          # Alloy DaemonSet collects pod logs from /var/log/pods and ships
+          # them to Loki. Replaces Promtail (deprecated Mar 2026). Needs
+          # PSA baseline (hostPath access) — namespace label set by
+          # platform-raw apps/platform/namespaces/logging.yaml.
+          - name: alloy
+            namespace: logging
+            syncWave: "3"
+            repoURL: https://grafana.github.io/helm-charts
+            chart: alloy
+            targetRevision: "1.7.0"
+            values: |
+              alloy:
+                configMap:
+                  content: |
+                    // Discover pods
+                    discovery.kubernetes "pod" {
+                      role = "pod"
+                    }
+
+                    // Relabel kubernetes metadata onto log streams
+                    discovery.relabel "pod_logs" {
+                      targets = discovery.kubernetes.pod.targets
+                      rule {
+                        source_labels = ["__meta_kubernetes_namespace"]
+                        target_label  = "namespace"
+                      }
+                      rule {
+                        source_labels = ["__meta_kubernetes_pod_name"]
+                        target_label  = "pod"
+                      }
+                      rule {
+                        source_labels = ["__meta_kubernetes_pod_container_name"]
+                        target_label  = "container"
+                      }
+                      rule {
+                        source_labels = ["__meta_kubernetes_pod_node_name"]
+                        target_label  = "node"
+                      }
+                      rule {
+                        source_labels = ["__meta_kubernetes_pod_label_app"]
+                        target_label  = "app"
+                      }
+                    }
+
+                    // Read container logs via kubelet /var/log/pods
+                    loki.source.kubernetes "pods" {
+                      targets    = discovery.relabel.pod_logs.output
+                      forward_to = [loki.write.default.receiver]
+                    }
+
+                    // Ship to Loki (cluster-internal service)
+                    loki.write "default" {
+                      endpoint {
+                        url = "http://loki.logging.svc.cluster.local:3100/loki/api/v1/push"
+                      }
+                    }
+                resources:
+                  requests:
+                    cpu: 50m
+                    memory: 128Mi
+                  limits:
+                    cpu: 500m
+                    memory: 512Mi
+              controller:
+                type: daemonset
+                tolerations:
+                  - operator: Exists
+              crds:
+                create: false
 
           # ----- Wave 4: Data services (FUTURE — Sprint D1) -------------
           # - name: everest

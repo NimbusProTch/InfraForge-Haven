@@ -1,0 +1,20 @@
+---
+# =============================================================================
+#  logging namespace (Loki + Alloy)
+# =============================================================================
+#  Pod Security Admission: `baseline` — Alloy DaemonSet requires hostPath
+#  access to /var/log/pods for log collection. `restricted` blocks hostPath,
+#  `baseline` allows it. This is the documented Alloy deployment pattern.
+#
+#  Warnings still enforced at `restricted` level so we catch new workloads
+#  that drift above baseline.
+# =============================================================================
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: logging
+  labels:
+    pod-security.kubernetes.io/enforce: baseline
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
+    iyziops.io/layer: observability
