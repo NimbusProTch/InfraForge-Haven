@@ -46,4 +46,4 @@ module "dns" {
 
 - The Cloudflare API token must have `Zone:Read` + `DNS:Edit` scoped to the target zone. It is loaded from the macOS Keychain via `TF_VAR_cloudflare_api_token`.
 - The same token is reused by cert-manager inside the cluster for DNS-01 challenges (wildcard cert for `*.iyziops.com`).
-- Known issue: cert-manager v1.17 has a cleanup race where stale `_acme-challenge.iyziops.com` TXT records may accumulate if the first issuance is interrupted. Permanent fix: add `User:Read` scope to the Cloudflare token.
+- **Historical note**: cert-manager v1.17.0 had a Cloudflare DNS-01 cleanup bug (empty zone ID in DELETE calls, error 7003) caused by a Cloudflare API change in Feb 2025. Fixed in cert-manager v1.17.1+ via [PR #7549](https://github.com/cert-manager/cert-manager/pull/7549). Token permissions are NOT related to this bug — the fix is purely in cert-manager code. We run v1.20.2+ which contains the fix.

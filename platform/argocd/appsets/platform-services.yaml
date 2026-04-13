@@ -56,9 +56,11 @@ spec:
             syncWave: "1"
             repoURL: https://charts.jetstack.io
             chart: cert-manager
-            targetRevision: v1.17.0
+            targetRevision: v1.20.2
             values: |
-              installCRDs: true
+              crds:
+                enabled: true
+                keep: true
               prometheus:
                 enabled: false
               replicaCount: 2
