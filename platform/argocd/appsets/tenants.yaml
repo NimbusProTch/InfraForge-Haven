@@ -1,16 +1,27 @@
 ---
 # =============================================================================
-#  iyziops — tenants ApplicationSet (skeleton)
+#  iyziops — tenants ApplicationSet
 # =============================================================================
-#  This is the only appsets entry that will definitely be a real
-#  ApplicationSet: each tenant gets its own ArgoCD Application, generated
-#  from the git directory structure gitops/tenants/<slug>/. For now the
-#  gitops/tenants/ directory does not exist — the iyziops API will create
-#  per-tenant subdirectories on tenant provision. The ApplicationSet watches
-#  that path and auto-generates an Application per tenant.
+#  Per-tenant Applications generated from git directories. Each subdirectory
+#  under gitops/tenants/ becomes a separate ArgoCD Application named
+#  tenant-{slug}, deployed into the tenant-{slug} namespace. The directory
+#  is populated by the iyziops API when a new tenant is provisioned.
 #
-#  Note: scoped to the iyziops-tenants AppProject so tenant workloads cannot
-#  touch cluster-level resources.
+#  Scoped to the iyziops-tenants AppProject so tenant workloads cannot touch
+#  cluster-level resources (ClusterRole, CRD, Namespace). See the project
+#  definition in infrastructure/modules/rke2-cluster/manifests/argocd-
+#  projects.yaml.tpl.
+#
+#  Sync-wave 10 (annotation only) puts tenants after all platform + tenant-
+#  management layers. Cross-appset ordering relies on retry + selfHeal:
+#  a new tenant directory will cause the ApplicationSet controller to
+#  generate an Application, which retries until all upstream dependencies
+#  are ready.
+#
+#  RollingSync strategy with 20% maxUpdate is reserved for future multi-
+#  tenant rollouts — if one tenant's sync fails, only up to 20% of tenants
+#  at a time will be touched, preventing cascading failures across the fleet.
+#  (Currently no tenants exist, so the strategy is a no-op.)
 # =============================================================================
 apiVersion: argoproj.io/v1alpha1
 kind: ApplicationSet
@@ -18,15 +29,36 @@ metadata:
   name: tenants
   namespace: argocd
 spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+
+  strategy:
+    type: RollingSync
+    rollingSync:
+      steps:
+        - matchExpressions:
+            - key: iyziops.io/layer
+              operator: In
+              values: ["tenants"]
+          maxUpdate: 20%
+
   generators:
     - git:
         repoURL: https://github.com/NimbusProTch/InfraForge-Haven.git
         revision: main
         directories:
           - path: gitops/tenants/*
+
   template:
     metadata:
-      name: 'tenant-{{path.basename}}'
+      name: "tenant-{{.path.basename}}"
+      namespace: argocd
+      labels:
+        argocd.argoproj.io/sync-wave: "10"
+        iyziops.io/layer: tenants
+        iyziops.io/tenant-slug: "{{.path.basename}}"
+      annotations:
+        argocd.argoproj.io/sync-wave: "10"
       finalizers:
         - resources-finalizer.argocd.argoproj.io
     spec:
@@ -34,16 +66,23 @@ spec:
       source:
         repoURL: https://github.com/NimbusProTch/InfraForge-Haven.git
         targetRevision: main
-        path: '{{path}}'
+        path: "{{.path.path}}"
         directory:
           recurse: true
-          include: '*.yaml'
+          include: "*.yaml"
       destination:
         server: https://kubernetes.default.svc
-        namespace: 'tenant-{{path.basename}}'
+        namespace: "tenant-{{.path.basename}}"
       syncPolicy:
         automated:
           prune: true
           selfHeal: true
         syncOptions:
           - CreateNamespace=true
+          - ServerSideApply=true
+        retry:
+          limit: 10
+          backoff:
+            duration: 10s
+            factor: 2
+            maxDuration: 2m

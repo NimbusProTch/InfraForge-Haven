@@ -1,0 +1,81 @@
+---
+# =============================================================================
+#  iyziops — tenant-management ApplicationSet
+# =============================================================================
+#  Manages the iyziops control-plane workloads that sit in front of tenants:
+#  iyziops-api (backend) and iyziops-ui (frontend). These are the "platform
+#  as a product" components that tenants interact with.
+#
+#  Both are currently deployed at replicas=0 waiting for iyziops-native
+#  Harbor + haven-api image rebuild. The Deployment manifests live in
+#  platform/argocd/apps/tenant-management/iyziops-{api,ui}/ as raw K8s
+#  YAML (not Helm). Manifests preserve the haven-system namespace because
+#  the Python API code + test suite hardcode `haven-system`; full namespace
+#  rename is a separate sprint (see docs/sprints/RENAME_IYZIOPS_PLAN.md).
+#
+#  Sync-wave 5 means this appset runs after platform config (wave 1) so
+#  that cert-manager + wildcard cert + kyverno policies are all in place
+#  before the HTTPRoute-bound services come up. Cross-appset ordering is
+#  handled by retry + selfHeal (no strict gate between appsets).
+# =============================================================================
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: tenant-management
+  namespace: argocd
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+
+  generators:
+    - list:
+        elements:
+          - name: iyziops-api
+            namespace: haven-system
+            syncWave: "5"
+            path: platform/argocd/apps/tenant-management/iyziops-api
+            component: api
+
+          - name: iyziops-ui
+            namespace: haven-system
+            syncWave: "5"
+            path: platform/argocd/apps/tenant-management/iyziops-ui
+            component: ui
+
+  template:
+    metadata:
+      name: "{{.name}}"
+      namespace: argocd
+      labels:
+        argocd.argoproj.io/sync-wave: "{{.syncWave}}"
+        iyziops.io/layer: tenant-management
+        iyziops.io/component: "{{.component}}"
+      annotations:
+        argocd.argoproj.io/sync-wave: "{{.syncWave}}"
+      finalizers:
+        - resources-finalizer.argocd.argoproj.io
+    spec:
+      project: iyziops-platform
+      source:
+        repoURL: https://github.com/NimbusProTch/InfraForge-Haven.git
+        targetRevision: main
+        path: "{{.path}}"
+        directory:
+          recurse: true
+          include: "*.yaml"
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: "{{.namespace}}"
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true
+          - ServerSideApply=true
+        retry:
+          limit: 10
+          backoff:
+            duration: 10s
+            factor: 2
+            maxDuration: 2m

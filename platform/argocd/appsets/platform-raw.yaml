@@ -1,0 +1,102 @@
+---
+# =============================================================================
+#  iyziops — platform-raw ApplicationSet
+# =============================================================================
+#  Manages ALL platform components that come from raw Kubernetes YAML in the
+#  git repo (not Helm charts). Split from platform-helm so the template is
+#  single-source-type (git path only), which keeps kubectl dry-run validation
+#  working without goTemplate source-type conditionals.
+#
+#  Sync-wave layout:
+#    -5  ingress              (Gateway + HTTPRoute + ReferenceGrant)
+#                             — depends on gateway-api CRDs (cloud-init installed)
+#     1  cert-manager-config  (ClusterIssuers + wildcard cert)
+#                             — depends on cert-manager webhook Ready (wave 0 in platform-helm)
+#     1  kyverno-policies     (5 ClusterPolicy, Audit mode)
+#                             — depends on kyverno admission controller Ready (wave 0)
+#
+#  Cross-appset ordering: wave 1 elements here need wave 0 operators from
+#  platform-helm to be Healthy. ArgoCD does not strictly coordinate this
+#  across appsets, but retry + selfHeal (10 attempts, exponential backoff up
+#  to 2m) guarantees eventual convergence within ~5 minutes of cold boot.
+# =============================================================================
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: platform-raw
+  namespace: argocd
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+
+  strategy:
+    type: RollingSync
+    rollingSync:
+      steps:
+        - matchExpressions:
+            - key: argocd.argoproj.io/sync-wave
+              operator: In
+              values: ["-5"]
+          maxUpdate: 100%
+        - matchExpressions:
+            - key: argocd.argoproj.io/sync-wave
+              operator: In
+              values: ["1"]
+          maxUpdate: 100%
+
+  generators:
+    - list:
+        elements:
+          # ----- Wave -5: Ingress (Gateway + HTTPRoute) -------------------
+          - name: platform-ingress
+            namespace: argocd
+            syncWave: "-5"
+            path: platform/argocd/apps/platform/ingress
+
+          # ----- Wave 1: Config (ClusterIssuers + ClusterPolicies) --------
+          - name: cert-manager-config
+            namespace: cert-manager
+            syncWave: "1"
+            path: platform/argocd/apps/platform/cert-manager-config
+
+          - name: kyverno-policies
+            namespace: kyverno-system
+            syncWave: "1"
+            path: platform/argocd/apps/platform/kyverno-policies
+
+  template:
+    metadata:
+      name: "{{.name}}"
+      namespace: argocd
+      labels:
+        argocd.argoproj.io/sync-wave: "{{.syncWave}}"
+        iyziops.io/layer: platform-raw
+      annotations:
+        argocd.argoproj.io/sync-wave: "{{.syncWave}}"
+      finalizers:
+        - resources-finalizer.argocd.argoproj.io
+    spec:
+      project: iyziops-platform
+      source:
+        repoURL: https://github.com/NimbusProTch/InfraForge-Haven.git
+        targetRevision: main
+        path: "{{.path}}"
+        directory:
+          recurse: true
+          include: "*.yaml"
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: "{{.namespace}}"
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=false
+          - ServerSideApply=true
+        retry:
+          limit: 10
+          backoff:
+            duration: 10s
+            factor: 2
+            maxDuration: 2m

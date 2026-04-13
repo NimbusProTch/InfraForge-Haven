@@ -1,0 +1,108 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: iyziops-api
+  labels:
+    haven.io/component: api
+rules:
+  # Tenant namespace management
+  - apiGroups: [""]
+    resources: ["namespaces"]
+    verbs: ["get", "list", "create", "delete"]
+  # ResourceQuota and LimitRange
+  # H1c (P5): added `update` verb. tenant_service.py uses
+  # replace_namespaced_resource_quota / replace_namespaced_limit_range
+  # which both map to the K8s RBAC `update` verb. Pre-fix this was
+  # masked by the rogue cluster-admin binding.
+  - apiGroups: [""]
+    resources: ["resourcequotas", "limitranges"]
+    verbs: ["get", "list", "create", "patch", "update", "delete"]
+  # Core resources (pods, services, secrets, configmaps, events, endpoints, PVCs)
+  - apiGroups: [""]
+    resources: ["services", "pods", "pods/log", "pods/exec", "pods/portforward",
+                "secrets", "configmaps", "events", "endpoints",
+                "persistentvolumeclaims", "serviceaccounts"]
+    verbs: ["get", "list", "watch", "create", "patch", "update", "delete"]
+  # Deployments, ReplicaSets, StatefulSets
+  - apiGroups: ["apps"]
+    resources: ["deployments", "deployments/scale", "replicasets", "statefulsets"]
+    verbs: ["get", "list", "watch", "create", "patch", "update", "delete"]
+  # Batch jobs (BuildKit builds + CronJobs)
+  - apiGroups: ["batch"]
+    resources: ["jobs", "jobs/status", "cronjobs"]
+    verbs: ["get", "list", "watch", "create", "patch", "update", "delete"]
+  # HorizontalPodAutoscaler
+  - apiGroups: ["autoscaling"]
+    resources: ["horizontalpodautoscalers"]
+    verbs: ["get", "list", "watch", "create", "patch", "update", "delete"]
+  # RBAC for tenant provisioning — namespace-scoped only.
+  # haven-api creates per-tenant Roles + RoleBindings via
+  # tenant_service.py::_setup_namespace_rbac (rbac_v1.create_namespaced_role
+  # and create_namespaced_role_binding). It NEVER creates cluster-scoped
+  # ClusterRoles or ClusterRoleBindings — verified by grep over api/app/.
+  #
+  # Pre-fix (post-PR-#89): the rule lumped namespace-scoped and
+  # cluster-scoped RBAC together with full create/patch/delete/bind/escalate.
+  # That left a privilege-escalation vector: a compromised haven-api pod
+  # could create a ClusterRoleBinding granting itself cluster-admin and
+  # bypass the entire scope-down. The rogue haven-api-admin binding was
+  # masking it.
+  #
+  # Fix: split into two rules.
+  #   1. Namespace-scoped RBAC (roles + rolebindings): full verbs +
+  #      bind + escalate (needed to grant tenant admins their RoleBindings).
+  #   2. Cluster-scoped RBAC (clusterroles + clusterrolebindings):
+  #      read-only get/list/watch (used by audit log checks + sanity
+  #      probes). NO create/patch/delete/bind/escalate.
+  - apiGroups: ["rbac.authorization.k8s.io"]
+    resources: ["roles", "rolebindings"]
+    verbs: ["get", "list", "watch", "create", "patch", "update", "delete", "bind", "escalate"]
+  - apiGroups: ["rbac.authorization.k8s.io"]
+    resources: ["clusterroles", "clusterrolebindings"]
+    verbs: ["get", "list", "watch"]
+  # CiliumNetworkPolicy
+  - apiGroups: ["cilium.io"]
+    resources: ["ciliumnetworkpolicies"]
+    verbs: ["get", "list", "create", "patch", "delete"]
+  # CNPG Cluster CRD
+  - apiGroups: ["postgresql.cnpg.io"]
+    resources: ["clusters", "backups", "scheduledbackups"]
+    verbs: ["get", "list", "watch", "create", "patch", "delete"]
+  # H1c (P5): Percona Everest managed DB CRDs (PG / MySQL / MongoDB) —
+  # gap closed. Pre-fix the haven-api code called custom_objects against
+  # the everest.percona.com API group via everest_client.py /
+  # managed_service.py / backup_service.py but the role had ZERO
+  # permissions for it. The rogue cluster-admin binding masked the gap.
+  # See git history (pre commit 10ffd48) for the rbac-analysis.md that
+  # enumerated every haven-api code path requiring each verb.
+  - apiGroups: ["everest.percona.com"]
+    resources:
+      - databaseclusters
+      - databaseclusterbackups
+      - databaseclusterrestores
+      - databaseclusterbackupschedules
+      - databaseengines
+    verbs: ["get", "list", "watch", "create", "patch", "update", "delete"]
+  # Redis CRD (OpsTree)
+  - apiGroups: ["redis.redis.opstreelabs.in"]
+    resources: ["redis"]
+    verbs: ["get", "list", "watch", "create", "patch", "delete"]
+  # RabbitMQ Cluster CRD
+  - apiGroups: ["rabbitmq.com"]
+    resources: ["rabbitmqclusters"]
+    verbs: ["get", "list", "watch", "create", "patch", "delete"]
+  # HTTPRoute + GRPCRoute (Gateway API)
+  - apiGroups: ["gateway.networking.k8s.io"]
+    resources: ["httproutes", "grpcroutes", "tcproutes"]
+    verbs: ["get", "list", "watch", "create", "patch", "update", "delete"]
+  # Cert-Manager certificates
+  - apiGroups: ["cert-manager.io"]
+    resources: ["certificates", "certificaterequests"]
+    verbs: ["get", "list", "watch", "create", "patch", "delete"]
+  # ArgoCD Applications (sync status checks) + ApplicationSets (per-tenant)
+  - apiGroups: ["argoproj.io"]
+    resources: ["applications"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["argoproj.io"]
+    resources: ["applicationsets"]
+    verbs: ["get", "list", "create", "delete"]

@@ -1,0 +1,38 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: iyziops-api-config
+  namespace: haven-system
+data:
+  KEYCLOAK_URL: "https://keycloak.46.225.42.2.sslip.io"
+  KEYCLOAK_REALM: "haven"
+  HARBOR_URL: "https://harbor.46.225.42.2.sslip.io"
+  HARBOR_PROJECT: "library"
+  LB_IP: "46.225.42.2"
+  BUILD_NAMESPACE: "haven-builds"
+  BUILDKIT_ADDR: "tcp://buildkitd.haven-builds.svc.cluster.local:1234"
+  CORS_ORIGINS: "http://localhost:3000,http://localhost:3001,http://localhost:3002,http://app.46.225.42.2.sslip.io,https://app.46.225.42.2.sslip.io"
+  GITHUB_REDIRECT_URI: "https://app.46.225.42.2.sslip.io/github/callback"
+  ARGOCD_URL: "http://argocd-server.argocd.svc.cluster.local:80"
+  # Gitea (self-hosted GitOps)
+  GITEA_URL: "http://gitea-http.gitea-system.svc.cluster.local:3000"
+  GITEA_ORG: "haven"
+  GITEA_GITOPS_REPO: "haven-gitops"
+  GITEA_GITOPS_BRANCH: "main"
+  # GitOps repo (Gitea in-cluster)
+  GITOPS_REPO_URL: "http://gitea-http.gitea-system.svc.cluster.local:3000/haven/haven-gitops.git"
+  GITOPS_BRANCH: "main"
+  GITOPS_CLONE_DIR: "/tmp/haven-gitops"
+  # Redis for git queue
+  REDIS_URL: "redis://haven-redis.redis-system.svc.cluster.local:6379/0"
+  EVEREST_URL: "http://everest.everest-system.svc.cluster.local:8080"
+  EVEREST_NAMESPACE: "everest"
+  # Everest admin user is always "admin" (bootstrap user created by Everest helm
+  # install). Password is in haven-api-secrets.EVEREST_ADMIN_PASSWORD, driven by
+  # var.everest_admin_password in IaC (same source for Everest secret override).
+  EVEREST_ADMIN_USER: "admin"
+  # Vault (sensitive env var storage)
+  VAULT_URL: "http://vault.vault-system.svc:8200"
+  # ArgoCD ApplicationSet — cluster-internal Gitea URL
+  GITOPS_ARGOCD_REPO_URL: "http://gitea-http.gitea-system.svc.cluster.local:3000/haven/haven-gitops.git"
+  DEBUG: "false"

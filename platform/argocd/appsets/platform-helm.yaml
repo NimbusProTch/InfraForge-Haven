@@ -1,0 +1,237 @@
+---
+# =============================================================================
+#  iyziops — platform-helm ApplicationSet
+# =============================================================================
+#  Manages ALL Helm-chart-based platform components. Split from platform-raw
+#  so the ApplicationSet template is single-source-type (Helm only), which
+#  keeps kubectl dry-run validation working and avoids ArgoCD's experimental
+#  templatePatch feature.
+#
+#  Sync-wave layout:
+#    0   cert-manager, longhorn, kyverno            (operators, controllers)
+#    3   kube-prometheus-stack, loki, alloy         (observability, future)
+#    4   everest, redis-operator, rabbitmq-operator (data services, future)
+#
+#  RollingSync strategy gates each wave on the previous wave's Healthy state.
+#  Cross-appset ordering (platform-raw wave 1 config → needs operator wave 0
+#  Healthy) is handled by retry + selfHeal on each generated Application.
+# =============================================================================
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: platform-helm
+  namespace: argocd
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+
+  strategy:
+    type: RollingSync
+    rollingSync:
+      steps:
+        - matchExpressions:
+            - key: argocd.argoproj.io/sync-wave
+              operator: In
+              values: ["0"]
+          maxUpdate: 100%
+        # Future waves 3, 4 will uncomment as elements are added
+        # - matchExpressions:
+        #     - key: argocd.argoproj.io/sync-wave
+        #       operator: In
+        #       values: ["3"]
+        #   maxUpdate: 100%
+
+  generators:
+    - list:
+        elements:
+          # ----- Wave 0: Operators (controllers + CRDs) -------------------
+          - name: cert-manager
+            namespace: cert-manager
+            syncWave: "0"
+            repoURL: https://charts.jetstack.io
+            chart: cert-manager
+            targetRevision: v1.20.2
+            values: |
+              crds:
+                enabled: true
+                keep: true
+              prometheus:
+                enabled: false
+              replicaCount: 2
+              webhook:
+                replicaCount: 2
+              cainjector:
+                replicaCount: 2
+
+          - name: longhorn
+            namespace: longhorn-system
+            syncWave: "0"
+            repoURL: https://charts.longhorn.io
+            chart: longhorn
+            targetRevision: "1.8.0"
+            values: |
+              preUpgradeChecker:
+                jobEnabled: false
+              defaultSettings:
+                defaultReplicaCount: 3
+                defaultDataPath: /var/lib/longhorn/
+                storageOverProvisioningPercentage: 100
+                storageMinimalAvailablePercentage: 15
+                createDefaultDiskLabeledNodes: true
+              persistence:
+                defaultClass: true
+                defaultClassReplicaCount: 3
+                defaultDataLocality: best-effort
+                reclaimPolicy: Delete
+              longhornManager:
+                tolerations:
+                  - operator: Exists
+              longhornDriver:
+                tolerations:
+                  - operator: Exists
+
+          - name: kyverno
+            namespace: kyverno-system
+            syncWave: "0"
+            repoURL: https://kyverno.github.io/kyverno/
+            chart: kyverno
+            targetRevision: "3.7.1"
+            values: |
+              admissionController:
+                replicas: 3
+                podDisruptionBudget:
+                  minAvailable: 2
+                resources:
+                  requests:
+                    cpu: 200m
+                    memory: 512Mi
+                  limits:
+                    memory: 2Gi
+              backgroundController:
+                replicas: 2
+                resources:
+                  requests:
+                    cpu: 100m
+                    memory: 256Mi
+                  limits:
+                    memory: 1Gi
+              cleanupController:
+                replicas: 1
+              reportsController:
+                replicas: 1
+              config:
+                excludeKyvernoNamespace: true
+                webhooks:
+                  failurePolicy: Fail
+                  namespaceSelector:
+                    matchExpressions:
+                      - key: kubernetes.io/metadata.name
+                        operator: NotIn
+                        values:
+                          - kyverno-system
+                          - kube-system
+                          - kube-public
+                          - kube-node-lease
+                          - default
+                          - argocd
+                          - haven-system
+                          - haven-builds
+                          - iyziops-gateway
+                          - longhorn-system
+                          - cert-manager
+                          - monitoring
+                          - logging
+                          - harbor-system
+                          - minio-system
+                          - gitea-system
+                          - keycloak
+                          - cnpg-system
+                          - everest
+                          - everest-system
+                          - everest-olm
+                          - everest-monitoring
+                          - redis-system
+                          - rabbitmq-system
+              features:
+                policyExceptions:
+                  enabled: true
+                  namespace: kyverno-system
+
+          # ----- Wave 3: Observability (FUTURE — Sprint M1/M2) ----------
+          # Uncomment when ready; see docs/sprints/ARGOCD_RESTRUCTURE_PLAN.md
+          # - name: kube-prometheus-stack
+          #   namespace: monitoring
+          #   syncWave: "3"
+          #   repoURL: https://prometheus-community.github.io/helm-charts
+          #   chart: kube-prometheus-stack
+          #   targetRevision: 83.4.1
+          #   values: |
+          #     (see Sprint M1 values)
+          #
+          # - name: loki
+          #   namespace: logging
+          #   syncWave: "3"
+          #   repoURL: https://grafana-community.github.io/helm-charts
+          #   chart: loki
+          #   targetRevision: 6.55.0
+          #   values: |
+          #     (see Sprint M2 values)
+
+          # ----- Wave 4: Data services (FUTURE — Sprint D1) -------------
+          # - name: everest
+          #   namespace: everest-system
+          #   syncWave: "4"
+          #   repoURL: https://percona.github.io/percona-helm-charts
+          #   chart: everest
+          #   targetRevision: <latest>
+          #   values: |
+          #     (see Sprint D1 values)
+
+  template:
+    metadata:
+      name: "{{.name}}"
+      namespace: argocd
+      labels:
+        argocd.argoproj.io/sync-wave: "{{.syncWave}}"
+        iyziops.io/layer: platform-helm
+      annotations:
+        argocd.argoproj.io/sync-wave: "{{.syncWave}}"
+      finalizers:
+        - resources-finalizer.argocd.argoproj.io
+    spec:
+      project: iyziops-platform
+      source:
+        repoURL: "{{.repoURL}}"
+        chart: "{{.chart}}"
+        targetRevision: "{{.targetRevision}}"
+        helm:
+          releaseName: "{{.name}}"
+          values: |
+            {{- .values | nindent 12 }}
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: "{{.namespace}}"
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true
+          - ServerSideApply=true
+        retry:
+          limit: 10
+          backoff:
+            duration: 10s
+            factor: 2
+            maxDuration: 2m
+      # Kyverno + cert-manager ship CRDs whose server-side fields drift with
+      # every reconcile. Ignoring drift on .spec/.metadata of CRDs keeps the
+      # Application Synced without losing the ability to upgrade via chart
+      # version bump.
+      ignoreDifferences:
+        - group: apiextensions.k8s.io
+          kind: CustomResourceDefinition
+          jqPathExpressions:
+            - .spec
+            - .metadata.annotations
+            - .metadata.labels
