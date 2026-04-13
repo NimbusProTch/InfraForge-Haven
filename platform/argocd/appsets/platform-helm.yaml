@@ -735,3 +735,11 @@ spec:
             - .spec.ordinals
             - .spec.minReadySeconds
             - .spec.revisionHistoryLimit
+            # volumeMode, apiVersion, kind, creationTimestamp, status are
+            # all default-filled on volumeClaimTemplates at admission time
+            # on K8s 1.32 → cannot be matched by the rendered chart.
+            - .spec.volumeClaimTemplates[].spec.volumeMode
+            - .spec.volumeClaimTemplates[].apiVersion
+            - .spec.volumeClaimTemplates[].kind
+            - .spec.volumeClaimTemplates[].metadata.creationTimestamp
+            - .spec.volumeClaimTemplates[].status
