@@ -67,6 +67,17 @@ spec:
             syncWave: "0"
             path: platform/argocd/apps/platform/ingress
 
+          # ----- Wave 0: Haven Compliancy CRD -----------------------------
+          # The Haven CLI (`make haven`) writes a Compliancy CR after every
+          # 15-check run. Previously this CRD was auto-created at runtime by
+          # the first CLI invocation, leaving it unmanaged by GitOps (F5).
+          # Wave 0 because no in-cluster workload consumes it — the Haven CLI
+          # runs from the operator's laptop via the Kubernetes API.
+          - name: haven-crds
+            namespace: default
+            syncWave: "0"
+            path: platform/argocd/apps/platform/haven-crds
+
           # ----- Wave 1: Config (ClusterIssuers + ClusterPolicies) --------
           - name: cert-manager-config
             namespace: cert-manager
