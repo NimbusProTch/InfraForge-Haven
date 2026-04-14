@@ -136,6 +136,10 @@ Geçen sprint'te gerçekten çarpan tuzaklar:
 
 - **kube-hetzner 2-LB pattern annotation**: ingress LB tofu shell'inde `lifecycle { ignore_changes = [target, labels["hcloud-ccm/service-uid"]] }`. `iyziops-gateway.yaml`'da `spec.infrastructure.annotations` → Cilium v1.17.1 bu annotation'ları generated LoadBalancer Service'e propagate eder → CCM `load-balancer.hetzner.cloud/name` ile adopt eder. Annotation literal Hetzner LB adı ile match etmeli.
 
+- **CCM ingress LB adoption race (NEW 2026-04-14, fix Phase C16)**: Tofu shell oluşturulduktan sonra CCM Cilium-generated Service'i annotation'sız görüp YENİ LB yaratıyor (Cilium operator annotation'ı 1-2s sonra Service'e kopyalıyor). Tofu shell dormant kalıyor, gerçek LB CCM-managed ID'de. Destroy'da tofu kendi shell'ini siliyor, orphan kalıyor. **Fix**: ingress LB resource'una `provisioner "local-exec" { when = destroy }` ile orphan GC + master cloud-init `cilium-operator restart` runcmd'sini sil (Cilium 1.17+ dynamic CRD detection yapıyor, restart Service spec race'i tetikliyor).
+
+- **CCM route-controller orphan routes (NEW 2026-04-14, fix Phase C14)**: `hetzner-ccm.yaml.tpl:118` `--allocate-node-cidrs=true` ve route-reconciliation aktif. CCM her node için `10.42.X.0/24 → <node-private-ip>` route'larını Hetzner network'e yazıyor. Cilium tunnel mode bunları kullanmıyor ama yazılmaya devam ediyor. Destroy'da node'lar gidince orphan referans → subnet destroy 5+ dk takılıyor. **Fix**: CCM args'a `--controllers=*,-route` ekle (k8s standart cloud-controller-manager flag'i, route-controller'ı kapatır, allocate-node-cidrs harmless kalır).
+
 Eski (Haven dev / Rancher era) gotcha'lar için → `docs/gotchas-haven-dev.md`.
 
 ## Maliyet
