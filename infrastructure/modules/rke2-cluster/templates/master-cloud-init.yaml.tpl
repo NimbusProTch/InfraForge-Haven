@@ -7,9 +7,47 @@
 #  applies the manifests when rke2-server starts.
 #
 #  The RKE2 config blob lands at /etc/rancher/rke2/config.yaml.tpl with
-#  runtime placeholders __PRIVATE_IP__ and __PUBLIC_IP__ still intact. runcmd
-#  later seds those into place based on Hetzner metadata.
+#  runtime placeholder __PRIVATE_IP__ still intact. runcmd later seds it
+#  into place. The node has no public IPv4 — Haven privatenetworking.
+#
+#  bootcmd waits for NAT egress (probes TCP 1.1.1.1:443) before apt
+#  package install runs, so masters don't race the NAT box boot.
 # =============================================================================
+
+# Private-only node bootstrap: Hetzner DHCP on private networks hands
+# out a subnet route (10.10.0.0/16 via 10.10.0.1) but no default route
+# (since Hetzner's Aug 2025 switch to classless static route / option
+# 121) and no DNS. systemd-networkd does not persist a manual `ip route
+# add` across its re-renders, so we write a netplan drop-in with the
+# default route + Hetzner resolvers, then `netplan apply` to lock it
+# in before cloud-init's package_update runs apt. This is the Ubuntu
+# equivalent of kube-hetzner's nmcli persistent-route trick.
+bootcmd:
+  - |
+    mkdir -p /etc/netplan
+    cat > /etc/netplan/99-iyziops-private.yaml <<'EOF'
+    network:
+      version: 2
+      ethernets:
+        all-en:
+          match:
+            name: "en*"
+          dhcp4: true
+          dhcp4-overrides:
+            use-routes: true
+          routes:
+            - to: default
+              via: 10.10.0.1
+              metric: 100
+          nameservers:
+            addresses: [185.12.64.1, 185.12.64.2]
+    EOF
+    chmod 0600 /etc/netplan/99-iyziops-private.yaml
+    netplan apply
+    for i in $(seq 1 60); do
+      ping -W 2 -c 1 1.1.1.1 >/dev/null 2>&1 && break
+      sleep 5
+    done
 
 package_update: true
 package_upgrade: false
@@ -142,8 +180,7 @@ runcmd:
       echo "ERROR: could not detect private IP" >&2
       exit 1
     fi
-    PUBLIC_IP=$(curl -sf http://169.254.169.254/hetzner/v1/metadata/public-ipv4 || hostname -I | awk '{print $1}')
-    sed "s|__PRIVATE_IP__|$PRIVATE_IP|g; s|__PUBLIC_IP__|$PUBLIC_IP|g" \
+    sed "s|__PRIVATE_IP__|$PRIVATE_IP|g" \
       /etc/rancher/rke2/config.yaml.tpl > /etc/rancher/rke2/config.yaml
     chmod 0600 /etc/rancher/rke2/config.yaml
   - |

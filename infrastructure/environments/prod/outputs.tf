@@ -22,29 +22,24 @@ output "load_balancer_ingress_name" {
   value       = module.hetzner_infra.load_balancer_ingress_name
 }
 
-output "first_master_public_ipv4" {
-  description = "First master public IPv4 — used by `make kubeconfig` target"
-  value       = hcloud_server.master[0].ipv4_address
-}
-
 output "first_master_private_ipv4" {
-  description = "First master private IPv4 — stable registration address for joins"
+  description = "First master private IPv4 — stable registration address for joins and the SCP target of `make kubeconfig` (via NAT ProxyJump)"
   value       = local.first_master_private_ip
 }
 
+output "nat_public_ipv4" {
+  description = "NAT box public IPv4 — single bastion host for operator SSH and `make kubeconfig` ProxyJump"
+  value       = module.hetzner_infra.nat_public_ipv4
+}
+
+output "worker_zone" {
+  description = "Hetzner datacenter where workers run — informational (topology.kubernetes.io/zone is applied automatically by Hetzner CCM)"
+  value       = module.hetzner_infra.worker_zone
+}
+
 output "ssh_private_key_path" {
-  description = "Filesystem path of the generated SSH private key (ed25519, 0600)"
+  description = "Filesystem path of the generated SSH private key (ed25519, 0600) — used by make kubeconfig and scripts/fetch-kubeconfig.sh"
   value       = local_sensitive_file.ssh_private_key.filename
-}
-
-output "master_public_ipv4s" {
-  description = "Public IPv4 addresses of every master"
-  value       = hcloud_server.master[*].ipv4_address
-}
-
-output "worker_public_ipv4s" {
-  description = "Public IPv4 addresses of every worker"
-  value       = hcloud_server.worker[*].ipv4_address
 }
 
 output "argocd_url" {

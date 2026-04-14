@@ -1,0 +1,13 @@
+{
+  "releases": [
+    {
+      "date": "2026-04-14T00:00:00Z",
+      "version": "v12.8.0-infraforge",
+      "hashes": {
+        "darwin/amd64": "eeb84d0e87422dc865375b8a740fc4b57064ad2bd3207ae2000243c85018150d",
+        "darwin/arm64": "c145aa4ed653457eb7a56bb5e29d03b8a9f5f66985c678c5152b17e874ac15df",
+        "linux/amd64": "88e330620f3517fdf487678683a7ae63afb29ccc3454f00f46eada8abdb97a6c"
+      }
+    }
+  ]
+}

@@ -46,6 +46,7 @@ module "hetzner_infra" {
   environment         = var.environment
   ssh_public_key      = tls_private_key.cluster.public_key_openssh
   location_primary    = var.location_primary
+  worker_location     = var.worker_location
   network_zone        = var.network_zone
   network_cidr        = var.network_cidr
   subnet_cidr         = var.subnet_cidr
@@ -60,7 +61,8 @@ module "hetzner_infra" {
 #  The rke2-cluster module needs first_master_private_ip at render time so
 #  joining masters and workers can use it as the supervisor endpoint. Hetzner
 #  normally allocates private IPs dynamically, so we pin the first master
-#  explicitly via hcloud_server_network.master[0].ip further down.
+#  explicitly via the inline `network { ip = ... }` block on the master[0]
+#  server resource below.
 #
 #  Offset 10 picks an address deep enough inside the subnet to be clear of
 #  Hetzner's reserved low addresses (.1 gateway, .2-.4 reserved in some
@@ -81,14 +83,27 @@ resource "hcloud_server" "master" {
   image       = var.os_image
   location    = var.location_primary
 
-  ssh_keys     = [module.hetzner_infra.ssh_key_id]
-  firewall_ids = [module.hetzner_infra.firewall_id]
+  ssh_keys = [module.hetzner_infra.ssh_key_id]
 
   user_data = count.index == 0 ? module.rke2_cluster.first_master_cloud_init : module.rke2_cluster.joining_master_cloud_init
 
+  # Haven privatenetworking: masters have no public IPv4 / IPv6. They
+  # reach the internet via the NAT box (hcloud_network_route default
+  # gateway → 10.10.1.254) and are reachable from operators only via
+  # the API LB (kubectl → 6443) or through the NAT box (SSH bastion).
   public_net {
-    ipv4_enabled = true
-    ipv6_enabled = true
+    ipv4_enabled = false
+    ipv6_enabled = false
+  }
+
+  # Inline network attachment — required when the server has no public
+  # IPv4/IPv6, otherwise Hetzner refuses to start the VM with "no
+  # public or private network interfaces found". The first master gets
+  # a pinned IP matching local.first_master_private_ip so joining nodes
+  # have a stable registration address.
+  network {
+    network_id = module.hetzner_infra.network_id
+    ip         = count.index == 0 ? local.first_master_private_ip : null
   }
 
   labels = {
@@ -97,20 +112,11 @@ resource "hcloud_server" "master" {
     environment = var.environment
   }
 
+  # module.hetzner_infra includes hcloud_network_route.default_via_nat,
+  # so this depends_on serializes master creation behind NAT readiness.
   depends_on = [
     module.hetzner_infra,
   ]
-}
-
-# Attach masters to the private network. The first master gets a fixed
-# alias IP matching local.first_master_private_ip so joining nodes have a
-# stable registration address.
-resource "hcloud_server_network" "master" {
-  count = var.master_count
-
-  server_id = hcloud_server.master[count.index].id
-  subnet_id = module.hetzner_infra.subnet_id
-  ip        = count.index == 0 ? local.first_master_private_ip : null
 }
 
 # ----- Worker nodes ---------------------------------------------------------
@@ -121,16 +127,22 @@ resource "hcloud_server" "worker" {
   name        = "${var.cluster_name}-worker-${count.index}"
   server_type = var.worker_server_type
   image       = var.os_image
-  location    = var.location_primary
+  location    = var.worker_location
 
-  ssh_keys     = [module.hetzner_infra.ssh_key_id]
-  firewall_ids = [module.hetzner_infra.firewall_id]
+  ssh_keys = [module.hetzner_infra.ssh_key_id]
 
   user_data = module.rke2_cluster.worker_cloud_init
 
+  # Haven privatenetworking: workers have no public IPv4 / IPv6.
   public_net {
-    ipv4_enabled = true
-    ipv6_enabled = true
+    ipv4_enabled = false
+    ipv6_enabled = false
+  }
+
+  # Inline network attachment (see master block) — required for
+  # private-only servers to have at least one NIC at boot time.
+  network {
+    network_id = module.hetzner_infra.network_id
   }
 
   labels = {
@@ -141,15 +153,8 @@ resource "hcloud_server" "worker" {
 
   depends_on = [
     module.hetzner_infra,
-    hcloud_server_network.master,
+    hcloud_server.master,
   ]
-}
-
-resource "hcloud_server_network" "worker" {
-  count = var.worker_count
-
-  server_id = hcloud_server.worker[count.index].id
-  subnet_id = module.hetzner_infra.subnet_id
 }
 
 # ----- API LB targets (masters only) ----------------------------------------
@@ -165,5 +170,7 @@ resource "hcloud_load_balancer_target" "api_master" {
   server_id        = hcloud_server.master[count.index].id
   use_private_ip   = true
 
-  depends_on = [hcloud_server_network.master]
+  # hcloud_server.master now attaches the network inline, so the
+  # private IP is present as soon as the server resource exists.
+  depends_on = [hcloud_server.master]
 }

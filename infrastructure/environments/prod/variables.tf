@@ -57,8 +57,18 @@ variable "environment" {
 # ----- Hetzner --------------------------------------------------------------
 
 variable "location_primary" {
-  description = "Hetzner datacenter (e.g. fsn1)"
+  description = "Hetzner datacenter for masters / LBs / NAT box (e.g. fsn1)"
   type        = string
+}
+
+variable "worker_location" {
+  description = "Hetzner datacenter for worker nodes — must differ from location_primary so Hetzner CCM emits two topology.kubernetes.io/zone labels (Haven infraMultiAZ check expects ≥2 zones)."
+  type        = string
+
+  validation {
+    condition     = contains(["fsn1", "nbg1", "hel1"], var.worker_location)
+    error_message = "worker_location must be one of fsn1, nbg1, hel1."
+  }
 }
 
 variable "network_zone" {
@@ -87,11 +97,19 @@ variable "ingress_lb_type" {
 }
 
 variable "operator_cidrs" {
-  description = "Allow-list CIDRs for SSH + direct kubectl. Must not contain 0.0.0.0/0."
+  description = "Allow-list CIDRs for SSH (22) on the NAT bastion. Each entry must be /16 or tighter (/0-/15 rejected so nobody can bypass the no-0.0.0.0/0 rule by splitting the IPv4 space into /1 blocks)."
   type        = list(string)
 
   validation {
     condition     = !contains(var.operator_cidrs, "0.0.0.0/0") && !contains(var.operator_cidrs, "::/0")
     error_message = "operator_cidrs must not contain 0.0.0.0/0 or ::/0."
+  }
+
+  validation {
+    condition = alltrue([
+      for c in var.operator_cidrs :
+      tonumber(split("/", c)[1]) >= 16
+    ])
+    error_message = "operator_cidrs entries must each be /16 or tighter — no /0-/15 wildcards."
   }
 }

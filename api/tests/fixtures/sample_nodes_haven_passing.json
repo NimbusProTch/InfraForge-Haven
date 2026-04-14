@@ -1,0 +1,96 @@
+{
+  "apiVersion": "v1",
+  "kind": "List",
+  "items": [
+    {
+      "metadata": {
+        "name": "iyziops-master-0",
+        "labels": {
+          "topology.kubernetes.io/region": "fsn1",
+          "topology.kubernetes.io/zone": "fsn1-dc14"
+        }
+      },
+      "status": {
+        "addresses": [
+          {"type": "InternalIP", "address": "10.10.1.10"},
+          {"type": "Hostname", "address": "iyziops-master-0"}
+        ]
+      }
+    },
+    {
+      "metadata": {
+        "name": "iyziops-master-1",
+        "labels": {
+          "topology.kubernetes.io/region": "fsn1",
+          "topology.kubernetes.io/zone": "fsn1-dc14"
+        }
+      },
+      "status": {
+        "addresses": [
+          {"type": "InternalIP", "address": "10.10.1.11"},
+          {"type": "Hostname", "address": "iyziops-master-1"}
+        ]
+      }
+    },
+    {
+      "metadata": {
+        "name": "iyziops-master-2",
+        "labels": {
+          "topology.kubernetes.io/region": "fsn1",
+          "topology.kubernetes.io/zone": "fsn1-dc14"
+        }
+      },
+      "status": {
+        "addresses": [
+          {"type": "InternalIP", "address": "10.10.1.12"},
+          {"type": "Hostname", "address": "iyziops-master-2"}
+        ]
+      }
+    },
+    {
+      "metadata": {
+        "name": "iyziops-worker-0",
+        "labels": {
+          "topology.kubernetes.io/region": "nbg1",
+          "topology.kubernetes.io/zone": "nbg1-dc3"
+        }
+      },
+      "status": {
+        "addresses": [
+          {"type": "InternalIP", "address": "10.10.1.13"},
+          {"type": "Hostname", "address": "iyziops-worker-0"}
+        ]
+      }
+    },
+    {
+      "metadata": {
+        "name": "iyziops-worker-1",
+        "labels": {
+          "topology.kubernetes.io/region": "nbg1",
+          "topology.kubernetes.io/zone": "nbg1-dc3"
+        }
+      },
+      "status": {
+        "addresses": [
+          {"type": "InternalIP", "address": "10.10.1.14"},
+          {"type": "Hostname", "address": "iyziops-worker-1"}
+        ]
+      }
+    },
+    {
+      "metadata": {
+        "name": "iyziops-worker-2",
+        "labels": {
+          "topology.kubernetes.io/region": "nbg1",
+          "topology.kubernetes.io/zone": "nbg1-dc3"
+        }
+      },
+      "status": {
+        "addresses": [
+          {"type": "InternalIP", "address": "10.10.1.15"},
+          {"type": "Hostname", "address": "iyziops-worker-2"}
+        ]
+      }
+    }
+  ]
+}

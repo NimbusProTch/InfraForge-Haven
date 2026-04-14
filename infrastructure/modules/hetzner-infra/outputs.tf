@@ -68,7 +68,24 @@ output "ssh_key_id" {
   value       = hcloud_ssh_key.this.id
 }
 
-output "firewall_id" {
-  description = "Firewall ID — referenced by hcloud_server.firewall_ids"
-  value       = hcloud_firewall.this.id
+# ----- NAT box --------------------------------------------------------------
+
+output "nat_public_ipv4" {
+  description = "NAT box public IPv4 — the single operator-accessible bastion"
+  value       = hcloud_server.nat.ipv4_address
+}
+
+output "nat_private_ipv4" {
+  description = "NAT box private IPv4 — gateway of the subnet default route"
+  value       = hcloud_server_network.nat.ip
+}
+
+output "network_route_id" {
+  description = "Default network route ID — cluster servers depend on this via the module dependency graph so they boot after egress is available"
+  value       = hcloud_network_route.default_via_nat.id
+}
+
+output "worker_zone" {
+  description = "Hetzner datacenter where worker nodes run — provides topology.kubernetes.io/zone distinct from the master zone (Haven infraMultiAZ)"
+  value       = var.worker_location
 }

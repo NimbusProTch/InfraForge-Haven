@@ -140,6 +140,10 @@ Geçen sprint'te gerçekten çarpan tuzaklar:
 
 - **CCM route-controller orphan routes (NEW 2026-04-14, fix Phase C14)**: `hetzner-ccm.yaml.tpl:118` `--allocate-node-cidrs=true` ve route-reconciliation aktif. CCM her node için `10.42.X.0/24 → <node-private-ip>` route'larını Hetzner network'e yazıyor. Cilium tunnel mode bunları kullanmıyor ama yazılmaya devam ediyor. Destroy'da node'lar gidince orphan referans → subnet destroy 5+ dk takılıyor. **Fix**: CCM args'a `--controllers=*,-route` ekle (k8s standart cloud-controller-manager flag'i, route-controller'ı kapatır, allocate-node-cidrs harmless kalır).
 
+- **Haven privatenetworking: kubelet flag yetmez, CCM'yi düşür (NEW 2026-04-14, Sprint Haven 15/15)**: Haven `privatenetworking` check node'ların `.status.addresses[]` listesinde `ExternalIP` type'ında entry olup olmadığına bakar. Kubelet `--node-external-ip=""` veya RKE2 config'den `node-external-ip` satırını silmek YETMEZ — Hetzner CCM server'ın public IPv4'ünü cloud metadata'dan okuyup ExternalIP'ye koymaya devam eder. **Tek doğru yol**: `hcloud_server.master/worker` üzerinde `public_net { ipv4_enabled = false; ipv6_enabled = false }` → CCM'in raporlayacağı public IP yok → `.status.addresses` yalnızca InternalIP içerir → Haven PASS. Cluster node'ları internet'e NAT box üzerinden çıkar (`infrastructure/modules/hetzner-infra/nat.tf` + `hcloud_network_route.default_via_nat`). Eski yanlış not (`haven/remediation/07-private-networking.md` Option B) overridden.
+
+- **Haven multi-AZ: workers farklı DC'de (NEW 2026-04-14, Sprint Haven 15/15)**: Hetzner CCM node'lara otomatik `topology.kubernetes.io/zone=<fsn1-dc14 / nbg1-dc3 / ...>` label'ı basar (source: Hetzner Cloud DC field). Haven `infraMultiAZ` en az 2 distinct zone değeri bekler. Masters `var.location_primary = "fsn1"`, workers `var.worker_location = "nbg1"` → 2 distinct zone → PASS. etcd quorum masters içinde tek DC'de kaldığı için ~25ms inter-region latency etki etmez; yalnızca kubelet → apiserver ve ingress LB → worker path'leri ~15ms cross-DC (kabul edilebilir).
+
 Eski (Haven dev / Rancher era) gotcha'lar için → `docs/gotchas-haven-dev.md`.
 
 ## Maliyet

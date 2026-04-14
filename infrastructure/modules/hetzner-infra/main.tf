@@ -1,7 +1,10 @@
 # =============================================================================
 #  iyziops — Hetzner base infrastructure
 # =============================================================================
-#  SSH key, private network, subnet, public firewall, and TWO load balancers:
+#  SSH key, private network, subnet, and TWO load balancers. Cluster
+#  nodes have no public IPv4 (Haven privatenetworking), so there is no
+#  public firewall attached to them — a single NAT box (nat.tf) provides
+#  egress via hcloud_network_route.
 #
 #    1. api      — fully tofu-managed. Listens on 6443. Targets are the
 #                  master nodes (attached in the environment layer).
@@ -17,8 +20,10 @@
 #  single LB with tofu-managed services: ReconcileHCLBServices deletes any
 #  port not in the Service spec, so we keep the API LB completely separate.
 #
-#  Node-to-node traffic goes over the private network and is NOT filtered
-#  by hcloud_firewall — Hetzner firewalls only apply to public ingress.
+#  Node-to-node traffic goes over the private network. Cluster ingress
+#  (kube-apiserver on 6443 + workloads on 80/443) terminates at the
+#  tofu/CCM load balancers; the backend servers are unreachable from the
+#  public internet.
 # =============================================================================
 
 resource "hcloud_ssh_key" "this" {
@@ -36,69 +41,6 @@ resource "hcloud_network_subnet" "this" {
   type         = "cloud"
   network_zone = var.network_zone
   ip_range     = var.subnet_cidr
-}
-
-# -----------------------------------------------------------------------------
-#  Public firewall
-# -----------------------------------------------------------------------------
-#  Rules are intentionally minimal. Everything else (kubelet, VXLAN, etcd,
-#  RKE2 supervisor on 9345, LB → node traffic) is private-network only.
-#
-#  Note on 80/443: in the Option B architecture the ingress LB uses the
-#  private network for LB → node traffic (use-private-ip: true via CCM
-#  annotation) and the destination port is a NodePort, not 80/443. The
-#  public 80/443 rules below are therefore not strictly required, but kept
-#  open for direct-to-node debugging and as a no-op safety net.
-# -----------------------------------------------------------------------------
-resource "hcloud_firewall" "this" {
-  name = "${var.cluster_name}-${var.environment}"
-
-  # SSH — operator shell access only
-  rule {
-    direction  = "in"
-    protocol   = "tcp"
-    port       = "22"
-    source_ips = var.operator_cidrs
-  }
-
-  # Kubernetes API (6443). Public like 9345 because RKE2's agent-lb on every
-  # worker and joining master discovers apiserver endpoints via the
-  # kubernetes Service, which returns each master's ExternalIP. Apiserver
-  # auth is TLS client certs + Bearer tokens, so the public exposure adds
-  # no real attack surface beyond what the API LB already exposes on :6443.
-  rule {
-    direction  = "in"
-    protocol   = "tcp"
-    port       = "6443"
-    source_ips = ["0.0.0.0/0", "::/0"]
-  }
-
-  # RKE2 supervisor / agent-tunnel (websocket registration + remotedialer).
-  # RKE2 dials peer masters via ExternalIP over public internet — even when
-  # both nodes share a private network — because `node-external-ip` is set.
-  # The tunnel is authenticated by the 64-char random cluster token.
-  rule {
-    direction  = "in"
-    protocol   = "tcp"
-    port       = "9345"
-    source_ips = ["0.0.0.0/0", "::/0"]
-  }
-
-  # HTTP — public (kept open as no-op safety net; LB→node uses private IP)
-  rule {
-    direction  = "in"
-    protocol   = "tcp"
-    port       = "80"
-    source_ips = ["0.0.0.0/0", "::/0"]
-  }
-
-  # HTTPS — public (kept open as no-op safety net; LB→node uses private IP)
-  rule {
-    direction  = "in"
-    protocol   = "tcp"
-    port       = "443"
-    source_ips = ["0.0.0.0/0", "::/0"]
-  }
 }
 
 # -----------------------------------------------------------------------------
