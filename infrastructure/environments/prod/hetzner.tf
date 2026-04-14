@@ -112,6 +112,17 @@ resource "hcloud_server" "master" {
     environment = var.environment
   }
 
+  # Hetzner DHCP picks the private IP for joining masters (count.index >= 1)
+  # because the inline `network { ip = ... }` is null for them. tofu refresh
+  # reads the assigned IP back into state, but config-vs-state diff then
+  # shows a perpetual "remove + re-add network block" plan that would
+  # detach + reattach the NIC and reassign IPs — breaking RKE2 join
+  # addresses. We tell tofu to never reconcile the network block. Real
+  # network changes require `tofu apply -replace=hcloud_server.master[N]`.
+  lifecycle {
+    ignore_changes = [network]
+  }
+
   # module.hetzner_infra includes hcloud_network_route.default_via_nat,
   # so this depends_on serializes master creation behind NAT readiness.
   depends_on = [
@@ -149,6 +160,12 @@ resource "hcloud_server" "worker" {
     role        = "worker"
     cluster     = var.cluster_name
     environment = var.environment
+  }
+
+  # See master block: ignore network drift so DHCP-assigned IPs are
+  # not re-randomized by `tofu apply`.
+  lifecycle {
+    ignore_changes = [network]
   }
 
   depends_on = [
