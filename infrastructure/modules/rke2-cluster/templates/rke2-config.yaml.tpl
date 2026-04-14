@@ -5,7 +5,11 @@ cluster-init: true
 server: "https://${first_master_private_ip}:9345"
 %{ endif ~}
 node-ip: "__PRIVATE_IP__"
-node-external-ip: "__PUBLIC_IP__"
+# node-external-ip intentionally omitted: cluster nodes have no public
+# IPv4. Hetzner CCM will set only status.addresses[InternalIP], so the
+# Haven `privatenetworking` check (which looks for any ExternalIP on a
+# node) passes. The kubelet flag alone would be overridden by CCM — we
+# also need public_net.ipv4_enabled=false on the hcloud_server.
 cni: cilium
 disable:
   - rke2-ingress-nginx
@@ -24,7 +28,6 @@ tls-san:
   - "${lb_ip}"
   - "${lb_private_ip}"
   - "__PRIVATE_IP__"
-  - "__PUBLIC_IP__"
 %{ if disable_kube_proxy ~}
 disable-kube-proxy: true
 %{ endif ~}

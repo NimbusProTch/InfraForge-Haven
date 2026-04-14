@@ -42,6 +42,13 @@ spec:
     kubeProxyReplacement: true
     k8sServiceHost: "127.0.0.1"
     k8sServicePort: 6443
+    # Cilium helm key is capital "MTU" — lowercase "mtu" is silently
+    # ignored (Cilium then autodetects from the primary NIC and can pick
+    # a wrong value, causing non-deterministic packet drops on the
+    # cross-DC fsn1↔nbg1 vxlan path). 1450 matches Hetzner's private
+    # network underlay; Cilium subtracts its own vxlan overhead to set
+    # the pod interface MTU internally. Source: kube-hetzner locals.tf.
+    MTU: 1450
     ipam:
       mode: kubernetes
     routingMode: tunnel

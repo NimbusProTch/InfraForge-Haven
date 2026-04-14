@@ -4,8 +4,37 @@
 # =============================================================================
 #  Joins the cluster via the first master's private IP on port 9345. Does
 #  NOT write any Helm Controller manifests — etcd replicates them from the
-#  bootstrap master once the new master registers.
+#  bootstrap master once the new master registers. No public IPv4 — Haven
+#  privatenetworking. bootcmd waits for NAT egress before apt install.
 # =============================================================================
+
+# Private-only node bootstrap (see master-cloud-init.yaml.tpl for full note).
+bootcmd:
+  - |
+    mkdir -p /etc/netplan
+    cat > /etc/netplan/99-iyziops-private.yaml <<'EOF'
+    network:
+      version: 2
+      ethernets:
+        all-en:
+          match:
+            name: "en*"
+          dhcp4: true
+          dhcp4-overrides:
+            use-routes: true
+          routes:
+            - to: default
+              via: 10.10.0.1
+              metric: 100
+          nameservers:
+            addresses: [185.12.64.1, 185.12.64.2]
+    EOF
+    chmod 0600 /etc/netplan/99-iyziops-private.yaml
+    netplan apply
+    for i in $(seq 1 60); do
+      ping -W 2 -c 1 1.1.1.1 >/dev/null 2>&1 && break
+      sleep 5
+    done
 
 package_update: true
 package_upgrade: false
@@ -64,8 +93,7 @@ runcmd:
       echo "ERROR: could not detect private IP" >&2
       exit 1
     fi
-    PUBLIC_IP=$(curl -sf http://169.254.169.254/hetzner/v1/metadata/public-ipv4 || hostname -I | awk '{print $1}')
-    sed "s|__PRIVATE_IP__|$PRIVATE_IP|g; s|__PUBLIC_IP__|$PUBLIC_IP|g" \
+    sed "s|__PRIVATE_IP__|$PRIVATE_IP|g" \
       /etc/rancher/rke2/config.yaml.tpl > /etc/rancher/rke2/config.yaml
     chmod 0600 /etc/rancher/rke2/config.yaml
   - |

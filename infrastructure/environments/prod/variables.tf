@@ -57,8 +57,18 @@ variable "environment" {
 # ----- Hetzner --------------------------------------------------------------
 
 variable "location_primary" {
-  description = "Hetzner datacenter (e.g. fsn1)"
+  description = "Hetzner datacenter for masters / LBs / NAT box (e.g. fsn1)"
   type        = string
+}
+
+variable "worker_location" {
+  description = "Hetzner datacenter for worker nodes — must differ from location_primary so Hetzner CCM emits two topology.kubernetes.io/zone labels (Haven infraMultiAZ check expects ≥2 zones)."
+  type        = string
+
+  validation {
+    condition     = contains(["fsn1", "nbg1", "hel1"], var.worker_location)
+    error_message = "worker_location must be one of fsn1, nbg1, hel1."
+  }
 }
 
 variable "network_zone" {

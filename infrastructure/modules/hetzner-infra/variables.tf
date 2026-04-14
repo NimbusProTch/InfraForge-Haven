@@ -31,8 +31,18 @@ variable "ssh_public_key" {
 }
 
 variable "location_primary" {
-  description = "Hetzner primary datacenter location for masters/workers (e.g. fsn1, nbg1, hel1)"
+  description = "Hetzner primary datacenter location for masters / LBs / NAT box (e.g. fsn1)"
   type        = string
+}
+
+variable "worker_location" {
+  description = "Hetzner datacenter for worker nodes. Must differ from location_primary so Hetzner CCM applies two distinct topology.kubernetes.io/zone labels — Haven infraMultiAZ check expects at least two zones. Same network_zone (eu-central) as masters so the private network spans both DCs."
+  type        = string
+
+  validation {
+    condition     = contains(["fsn1", "nbg1", "hel1"], var.worker_location)
+    error_message = "worker_location must be one of fsn1, nbg1, hel1."
+  }
 }
 
 variable "network_zone" {

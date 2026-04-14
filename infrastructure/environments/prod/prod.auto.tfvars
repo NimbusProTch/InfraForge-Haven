@@ -11,7 +11,13 @@ cluster_name = "iyziops"
 environment  = "prod"
 
 # ----- Hetzner --------------------------------------------------------------
+# Masters + LBs + NAT box live in fsn1 (tight etcd quorum, single-DC).
+# Workers live in nbg1 so the cluster advertises two distinct
+# topology.kubernetes.io/zone labels (fsn1-dc14 + nbg1-dc3) which Haven's
+# infraMultiAZ check requires. Cross-DC traffic inside eu-central is ~15 ms,
+# acceptable for kubelet → apiserver and ingress LB → worker hops.
 location_primary = "fsn1"
+worker_location  = "nbg1"
 network_zone     = "eu-central"
 network_cidr     = "10.10.0.0/16"
 subnet_cidr      = "10.10.1.0/24"

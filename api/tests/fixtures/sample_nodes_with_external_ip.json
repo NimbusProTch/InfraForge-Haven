@@ -1,0 +1,37 @@
+{
+  "apiVersion": "v1",
+  "kind": "List",
+  "items": [
+    {
+      "metadata": {
+        "name": "iyziops-master-0",
+        "labels": {
+          "topology.kubernetes.io/region": "fsn1",
+          "topology.kubernetes.io/zone": "fsn1-dc14"
+        }
+      },
+      "status": {
+        "addresses": [
+          {"type": "InternalIP", "address": "10.10.1.10"},
+          {"type": "ExternalIP", "address": "46.225.42.2"},
+          {"type": "Hostname", "address": "iyziops-master-0"}
+        ]
+      }
+    },
+    {
+      "metadata": {
+        "name": "iyziops-worker-0",
+        "labels": {
+          "topology.kubernetes.io/region": "nbg1",
+          "topology.kubernetes.io/zone": "nbg1-dc3"
+        }
+      },
+      "status": {
+        "addresses": [
+          {"type": "InternalIP", "address": "10.10.1.13"},
+          {"type": "ExternalIP", "address": "49.12.100.1"}
+        ]
+      }
+    }
+  ]
+}

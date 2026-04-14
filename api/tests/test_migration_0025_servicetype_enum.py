@@ -16,10 +16,7 @@ from pathlib import Path
 import pytest
 
 MIGRATION_FILE = (
-    Path(__file__).resolve().parents[1]
-    / "alembic"
-    / "versions"
-    / "0025_rename_servicetype_postgresql_to_postgres.py"
+    Path(__file__).resolve().parents[1] / "alembic" / "versions" / "0025_rename_servicetype_postgresql_to_postgres.py"
 )
 
 

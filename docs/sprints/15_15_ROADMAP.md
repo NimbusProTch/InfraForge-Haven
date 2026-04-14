@@ -1,6 +1,8 @@
 # Haven 15/15 — Roadmap
 
-Current score (2026-04-14): **13/15 PASS**.
+**STATUS: IMPLEMENTATION COMPLETE 2026-04-14** — see `docs/sprints/HAVEN_15_15_SPRINT_20260414.md` for the sprint summary. Pending `tofu apply` + `make haven` verification (Phase D/E).
+
+Previous score (2026-04-13): **13/15 PASS**.
 
 Two remaining failures, both infrastructure-level. Neither can be fixed from inside the cluster — both require tofu apply cycles. Both are non-trivial: they need planning, staging, and an operator-assisted cutover.
 
