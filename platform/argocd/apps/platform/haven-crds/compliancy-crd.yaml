@@ -1,0 +1,208 @@
+# =============================================================================
+#  Haven Compliancy CRD — compliancies.haven.commonground.nl
+# =============================================================================
+#  Required by the Haven CLI (`make haven`) which writes a Compliancy custom
+#  resource with the outcome of the 15-check run. Previously this CRD was
+#  auto-created at runtime by the first Haven CLI invocation, leaving it
+#  unmanaged by GitOps — a drift gap that fails ArgoCD reconciliation tests.
+#
+#  This manifest is the exported v1alpha1 schema from upstream
+#  https://gitlab.com/commonground/haven/haven at tag v12.8.0
+#  (runtime fields stripped: creationTimestamp, resourceVersion, uid, status).
+#
+#  Owner: ArgoCD via the platform-raw ApplicationSet (sync-wave 0). No
+#  workload inside the cluster depends on this CRD — the Haven CLI calls the
+#  Kubernetes API from the operator's laptop — so ordering is not critical.
+# =============================================================================
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: compliancies.haven.commonground.nl
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.11.1
+spec:
+  conversion:
+    strategy: None
+  group: haven.commonground.nl
+  names:
+    kind: Compliancy
+    listKind: CompliancyList
+    plural: compliancies
+    singular: compliancy
+  scope: Cluster
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          description: Compliancy is the Schema for the compliancies API
+          type: object
+          required:
+            - spec
+          properties:
+            apiVersion:
+              description: 'APIVersion defines the versioned schema of this representation
+                of an object. Servers should convert recognized schemas to the latest
+                internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
+              type: string
+            kind:
+              description: 'Kind is a string value representing the REST resource this
+                object represents. Servers may infer this from the endpoint the client
+                submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+              type: string
+            metadata:
+              type: object
+            spec:
+              description: CompliancySpec defines the desired state of Compliancy
+              type: object
+              required:
+                - compliant
+                - created
+                - input
+                - output
+                - version
+              properties:
+                compliant:
+                  type: boolean
+                created:
+                  type: string
+                input:
+                  description: CompliancyInput defines the input for the Compliancy check
+                  type: object
+                  required:
+                    - commandline
+                    - kubeHost
+                    - platform
+                  properties:
+                    commandline:
+                      type: string
+                    kubeHost:
+                      type: string
+                    platform:
+                      description: CompliancyPlatform defines the platform for the Compliancy check
+                      type: object
+                      required:
+                        - determinedPlatform
+                        - determiningLabel
+                        - proxy
+                      properties:
+                        determinedPlatform:
+                          type: string
+                        determiningLabel:
+                          type: string
+                        proxy:
+                          type: boolean
+                output:
+                  description: CompliancyOutput defines the output for the Compliancy check
+                  type: object
+                  required:
+                    - compliancyChecks
+                    - config
+                    - havenCompliant
+                    - startTS
+                    - stopTS
+                    - suggestedChecks
+                    - version
+                  properties:
+                    compliancyChecks:
+                      description: CompliancyChecks contains the results of the checks
+                      type: object
+                      required:
+                        - results
+                        - summary
+                      properties:
+                        results:
+                          type: array
+                          items:
+                            description: CompliancySummary contains the result and details of a check
+                            type: object
+                            required:
+                              - category
+                              - label
+                              - name
+                              - rationale
+                              - result
+                            properties:
+                              category:
+                                type: string
+                              label:
+                                type: string
+                              name:
+                                type: string
+                              rationale:
+                                type: string
+                              result:
+                                type: string
+                        summary:
+                          description: CompliancySummary contains the summary of the checks
+                          type: object
+                          required:
+                            - failed
+                            - passed
+                            - skipped
+                            - total
+                            - unknown
+                          properties:
+                            failed:
+                              type: integer
+                            passed:
+                              type: integer
+                            skipped:
+                              type: integer
+                            total:
+                              type: integer
+                            unknown:
+                              type: integer
+                    config:
+                      description: ComplicacyConfig contains the configuration for optional checks
+                      type: object
+                      required:
+                        - CIS
+                        - CNCF
+                        - kubescape
+                      properties:
+                        CIS:
+                          type: boolean
+                        CNCF:
+                          type: boolean
+                        kubescape:
+                          type: boolean
+                    havenCompliant:
+                      type: boolean
+                    startTS:
+                      type: string
+                    stopTS:
+                      type: string
+                    suggestedChecks:
+                      description: CompliancySuggestedChecks contains the suggested checks results
+                      type: object
+                      required:
+                        - results
+                      properties:
+                        results:
+                          type: array
+                          items:
+                            description: CompliancySummary contains the result and details of a check
+                            type: object
+                            required:
+                              - category
+                              - label
+                              - name
+                              - rationale
+                              - result
+                            properties:
+                              category:
+                                type: string
+                              label:
+                                type: string
+                              name:
+                                type: string
+                              rationale:
+                                type: string
+                              result:
+                                type: string
+                    version:
+                      type: string
+                version:
+                  type: string
