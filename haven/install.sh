@@ -75,14 +75,16 @@ if [[ ! -f "$RELEASES_JSON" ]]; then
 fi
 
 EXPECTED_SHA="$(
-    python3 -c "
+    python3 - "$RELEASES_JSON" "$VERSION" "$OS/$ARCH" <<'PY'
 import json, sys
-d = json.load(open('$RELEASES_JSON'))
-for r in d.get('releases', []):
-    if r.get('version') == '$VERSION':
-        print(r.get('hashes', {}).get('$OS/$ARCH', ''))
-        sys.exit(0)
-" 2>/dev/null
+path, version, key = sys.argv[1], sys.argv[2], sys.argv[3]
+with open(path) as f:
+    data = json.load(f)
+for r in data.get("releases", []):
+    if r.get("version") == version:
+        print(r.get("hashes", {}).get(key, ""))
+        break
+PY
 )"
 
 if [[ -z "$EXPECTED_SHA" ]]; then

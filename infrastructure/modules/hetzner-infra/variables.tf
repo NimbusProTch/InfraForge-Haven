@@ -86,7 +86,7 @@ variable "ingress_lb_location" {
 }
 
 variable "operator_cidrs" {
-  description = "Allow-list CIDRs for public SSH (22) and direct kubectl (6443). Must not contain 0.0.0.0/0."
+  description = "Allow-list CIDRs for SSH (22) on the NAT bastion — the only public SSH surface for the cluster. Each entry must be /16 or tighter; /0-/15 are forbidden so nobody can bypass the restriction by splitting the IPv4 space (historically this was set to [0.0.0.0/1, 128.0.0.0/1], which has the same effect as 0.0.0.0/0)."
   type        = list(string)
 
   validation {
@@ -97,5 +97,13 @@ variable "operator_cidrs" {
   validation {
     condition     = length(var.operator_cidrs) > 0
     error_message = "operator_cidrs cannot be empty — set your VPN or office egress CIDR."
+  }
+
+  validation {
+    condition = alltrue([
+      for c in var.operator_cidrs :
+      tonumber(split("/", c)[1]) >= 16
+    ])
+    error_message = "operator_cidrs entries must each be /16 or tighter — no /0-/15 wildcards (that bypasses the no-0.0.0.0/0 rule)."
   }
 }

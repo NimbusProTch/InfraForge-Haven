@@ -24,12 +24,19 @@ subnet_cidr      = "10.10.1.0/24"
 api_lb_type      = "lb11"
 ingress_lb_type  = "lb11"
 
-# Operator public IP (solo dev, home office). Update + target-apply
-# module.hetzner_infra.hcloud_firewall.this when the ISP rotates it.
-# TEMP: dynamic IP, allow from anywhere. Tighten after IP stabilizes
-# via VPN/Tailscale. Firewall validation rejects the literal 0.0.0.0/0,
-# so we split the IPv4 space into two /1 blocks which has the same effect.
-operator_cidrs = ["0.0.0.0/1", "128.0.0.0/1"]
+# Operator public IP block. Post Haven 15/15 the NAT box is the ONLY
+# public SSH surface AND the default egress gateway for every cluster
+# node, so the previous "split-the-whole-internet-into-two-/1-blocks"
+# bypass of the 0.0.0.0/0 validator is no longer acceptable — an SSH
+# compromise on the NAT box is a full-cluster compromise.
+#
+# /24 = the operator's home-ISP block (256 neighboring IPs). Tight
+# enough to block 99.999% of the internet, loose enough to tolerate
+# small ISP-side DHCP reshuffles without a `make infra-apply`.
+#
+# Longer-term this should be a Tailscale/WireGuard exit-node CIDR so
+# the source IP is stable — tracked in the sprint backlog.
+operator_cidrs = ["159.146.79.0/24"]
 
 # ----- Nodes ----------------------------------------------------------------
 master_count       = 3
