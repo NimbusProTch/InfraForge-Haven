@@ -13,5 +13,5 @@ server_type = "cx23"
 os_image    = "ubuntu-24.04"
 
 runner_count   = 3
-runner_labels  = ["self-hosted", "iyziops"]
+runner_labels  = ["self-hosted", "iyziops", "haven"]
 runner_version = "2.321.0"
