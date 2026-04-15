@@ -56,21 +56,42 @@ module "hetzner_infra" {
   operator_cidrs      = var.operator_cidrs
 }
 
-# ----- Reserve a stable private IP for the first master --------------------
+# ----- Pin EVERY node's private IP so Hetzner DHCP cannot drift ------------
 #
-#  The rke2-cluster module needs first_master_private_ip at render time so
-#  joining masters and workers can use it as the supervisor endpoint. Hetzner
-#  normally allocates private IPs dynamically, so we pin the first master
-#  explicitly via the inline `network { ip = ... }` block on the master[0]
-#  server resource below.
+#  Lesson from 2026-04-15: leaving joining masters and workers at the
+#  Hetzner auto-allocated IP (no `network.ip` field) combined with
+#  `lifecycle { ignore_changes = [network] }` created a silent failure
+#  mode. A DHCP lease renewal on Hetzner's side re-assigned two worker
+#  IPs; kubelet's `--node-ip` (baked in at cloud-init via sed from
+#  `ip addr show` at bootstrap time) became stale, so k8s `Node.InternalIP`
+#  and the Cilium BPF tunnel maps pointed at the wrong physical server,
+#  breaking cross-node pod networking for ~32 hours.
 #
-#  Offset 10 picks an address deep enough inside the subnet to be clear of
-#  Hetzner's reserved low addresses (.1 gateway, .2-.4 reserved in some
-#  zones). It must stay inside var.subnet_cidr.
+#  The upstream kube-hetzner module solves this by passing `var.private_ipv4`
+#  down to its host module and setting `hcloud_server.network { ip = ... }`
+#  explicitly for every node. We now do the same here, with an explicit
+#  offset table so the current cluster's state (masters at /10, /4, /3 from
+#  the original Hetzner DHCP allocation; workers at /5, /6, /7) is preserved
+#  byte-for-byte. After this change `tofu plan` reports 0/0/0 on the
+#  existing cluster; only a future cluster rebuild will use the pinned IPs
+#  deterministically.
+#
+#  Going forward the offsets can be renumbered (e.g. masters 10/11/12,
+#  workers 20/21/22) in a maintenance-window migration — THIS PR explicitly
+#  does NOT do that, to avoid triggering `ForceNew` on the network block.
 
 locals {
-  first_master_host_offset = 10
-  first_master_private_ip  = cidrhost(var.subnet_cidr, local.first_master_host_offset)
+  # Historical DHCP-allocated offsets, pinned to match the current tofu
+  # state so adding the `ip` field + removing `ignore_changes` is a no-op
+  # on the live cluster. Migration to sequential offsets (10/11/12 and
+  # 20/21/22) is a separate sprint.
+  master_host_offsets = [10, 4, 3]
+  worker_host_offsets = [5, 6, 7]
+  master_private_ips  = [for o in local.master_host_offsets : cidrhost(var.subnet_cidr, o)]
+  worker_private_ips  = [for o in local.worker_host_offsets : cidrhost(var.subnet_cidr, o)]
+
+  # The RKE2 server URL pointed at by joining masters and workers.
+  first_master_private_ip = local.master_private_ips[0]
 }
 
 # ----- Control plane nodes --------------------------------------------------
@@ -96,14 +117,14 @@ resource "hcloud_server" "master" {
     ipv6_enabled = false
   }
 
-  # Inline network attachment — required when the server has no public
-  # IPv4/IPv6, otherwise Hetzner refuses to start the VM with "no
-  # public or private network interfaces found". The first master gets
-  # a pinned IP matching local.first_master_private_ip so joining nodes
-  # have a stable registration address.
+  # Inline network attachment with an explicit pinned IP per master index.
+  # Required when the server has no public IPv4/IPv6 (otherwise Hetzner
+  # refuses to start the VM). Pinning every master prevents Hetzner DHCP
+  # from drifting the private IP on lease renewal — see the local block
+  # comment above for the incident that motivated this.
   network {
     network_id = module.hetzner_infra.network_id
-    ip         = count.index == 0 ? local.first_master_private_ip : null
+    ip         = local.master_private_ips[count.index]
   }
 
   labels = {
@@ -112,15 +133,13 @@ resource "hcloud_server" "master" {
     environment = var.environment
   }
 
-  # Hetzner DHCP picks the private IP for joining masters (count.index >= 1)
-  # because the inline `network { ip = ... }` is null for them. tofu refresh
-  # reads the assigned IP back into state, but config-vs-state diff then
-  # shows a perpetual "remove + re-add network block" plan that would
-  # detach + reattach the NIC and reassign IPs — breaking RKE2 join
-  # addresses. We tell tofu to never reconcile the network block. Real
-  # network changes require `tofu apply -replace=hcloud_server.master[N]`.
+  # ignore_changes [network] is NOT used here anymore: the IP is now
+  # pinned explicitly via the local offset table, so there is no
+  # DHCP-driven drift for tofu to ignore. A future rename of the offset
+  # table IS destructive (ForceNew on the network block), and must be
+  # done in a maintenance window with one-at-a-time drain-apply-rejoin.
   lifecycle {
-    ignore_changes = [network]
+    ignore_changes = [image, user_data, ssh_keys]
   }
 
   # module.hetzner_infra includes hcloud_network_route.default_via_nat,
@@ -150,10 +169,12 @@ resource "hcloud_server" "worker" {
     ipv6_enabled = false
   }
 
-  # Inline network attachment (see master block) — required for
-  # private-only servers to have at least one NIC at boot time.
+  # Inline network attachment with an explicit pinned IP per worker index.
+  # See master block and local block comments above for the incident that
+  # motivated pinning every node's private IP.
   network {
     network_id = module.hetzner_infra.network_id
+    ip         = local.worker_private_ips[count.index]
   }
 
   labels = {
@@ -162,10 +183,9 @@ resource "hcloud_server" "worker" {
     environment = var.environment
   }
 
-  # See master block: ignore network drift so DHCP-assigned IPs are
-  # not re-randomized by `tofu apply`.
+  # ignore_changes [network] removed — see master block for rationale.
   lifecycle {
-    ignore_changes = [network]
+    ignore_changes = [image, user_data, ssh_keys]
   }
 
   depends_on = [
