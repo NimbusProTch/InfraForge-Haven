@@ -7,9 +7,9 @@ metadata:
     app: iyziops-ui
     haven.io/component: ui
 spec:
-  # Scaled to 0 on iyziops until the haven-ui image is rebuilt against an
-  # iyziops-accessible registry. See haven-api/deployment.yaml for context.
-  replicas: 0
+  # OVERNIGHT SPRINT 2026-04-17: images rebuilt, pushed to temp in-cluster
+  # registry. Pinned to worker-0. See iyziops-api/deployment.yaml rationale.
+  replicas: 1
   selector:
     matchLabels:
       app: iyziops-ui
@@ -28,6 +28,8 @@ spec:
           type: RuntimeDefault
       tolerations:
         - operator: "Exists"
+      nodeSelector:
+        kubernetes.io/hostname: iyziops-worker-0
       affinity:
         podAntiAffinity:
           preferredDuringSchedulingIgnoredDuringExecution:
@@ -39,8 +41,8 @@ spec:
                 topologyKey: kubernetes.io/hostname
       containers:
         - name: iyziops-ui
-          image: harbor.46.225.42.2.sslip.io/library/haven-ui@sha256:1c48d9dd56a319a0f931047493e308fe25d135dd2de1f9d187e35f72581bfc77
-          imagePullPolicy: Always
+          image: 10.43.188.196:5000/iyziops-ui:overnight-20260417
+          imagePullPolicy: Never
           ports:
             - name: http
               containerPort: 3000
