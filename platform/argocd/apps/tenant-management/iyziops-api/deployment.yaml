@@ -7,15 +7,16 @@ metadata:
     app: iyziops-api
     haven.io/component: api
 spec:
-  # Scaled to 0 on iyziops until the image is rebuilt against an iyziops-
-  # accessible registry. The original image reference points at the old
-  # Haven Hetzner cluster Harbor (harbor.46.225.42.2.sslip.io) which does
-  # not exist here. To re-enable: push the haven-api image to a registry
-  # the iyziops cluster can pull (ghcr.io / docker.io / iyziops-internal
-  # Harbor when deployed), update the .image field below + db-migrate
-  # initContainer image, restore replicas to 2, populate haven-api-secrets
-  # (Keycloak realm, CNPG DSN, etc).
-  replicas: 0
+  # OVERNIGHT SPRINT 2026-04-17: images rebuilt from source and pushed to
+  # temp in-cluster registry (temp-registry/registry.temp-registry.svc,
+  # ClusterIP 10.43.188.196:5000). Nodes containerd pre-pulled via ctr so
+  # imagePullPolicy: Never works. Deploy pinned to worker-0 where image
+  # cache + dev postgres (iyziops-db) + containerd are co-located to avoid
+  # cross-node volume/DNS flakiness seen during recovery. Replace with
+  # Harbor-backed digest + remove nodeSelector once Harbor is Healthy and
+  # a proper build-push pipeline lands (blocked on: Longhorn CSI attach
+  # stability, harbor-database PVC mount).
+  replicas: 1
   selector:
     matchLabels:
       app: iyziops-api
@@ -40,6 +41,13 @@ spec:
           type: RuntimeDefault
       tolerations:
         - operator: "Exists"
+      # Pin to worker-0 (overnight sprint): image is pre-pulled in worker-0's
+      # containerd via ctr, and the dev-mode iyziops-db Deployment runs on
+      # worker-0 with emptyDir storage. Removing this pin requires either
+      # pre-pulling to all workers or fixing worker-1/worker-2 socketLB so
+      # they can reach the temp-registry ClusterIP.
+      nodeSelector:
+        kubernetes.io/hostname: iyziops-worker-0
       affinity:
         podAntiAffinity:
           preferredDuringSchedulingIgnoredDuringExecution:
@@ -51,7 +59,8 @@ spec:
                 topologyKey: kubernetes.io/hostname
       initContainers:
         - name: db-migrate
-          image: harbor.46.225.42.2.sslip.io/library/haven-api@sha256:ee72fb4702af177f1e374d2fe512f05682979358fdd25b7c281001091a0309f7
+          image: 10.43.188.196:5000/iyziops-api:overnight-20260417
+          imagePullPolicy: Never
           command:
             - sh
             - -c
@@ -87,8 +96,8 @@ spec:
               type: RuntimeDefault
       containers:
         - name: iyziops-api
-          image: harbor.46.225.42.2.sslip.io/library/haven-api@sha256:ee72fb4702af177f1e374d2fe512f05682979358fdd25b7c281001091a0309f7
-          imagePullPolicy: Always
+          image: 10.43.188.196:5000/iyziops-api:overnight-20260417
+          imagePullPolicy: Never
           ports:
             - name: http
               containerPort: 8000
