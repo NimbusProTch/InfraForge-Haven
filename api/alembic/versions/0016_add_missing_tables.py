@@ -1,8 +1,14 @@
-"""Add missing tables: domain_verifications, tenant_members.
+"""Add missing tables: domain_verifications.
 
 Revision ID: 0016
 Revises: 0015
 Create Date: 2026-03-29
+
+NOTE: The original 0016 also created `tenant_members`, duplicating migration
+0007 (which already creates the same table). This caused `DuplicateTableError`
+on every fresh-DB `alembic upgrade head` run, since tenant_members exists by
+the time 0016 runs. The duplicate block was removed during the 2026-04-17
+overnight recovery sprint. Migration 0007 remains the authoritative creator.
 """
 
 import sqlalchemy as sa
@@ -35,24 +41,7 @@ def upgrade() -> None:
         sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
     )
 
-    op.create_table(
-        "tenant_members",
-        sa.Column("id", sa.Uuid(), primary_key=True),
-        sa.Column("tenant_id", sa.Uuid(), sa.ForeignKey("tenants.id", ondelete="CASCADE"), index=True, nullable=False),
-        sa.Column("user_id", sa.String(255), index=True, nullable=False),
-        sa.Column("email", sa.String(255), nullable=False),
-        sa.Column("display_name", sa.String(255), nullable=True),
-        sa.Column(
-            "role",
-            sa.Enum("owner", "admin", "member", "viewer", name="memberrole"),
-            nullable=False,
-            server_default="member",
-        ),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
-    )
-
 
 def downgrade() -> None:
-    op.drop_table("tenant_members")
+    # 0007 owns tenant_members — don't drop it here, only domain_verifications.
     op.drop_table("domain_verifications")

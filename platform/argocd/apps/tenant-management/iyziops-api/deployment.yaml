@@ -59,7 +59,7 @@ spec:
                 topologyKey: kubernetes.io/hostname
       initContainers:
         - name: db-migrate
-          image: 10.43.188.196:5000/iyziops-api:overnight-20260417
+          image: 10.43.188.196:5000/iyziops-api:overnight-20260417v2
           imagePullPolicy: Never
           command:
             - sh
@@ -96,7 +96,7 @@ spec:
               type: RuntimeDefault
       containers:
         - name: iyziops-api
-          image: 10.43.188.196:5000/iyziops-api:overnight-20260417
+          image: 10.43.188.196:5000/iyziops-api:overnight-20260417v2
           imagePullPolicy: Never
           ports:
             - name: http
