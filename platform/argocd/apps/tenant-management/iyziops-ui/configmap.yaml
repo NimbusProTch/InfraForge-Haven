@@ -4,7 +4,7 @@ metadata:
   name: iyziops-ui-config
   namespace: haven-system
 data:
-  NEXTAUTH_URL: "https://app.iyziops.com"
+  NEXTAUTH_URL: "https://iyziops.com"
   NEXT_PUBLIC_API_URL: "https://api.iyziops.com"
   KEYCLOAK_URL: "https://keycloak.iyziops.com"
   KEYCLOAK_REALM: "haven"

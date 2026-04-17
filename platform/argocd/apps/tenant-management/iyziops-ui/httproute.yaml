@@ -13,7 +13,7 @@ spec:
       namespace: iyziops-gateway
       sectionName: https
   hostnames:
-    - "app.iyziops.com"
+    - "iyziops.com"
   rules:
     - matches:
         - path:
