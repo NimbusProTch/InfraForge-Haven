@@ -572,8 +572,8 @@ class TestServiceEnums:
     """Verify managed service enums are complete."""
 
     def test_all_service_types(self):
-        """All 5 service types exist."""
-        expected = {"postgres", "mysql", "mongodb", "redis", "rabbitmq"}
+        """All 6 service types exist (kafka added 2026-04-17 in commit 7474cb1)."""
+        expected = {"postgres", "mysql", "mongodb", "redis", "rabbitmq", "kafka"}
         actual = {t.value for t in ServiceType}
         assert expected == actual
 

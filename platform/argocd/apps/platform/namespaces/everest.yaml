@@ -1,0 +1,74 @@
+---
+# =============================================================================
+#  everest-system namespace (Percona Everest API server + OLM control-plane)
+# =============================================================================
+#  Pod Security Admission: `privileged` — Everest server Deployment and the
+#  Helm chart's pre-install Job (`percona/everest-helmtools`) need broader
+#  capabilities than `baseline` allows. The chart also creates the
+#  `everest-accounts` / `everest-jwt` / `everest-rbac` resources here.
+# =============================================================================
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: everest-system
+  labels:
+    pod-security.kubernetes.io/enforce: privileged
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
+    iyziops.io/layer: data-services
+---
+# =============================================================================
+#  everest namespace (Percona operators + DatabaseCluster CRs)
+# =============================================================================
+#  PSA: `privileged` — Percona PG/PXC/PSMDB operators create StatefulSet
+#  pods that need hostPath volumes for PVC provisioning and privilege
+#  escalation for WAL shipping. `baseline` blocks these.
+# =============================================================================
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: everest
+  labels:
+    pod-security.kubernetes.io/enforce: privileged
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
+    iyziops.io/layer: data-services
+---
+# =============================================================================
+#  everest-olm namespace (OLM — Operator Lifecycle Manager, bundles Percona)
+# =============================================================================
+#  PSA: `privileged` — OLM's operator-registry ServerPod uses FUSE-like
+#  mount patterns that need capabilities beyond `baseline`. Also hosts
+#  the `packageserver` APIService pod.
+# =============================================================================
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: everest-olm
+  labels:
+    pod-security.kubernetes.io/enforce: privileged
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
+    iyziops.io/layer: data-services
+---
+# =============================================================================
+#  everest-monitoring namespace (VictoriaMetrics + kube-state-metrics — OFF)
+# =============================================================================
+#  PSA: `privileged` — VictoriaMetrics operator (docker.io/victoriametrics/
+#  operator) and kube-state-metrics subchart do NOT set the securityContext
+#  required by `restricted` profile (allowPrivilegeEscalation=false,
+#  capabilities.drop=["ALL"], runAsNonRoot=true, seccompProfile). Three
+#  prior CLI installs failed here. This label enables re-enabling monitoring
+#  later without repeating the PSA debugging cycle. Current chart values
+#  keep monitoring/kube-state-metrics/createMonitoringResources off — this
+#  namespace stays empty in practice.
+# =============================================================================
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: everest-monitoring
+  labels:
+    pod-security.kubernetes.io/enforce: privileged
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
+    iyziops.io/layer: data-services

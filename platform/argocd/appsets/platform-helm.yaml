@@ -802,15 +802,60 @@ spec:
               metrics:
                 enabled: false
 
-          # ----- Wave 6: Data services (FUTURE — Sprint D1) -------------
-          # - name: everest
-          #   namespace: everest-system
-          #   syncWave: "5"
-          #   repoURL: https://percona.github.io/percona-helm-charts
-          #   chart: everest
-          #   targetRevision: <latest>
-          #   values: |
-          #     (see Sprint D1 values)
+          # ----- Wave 4: Data services (Percona Everest) ---------------
+          # Percona Everest — unified DB provisioning UI/API over three
+          # Percona Operators (PG / PXC / PSMDB). Installed via OLM which
+          # the chart bundles (olm.install: true) into everest-olm ns.
+          # Namespaces pre-labeled PSA=privileged via sibling raw manifest
+          # platform/argocd/apps/platform/namespaces/everest.yaml.
+          # Monitoring subchart (VictoriaMetrics + kube-state-metrics) is
+          # DISABLED — 3 prior CLI installs failed at VM operator due to
+          # PSA timing; kube-prometheus-stack (wave 3) already covers
+          # platform observability.
+          - name: everest
+            namespace: everest-system
+            syncWave: "4"
+            repoURL: https://percona.github.io/percona-helm-charts
+            chart: everest
+            targetRevision: "1.13.0"
+            values: |
+              # Disable VictoriaMetrics monitoring bundle — primary PSA fix.
+              monitoring:
+                enabled: false
+              # Disable kube-state-metrics subchart — also lands in
+              # everest-monitoring ns with restricted-violating securityContext.
+              kube-state-metrics:
+                enabled: false
+              # Disable auto-created ServiceMonitor/PodMonitor — they depend
+              # on the VM operator CRDs we just disabled.
+              createMonitoringResources: false
+              # EU data sovereignty — no upstream telemetry.
+              telemetry: false
+              # OLM: chart-bundled, installed in everest-olm ns.
+              olm:
+                install: true
+                namespaceOverride: everest-olm
+              # Percona operators in `everest` ns (admin-facing DB CRs).
+              dbNamespace:
+                enabled: true
+                namespaceOverride: everest
+              # All 3 Percona data importers enabled.
+              dataImporters:
+                perconaPGOperator:
+                  enabled: true
+                perconaPXCOperator:
+                  enabled: true
+                perconaPSMDBOperator:
+                  enabled: true
+              # Admin password: chart generates random on first install,
+              # stored in Secret/everest-accounts. Post-install reconcile
+              # (see sprint runbook) copies the generated password into
+              # iyziops-api-secrets.EVEREST_ADMIN_PASSWORD and rollout-
+              # restarts iyziops-api. No plaintext password in git.
+              server:
+                rbac:
+                  enabled: false   # single admin user; enable + OIDC next sprint
+                initialAdminPassword: ""
 
   template:
     metadata:
