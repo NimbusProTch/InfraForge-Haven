@@ -10,7 +10,7 @@ spec:
   # OVERNIGHT SPRINT 2026-04-17: images rebuilt from source and pushed to
   # temp in-cluster registry (temp-registry/registry.temp-registry.svc,
   # ClusterIP 10.43.188.196:5000). Nodes containerd pre-pulled via ctr so
-  # imagePullPolicy: Never works. Deploy pinned to worker-0 where image
+  # imagePullPolicy: IfNotPresent works. Deploy pinned to worker-0 where image
   # cache + dev postgres (iyziops-db) + containerd are co-located to avoid
   # cross-node volume/DNS flakiness seen during recovery. Replace with
   # Harbor-backed digest + remove nodeSelector once Harbor is Healthy and
@@ -60,7 +60,7 @@ spec:
       initContainers:
         - name: db-migrate
           image: harbor.iyziops.com/library/iyziops-api@sha256:d44e731619391c302348758f534a15a6bed85aeaf6a61f8582c9bfe9ff569415
-          imagePullPolicy: Never
+          imagePullPolicy: IfNotPresent
           command:
             - sh
             - -c
@@ -97,7 +97,7 @@ spec:
       containers:
         - name: iyziops-api
           image: harbor.iyziops.com/library/iyziops-api@sha256:d44e731619391c302348758f534a15a6bed85aeaf6a61f8582c9bfe9ff569415
-          imagePullPolicy: Never
+          imagePullPolicy: IfNotPresent
           ports:
             - name: http
               containerPort: 8000

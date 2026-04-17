@@ -42,7 +42,7 @@ spec:
       containers:
         - name: iyziops-ui
           image: harbor.iyziops.com/library/iyziops-ui@sha256:550364b526f61117586107096e8856dc29948f98880783ed25ef925f75ecf840
-          imagePullPolicy: Never
+          imagePullPolicy: IfNotPresent
           ports:
             - name: http
               containerPort: 3000
