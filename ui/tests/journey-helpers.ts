@@ -3,9 +3,18 @@
  */
 import { type Page, expect } from "@playwright/test";
 
-export const UI = "https://app.46.225.42.2.sslip.io";
-export const API = "https://api.46.225.42.2.sslip.io/api/v1";
-export const KC = "https://keycloak.46.225.42.2.sslip.io";
+// 2026-04-18 rename: cluster endpoints moved from *.46.225.42.2.sslip.io
+// to iyziops.com. Override via env vars to target a different cluster.
+export const UI = process.env.IYZIOPS_UI_URL ?? "https://iyziops.com";
+export const API = process.env.IYZIOPS_API_URL ?? "https://api.iyziops.com/api/v1";
+export const KC = process.env.IYZIOPS_KC_URL ?? "https://keycloak.iyziops.com";
+
+// Keycloak test client credentials. ESO+Vault pipe is a follow-up sprint;
+// for now the UI deployment uses the same static haven-ui-dev-secret-2026.
+const KC_CLIENT_ID = process.env.IYZIOPS_KC_CLIENT_ID ?? "haven-ui";
+const KC_CLIENT_SECRET = process.env.IYZIOPS_KC_CLIENT_SECRET ?? "haven-ui-dev-secret-2026";
+const KC_USER = process.env.IYZIOPS_KC_USER ?? "testuser";
+const KC_PASS = process.env.IYZIOPS_KC_PASS ?? "test123456";
 
 // Unique per test run to avoid conflicts
 export const SLUG = `e2e-${Date.now().toString(36)}`;
@@ -39,8 +48,8 @@ export async function login(page: Page) {
 
   // If still on Keycloak login form, fill it
   if (page.url().includes("keycloak")) {
-    await page.fill("#username", "admin");
-    await page.fill("#password", "HavenAdmin2026!");
+    await page.fill("#username", KC_USER);
+    await page.fill("#password", KC_PASS);
     await page.click("#kc-login");
     await page.waitForURL(/dashboard|tenants/, { timeout: 20_000 });
   }
@@ -50,12 +59,23 @@ export async function login(page: Page) {
  * Get API bearer token directly from Keycloak (for direct API calls).
  */
 export async function getToken(): Promise<string> {
+  const body = new URLSearchParams({
+    client_id: KC_CLIENT_ID,
+    client_secret: KC_CLIENT_SECRET,
+    username: KC_USER,
+    password: KC_PASS,
+    grant_type: "password",
+    scope: "openid",
+  });
   const res = await fetch(`${KC}/realms/haven/protocol/openid-connect/token`, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: "client_id=haven-api&username=admin&password=HavenAdmin2026!&grant_type=password",
+    body: body.toString(),
   });
   const data = await res.json();
+  if (!data.access_token) {
+    throw new Error(`Keycloak token fetch failed: ${JSON.stringify(data)}`);
+  }
   return data.access_token;
 }
 
