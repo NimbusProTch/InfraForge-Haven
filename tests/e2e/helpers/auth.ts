@@ -1,7 +1,7 @@
 import { type Page } from "@playwright/test";
 
-const KC_USER = process.env.KC_USER || "testdev";
-const KC_PASS = process.env.KC_PASS || "Test1234!";
+const KC_USER = process.env.KC_USER || "testuser";
+const KC_PASS = process.env.KC_PASS || "test123456";
 
 /**
  * Log in through Keycloak OAuth flow.
@@ -12,7 +12,7 @@ export async function loginWithKeycloak(page: Page) {
   await page.waitForLoadState("networkidle");
 
   // Click Keycloak sign-in button
-  const kcButton = page.getByRole("button", { name: /keycloak/i });
+  const kcButton = page.getByRole("button", { name: /sso|keycloak/i });
   await kcButton.click();
 
   // Wait for Keycloak login form
