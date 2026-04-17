@@ -116,9 +116,22 @@ class TestRedisBody:
         storage_size = body["spec"]["storage"]["volumeClaimTemplate"]["spec"]["resources"]["requests"]["storage"]
         assert storage_size == "5Gi"
 
-    def test_dev_no_security_context(self):
+    def test_redis_pod_security_context_is_psa_restricted(self):
+        """Redis pod + container securityContext MUST satisfy PSA restricted.
+
+        Pre-2026-04-18 Redis CRs had no securityContext and fell back to
+        operator defaults which FAIL tenant-ns `pod-security.kubernetes.io/
+        enforce=restricted`. This test guards the regression.
+        """
         body = _redis_body("my-redis", "tenant-acme", ServiceTier.DEV)
-        assert "securityContext" not in body["spec"]
+        psc = body["spec"]["podSecurityContext"]
+        assert psc["runAsNonRoot"] is True
+        assert psc["seccompProfile"]["type"] == "RuntimeDefault"
+        csc = body["spec"]["securityContext"]
+        assert csc["allowPrivilegeEscalation"] is False
+        assert csc["capabilities"]["drop"] == ["ALL"]
+        assert csc["runAsNonRoot"] is True
+        assert csc["seccompProfile"]["type"] == "RuntimeDefault"
 
     def test_prod_has_persistent_storage(self):
         body = _redis_body("my-redis", "tenant-acme", ServiceTier.PROD)
@@ -128,6 +141,63 @@ class TestRedisBody:
     def test_tolerations_present(self):
         body = _redis_body("my-redis", "tenant-acme", ServiceTier.DEV)
         assert body["spec"]["tolerations"] == [{"operator": "Exists"}]
+
+    def test_redis_has_liveness_probe(self):
+        """Kyverno `require-health-probes` policy requires livenessProbe on tenant pods."""
+        body = _redis_body("my-redis", "tenant-acme", ServiceTier.DEV)
+        assert body["spec"]["livenessProbe"]["tcpSocket"]["port"] == 6379
+
+
+class TestRabbitmqBodyPSA:
+    def test_rabbitmq_override_sets_psa_restricted_context(self):
+        body = _rabbitmq_body("my-rmq", "tenant-acme", ServiceTier.DEV)
+        template_spec = body["spec"]["override"]["statefulSet"]["spec"]["template"]["spec"]
+        assert template_spec["securityContext"]["runAsNonRoot"] is True
+        assert template_spec["securityContext"]["seccompProfile"]["type"] == "RuntimeDefault"
+        container = template_spec["containers"][0]
+        assert container["name"] == "rabbitmq"
+        csc = container["securityContext"]
+        assert csc["allowPrivilegeEscalation"] is False
+        assert csc["capabilities"]["drop"] == ["ALL"]
+
+
+class TestKafkaBodyPSA:
+    def test_kafka_pod_template_has_psa_restricted(self):
+        """Kafka CR template.pod / kafkaContainer carry PSA-restricted context.
+
+        Strimzi 0.46+ KRaft mode: no zookeeper, replicas live in KafkaNodePool.
+        """
+        from app.services.managed_service import _kafka_body
+
+        body = _kafka_body("k1", "tenant-acme", ServiceTier.DEV)
+        assert "zookeeper" not in body["spec"]
+        tpl = body["spec"]["kafka"]["template"]
+        assert tpl["pod"]["securityContext"]["runAsNonRoot"] is True
+        assert tpl["kafkaContainer"]["securityContext"]["allowPrivilegeEscalation"] is False
+
+    def test_kafka_requires_kraft_annotations(self):
+        """Strimzi 0.46+ refuses Kafka CRs without the KRaft annotations."""
+        from app.services.managed_service import _kafka_body
+
+        body = _kafka_body("k1", "tenant-acme", ServiceTier.DEV)
+        ann = body["metadata"]["annotations"]
+        assert ann["strimzi.io/node-pools"] == "enabled"
+        assert ann["strimzi.io/kraft"] == "enabled"
+
+
+class TestRabbitmqInitContainerPSA:
+    def test_rabbitmq_override_includes_setup_container_init(self):
+        """RabbitMQ operator v2 injects a `setup-container` initContainer
+        which must also carry PSA-compliant securityContext or the StatefulSet
+        fails to create pods."""
+        body = _rabbitmq_body("my-rmq", "tenant-acme", ServiceTier.DEV)
+        tpl_spec = body["spec"]["override"]["statefulSet"]["spec"]["template"]["spec"]
+        init_containers = tpl_spec["initContainers"]
+        assert len(init_containers) == 1
+        assert init_containers[0]["name"] == "setup-container"
+        csc = init_containers[0]["securityContext"]
+        assert csc["allowPrivilegeEscalation"] is False
+        assert csc["capabilities"]["drop"] == ["ALL"]
 
 
 class TestRabbitmqBody:

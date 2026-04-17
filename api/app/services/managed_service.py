@@ -53,14 +53,64 @@ def _cnpg_cluster_body(
     }
 
 
+# PSA restricted profile requires every container to set:
+#   - allowPrivilegeEscalation: false
+#   - capabilities.drop: ["ALL"]
+#   - runAsNonRoot: true
+#   - seccompProfile.type: RuntimeDefault
+# Tenant namespaces (tenant-{slug}) have `pod-security.kubernetes.io/enforce=
+# restricted`, so every operator-created pod must carry these defaults or it
+# fails admission with "violates PodSecurity restricted:latest".
+_PSA_RESTRICTED_CONTAINER = {
+    "allowPrivilegeEscalation": False,
+    "capabilities": {"drop": ["ALL"]},
+    "runAsNonRoot": True,
+    "seccompProfile": {"type": "RuntimeDefault"},
+}
+_PSA_RESTRICTED_POD = {
+    "runAsNonRoot": True,
+    "seccompProfile": {"type": "RuntimeDefault"},
+}
+
+
 def _redis_body(name: str, namespace: str, tier: ServiceTier) -> dict:
-    """Build a Redis CRD manifest (OpsTree Redis Operator)."""
+    """Build a Redis CRD manifest (OpsTree Redis Operator).
+
+    Sets PSA-restricted compatible securityContext via the `podSecurityContext`
+    + `redisSecurityContext` fields that OpsTree v1beta2 exposes. Without
+    these, the operator creates a pod that fails tenant-ns PSA admission.
+    """
     spec: dict = {
         "kubernetesConfig": {
             "image": "quay.io/opstree/redis:v7.0.15",
             "imagePullPolicy": "IfNotPresent",
+            "resources": {
+                "requests": {"cpu": "50m", "memory": "64Mi"},
+                "limits": {"memory": "256Mi"},
+            },
         },
         "tolerations": [{"operator": "Exists"}],
+        # Pod-level securityContext (runAsNonRoot etc.)
+        "podSecurityContext": {
+            "runAsUser": 1000,
+            "runAsGroup": 1000,
+            "fsGroup": 1000,
+            "runAsNonRoot": True,
+            "seccompProfile": {"type": "RuntimeDefault"},
+        },
+        # Container-level securityContext for the Redis container
+        "securityContext": _PSA_RESTRICTED_CONTAINER,
+        # Liveness + readiness via redis-cli PING (required by Kyverno policy)
+        "livenessProbe": {
+            "tcpSocket": {"port": 6379},
+            "initialDelaySeconds": 15,
+            "periodSeconds": 10,
+        },
+        "readinessProbe": {
+            "tcpSocket": {"port": 6379},
+            "initialDelaySeconds": 5,
+            "periodSeconds": 10,
+        },
     }
     if tier == ServiceTier.PROD:
         spec["storage"] = {
@@ -82,7 +132,13 @@ def _redis_body(name: str, namespace: str, tier: ServiceTier) -> dict:
 
 
 def _rabbitmq_body(name: str, namespace: str, tier: ServiceTier) -> dict:
-    """Build a RabbitmqCluster manifest (RabbitMQ Cluster Operator)."""
+    """Build a RabbitmqCluster manifest (RabbitMQ Cluster Operator).
+
+    RabbitMQ operator v2.x wraps pod overrides under `spec.override.statefulSet.
+    spec.template.spec.*`. Without a hard PSA override the operator's default
+    pod spec omits the required runAsNonRoot / capabilities.drop values and
+    admission blocks pod creation in restricted tenant namespaces.
+    """
     replicas = 1 if tier == ServiceTier.DEV else 3
     storage = "5Gi" if tier == ServiceTier.DEV else "10Gi"
     return {
@@ -96,22 +152,68 @@ def _rabbitmq_body(name: str, namespace: str, tier: ServiceTier) -> dict:
                 "storage": storage,
             },
             "tolerations": [{"operator": "Exists"}],
+            # Override the StatefulSet pod template to enforce PSA restricted.
+            # RabbitMQ operator v2 injects a `setup-container` initContainer
+            # (copies the plugins-conf ConfigMap) which also must satisfy
+            # restricted — otherwise admission rejects the pod at StatefulSet
+            # Create time, not just the main container.
+            "override": {
+                "statefulSet": {
+                    "spec": {
+                        "template": {
+                            "spec": {
+                                "securityContext": _PSA_RESTRICTED_POD,
+                                "initContainers": [
+                                    {
+                                        "name": "setup-container",
+                                        "securityContext": _PSA_RESTRICTED_CONTAINER,
+                                    },
+                                ],
+                                "containers": [
+                                    {
+                                        "name": "rabbitmq",
+                                        "securityContext": _PSA_RESTRICTED_CONTAINER,
+                                    },
+                                ],
+                            },
+                        },
+                    },
+                },
+            },
         },
     }
 
 
 def _kafka_body(name: str, namespace: str, tier: ServiceTier) -> dict:
-    """Build a Strimzi Kafka cluster manifest."""
+    """Build a Strimzi Kafka cluster manifest (KRaft mode — Strimzi 0.46+).
+
+    ZooKeeper has been removed in Strimzi 0.46. The Kafka CR defines cluster-
+    wide configuration; broker/controller replicas + storage move to a sibling
+    `KafkaNodePool` resource (built via `_kafka_node_pool_body`).
+
+    Annotations: `strimzi.io/node-pools: enabled` + `strimzi.io/kraft: enabled`
+    tell the operator this is a node-pool-managed KRaft cluster. Without them,
+    operator 0.46+ refuses to reconcile (ZooKeeper rejected, but plain Kafka
+    CR without nodepools annotation hits a different rejection).
+    """
     replicas = 1 if tier == ServiceTier.DEV else 3
-    storage_size = "5Gi" if tier == ServiceTier.DEV else "20Gi"
     return {
         "apiVersion": "kafka.strimzi.io/v1beta2",
         "kind": "Kafka",
-        "metadata": {"name": name, "namespace": namespace},
+        "metadata": {
+            "name": name,
+            "namespace": namespace,
+            "annotations": {
+                "strimzi.io/node-pools": "enabled",
+                "strimzi.io/kraft": "enabled",
+            },
+        },
         "spec": {
             "kafka": {
+                # Strimzi 0.46.1 supports Kafka 3.8.x / 3.9.x. Pin to 3.9.0
+                # which Strimzi treats as the current stable.
                 "version": "3.9.0",
-                "replicas": replicas,
+                "metadataVersion": "3.9-IV0",
                 "listeners": [
                     {
                         "name": "plain",
@@ -127,35 +229,61 @@ def _kafka_body(name: str, namespace: str, tier: ServiceTier) -> dict:
                     "default.replication.factor": replicas,
                     "min.insync.replicas": 1,
                 },
-                "storage": {
-                    "type": "persistent-claim",
-                    "size": storage_size,
-                    "class": "longhorn",
-                    "deleteClaim": True,
-                },
                 "template": {
                     "pod": {
                         "tolerations": [{"operator": "Exists"}],
+                        "securityContext": _PSA_RESTRICTED_POD,
                     },
-                },
-            },
-            "zookeeper": {
-                "replicas": replicas,
-                "storage": {
-                    "type": "persistent-claim",
-                    "size": "2Gi",
-                    "class": "longhorn",
-                    "deleteClaim": True,
-                },
-                "template": {
-                    "pod": {
-                        "tolerations": [{"operator": "Exists"}],
-                    },
+                    "kafkaContainer": {"securityContext": _PSA_RESTRICTED_CONTAINER},
                 },
             },
             "entityOperator": {
                 "topicOperator": {},
                 "userOperator": {},
+            },
+        },
+    }
+
+
+def _kafka_node_pool_body(name: str, namespace: str, tier: ServiceTier) -> dict:
+    """KafkaNodePool sibling resource for the Kafka CR (Strimzi 0.46+ KRaft).
+
+    Hosts replicas + storage (moved out of the Kafka CR). `roles:
+    [controller, broker]` creates combined-role nodes (simplest for dev tier).
+    Label `strimzi.io/cluster: <name>` binds the NodePool to the Kafka CR.
+    """
+    replicas = 1 if tier == ServiceTier.DEV else 3
+    storage_size = "5Gi" if tier == ServiceTier.DEV else "20Gi"
+    return {
+        "apiVersion": "kafka.strimzi.io/v1beta2",
+        "kind": "KafkaNodePool",
+        "metadata": {
+            "name": f"{name}-dual",
+            "namespace": namespace,
+            "labels": {"strimzi.io/cluster": name},
+        },
+        "spec": {
+            "replicas": replicas,
+            "roles": ["controller", "broker"],
+            "storage": {
+                "type": "jbod",
+                "volumes": [
+                    {
+                        "id": 0,
+                        "type": "persistent-claim",
+                        "size": storage_size,
+                        "class": "longhorn",
+                        "deleteClaim": True,
+                        "kraftMetadata": "shared",
+                    }
+                ],
+            },
+            "template": {
+                "pod": {
+                    "tolerations": [{"operator": "Exists"}],
+                    "securityContext": _PSA_RESTRICTED_POD,
+                },
+                "kafkaContainer": {"securityContext": _PSA_RESTRICTED_CONTAINER},
             },
         },
     }
@@ -500,6 +628,23 @@ class ManagedServiceProvisioner:
                 logger.exception("Failed to create CRD for service %s", service.name)
                 service.status = ServiceStatus.FAILED
                 return
+
+        # Kafka (Strimzi 0.46+ KRaft) requires a sibling KafkaNodePool CR
+        # holding replicas + storage. Without it the Kafka CR NotReady forever.
+        if service.service_type == ServiceType.KAFKA:
+            try:
+                self.k8s.custom_objects.create_namespaced_custom_object(
+                    group="kafka.strimzi.io",
+                    version="v1beta2",
+                    namespace=tenant_namespace,
+                    plural="kafkanodepools",
+                    body=_kafka_node_pool_body(service.name, tenant_namespace, service.tier),
+                )
+            except ApiException as e:
+                if e.status != 409:
+                    logger.exception("Failed to create KafkaNodePool for %s", service.name)
+                    service.status = ServiceStatus.FAILED
+                    return
 
         service.secret_name = _SECRET_NAME_MAP[service.service_type](service.name)
         service.service_namespace = tenant_namespace
