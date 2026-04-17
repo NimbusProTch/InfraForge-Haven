@@ -1,7 +1,7 @@
 import { type APIRequestContext } from "@playwright/test";
 
 const API_URL = process.env.API_URL || "http://localhost:8000";
-const KC_URL = process.env.KC_URL || "http://localhost:8080";
+const KC_URL = process.env.KC_URL || "https://keycloak.iyziops.com";
 
 /**
  * Get a Keycloak access token for API calls.
@@ -13,8 +13,8 @@ export async function getApiToken(request: APIRequestContext): Promise<string> {
       form: {
         grant_type: "password",
         client_id: "haven-api",
-        username: process.env.KC_USER || "testdev",
-        password: process.env.KC_PASS || "Test1234!",
+        username: process.env.KC_USER || "testuser",
+        password: process.env.KC_PASS || "test123456",
       },
     }
   );

@@ -10,14 +10,14 @@ setup("authenticate via Keycloak", async ({ page }) => {
   await page.waitForLoadState("networkidle");
 
   // Click Keycloak sign-in
-  await page.getByRole("button", { name: /keycloak/i }).click();
+  await page.getByRole("button", { name: /sso|keycloak/i }).click();
 
   // Wait for Keycloak login form
   await page.waitForURL(/realms\/haven/, { timeout: 10_000 });
 
   // Fill and submit
-  await page.locator("#username").fill(process.env.KC_USER || "testdev");
-  await page.locator("#password").fill(process.env.KC_PASS || "Test1234!");
+  await page.locator("#username").fill(process.env.KC_USER || "testuser");
+  await page.locator("#password").fill(process.env.KC_PASS || "test123456");
   await page.locator("#kc-login").click();
 
   // Wait for redirect back
