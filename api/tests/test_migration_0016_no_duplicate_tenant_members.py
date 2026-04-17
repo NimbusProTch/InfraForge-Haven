@@ -23,9 +23,7 @@ def test_0016_does_not_create_tenant_members() -> None:
         if "op.create_table" in line:
             # Next few lines list the table name — verify it's not tenant_members
             table_line = lines[i + 1] if i + 1 < len(lines) else ""
-            assert '"tenant_members"' not in table_line, (
-                f"op.create_table target is tenant_members at line {i + 1}"
-            )
+            assert '"tenant_members"' not in table_line, f"op.create_table target is tenant_members at line {i + 1}"
 
 
 def test_0016_downgrade_does_not_drop_tenant_members() -> None:

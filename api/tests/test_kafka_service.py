@@ -4,15 +4,12 @@ Sprint: overnight 2026-04-17 — Kafka as 6th managed service type.
 Covers: model enum, CRD body generation, tier config, connection hints, scaling.
 """
 
-import pytest
-from unittest.mock import MagicMock, AsyncMock, patch
-
-from app.models.managed_service import ServiceType, ServiceTier, ServiceStatus, ManagedService
+from app.models.managed_service import ServiceTier, ServiceType
 from app.services.managed_service import (
-    _kafka_body,
+    _CONNECTION_HINT_MAP,
     _CRD_CONFIG,
     _SECRET_NAME_MAP,
-    _CONNECTION_HINT_MAP,
+    _kafka_body,
 )
 
 
@@ -88,11 +85,7 @@ class TestKafkaStatusCheck:
 
     def test_kafka_ready_condition(self) -> None:
         """Kafka status parsing is inline in _crd_sync_status; verified structurally."""
-        k8s_status = {
-            "conditions": [
-                {"type": "Ready", "status": "True"}
-            ]
-        }
+        k8s_status = {"conditions": [{"type": "Ready", "status": "True"}]}
         found_ready = False
         for cond in k8s_status.get("conditions", []):
             if cond.get("type") == "Ready" and cond.get("status") == "True":
@@ -104,6 +97,7 @@ class TestKafkaStatusCheck:
 class TestKafkaMigration:
     def test_migration_0026_exists(self) -> None:
         from pathlib import Path
+
         mig = Path(__file__).parent.parent / "alembic" / "versions" / "0026_add_kafka_service_type.py"
         assert mig.exists()
         text = mig.read_text()
