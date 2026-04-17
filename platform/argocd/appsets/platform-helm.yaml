@@ -849,13 +849,22 @@ spec:
                   enabled: true
               # Admin password: chart generates random on first install,
               # stored in Secret/everest-accounts. Post-install reconcile
-              # (see sprint runbook) copies the generated password into
-              # iyziops-api-secrets.EVEREST_ADMIN_PASSWORD and rollout-
-              # restarts iyziops-api. No plaintext password in git.
+              # (see sprint runbook) uses `everestctl accounts set-password`
+              # to rotate it to match iyziops-api-secrets.EVEREST_ADMIN_PASSWORD.
+              # No plaintext password in git.
               server:
                 rbac:
                   enabled: false   # single admin user; enable + OIDC next sprint
                 initialAdminPassword: ""
+              # Disable upgrade hooks for fresh install — the pre-upgrade hook
+              # job looks for an existing deployments.apps/percona-everest to
+              # compare versions. On first install that deployment does not
+              # exist, so the hook crashloops with "could not retrieve Everest
+              # version". helm install does not run pre-upgrade hooks, but
+              # ArgoCD materializes them as regular Jobs and runs every time.
+              upgrade:
+                preflightChecks: false
+                crdChecks: false
 
   template:
     metadata:
