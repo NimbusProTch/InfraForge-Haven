@@ -91,6 +91,21 @@ rules:
   - apiGroups: ["rabbitmq.com"]
     resources: ["rabbitmqclusters"]
     verbs: ["get", "list", "watch", "create", "patch", "delete"]
+  # Kafka CRD (Strimzi) — added 2026-04-18 to close RBAC gap. Kafka was
+  # introduced as the 6th managed service type in commit 7474cb1 but the
+  # RBAC entry was missed; surfaced during overnight sprint when POST
+  # /services type=kafka 500'd with "kafkas.kafka.strimzi.io is forbidden".
+  - apiGroups: ["kafka.strimzi.io"]
+    resources:
+      - kafkas
+      - kafkatopics
+      - kafkausers
+      - kafkaconnects
+      - kafkabridges
+      - kafkamirrormaker2s
+      - kafkarebalances
+      - kafkanodepools
+    verbs: ["get", "list", "watch", "create", "patch", "update", "delete"]
   # HTTPRoute + GRPCRoute (Gateway API)
   - apiGroups: ["gateway.networking.k8s.io"]
     resources: ["httproutes", "grpcroutes", "tcproutes"]
