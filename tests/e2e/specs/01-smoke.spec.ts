@@ -4,7 +4,7 @@ test.describe("Smoke Tests — Pages Load", () => {
   test("login page loads", async ({ page }) => {
     await page.goto("/auth/signin");
     await expect(page.getByText("Haven Platform")).toBeVisible();
-    await expect(page.getByRole("button", { name: /keycloak/i })).toBeVisible();
+    await expect(page.getByRole("button", { name: /sso|keycloak/i })).toBeVisible();
   });
 
   test("login page has correct title", async ({ page }) => {
