@@ -4,9 +4,9 @@ metadata:
   name: iyziops-ui-config
   namespace: haven-system
 data:
-  NEXTAUTH_URL: "https://app.46.225.42.2.sslip.io"
-  NEXT_PUBLIC_API_URL: "https://api.46.225.42.2.sslip.io"
-  KEYCLOAK_URL: "https://keycloak.46.225.42.2.sslip.io"
+  NEXTAUTH_URL: "https://app.iyziops.com"
+  NEXT_PUBLIC_API_URL: "https://api.iyziops.com"
+  KEYCLOAK_URL: "https://keycloak.iyziops.com"
   KEYCLOAK_REALM: "haven"
-  KEYCLOAK_ISSUER: "https://keycloak.46.225.42.2.sslip.io/realms/haven"
+  KEYCLOAK_ISSUER: "https://keycloak.iyziops.com/realms/haven"
   NEXT_PUBLIC_LB_IP: "46.225.42.2"

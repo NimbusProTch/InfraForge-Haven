@@ -4,15 +4,15 @@ metadata:
   name: iyziops-api-config
   namespace: haven-system
 data:
-  KEYCLOAK_URL: "https://keycloak.46.225.42.2.sslip.io"
+  KEYCLOAK_URL: "https://keycloak.iyziops.com"
   KEYCLOAK_REALM: "haven"
-  HARBOR_URL: "https://harbor.46.225.42.2.sslip.io"
+  HARBOR_URL: "https://harbor.iyziops.com"
   HARBOR_PROJECT: "library"
   LB_IP: "46.225.42.2"
   BUILD_NAMESPACE: "haven-builds"
   BUILDKIT_ADDR: "tcp://buildkitd.haven-builds.svc.cluster.local:1234"
-  CORS_ORIGINS: "http://localhost:3000,http://localhost:3001,http://localhost:3002,http://app.46.225.42.2.sslip.io,https://app.46.225.42.2.sslip.io"
-  GITHUB_REDIRECT_URI: "https://app.46.225.42.2.sslip.io/github/callback"
+  CORS_ORIGINS: "http://localhost:3000,http://localhost:3001,http://localhost:3002,http://app.iyziops.com,https://app.iyziops.com"
+  GITHUB_REDIRECT_URI: "https://app.iyziops.com/github/callback"
   ARGOCD_URL: "http://argocd-server.argocd.svc.cluster.local:80"
   # Gitea (self-hosted GitOps)
   GITEA_URL: "http://gitea-http.gitea-system.svc.cluster.local:3000"
