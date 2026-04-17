@@ -111,7 +111,9 @@ jobs:
           fi
           IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${DIGEST}"
           echo "Pinning manifest to: ${IMAGE}"
-          sed -i -E "s|image: .*(haven|iyziops)-ui[:@][^[:space:]]+|image: ${IMAGE}|g" \
+          # NOTE: `|` inside the regex alternation conflicts with `|` as the sed
+          # delimiter — use `#` as delimiter instead.
+          sed -i -E "s#image: .*(haven|iyziops)-ui[:@][^[:space:]]+#image: ${IMAGE}#g" \
             platform/argocd/apps/tenant-management/iyziops-ui/deployment.yaml
 
       - name: Commit updated manifest
