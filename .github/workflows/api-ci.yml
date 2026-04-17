@@ -16,7 +16,7 @@ permissions:
 
 env:
   REGISTRY: ${{ secrets.HARBOR_URL }}
-  IMAGE_NAME: ${{ secrets.HARBOR_PROJECT }}/haven-api
+  IMAGE_NAME: ${{ secrets.HARBOR_PROJECT }}/iyziops-api
 
 jobs:
   lint:
@@ -114,10 +114,10 @@ jobs:
           docker build --platform linux/amd64 -t "$TAG" -f api/Dockerfile api
           # Login + push via crane (HTTPS with Let's Encrypt TLS)
           crane auth login ${{ env.REGISTRY }} -u ${{ secrets.HARBOR_USER }} -p ${{ secrets.HARBOR_PASSWORD }}
-          docker save "$TAG" -o /tmp/haven-api.tar
-          crane push /tmp/haven-api.tar "$TAG"
-          crane push /tmp/haven-api.tar "$LATEST"
-          rm -f /tmp/haven-api.tar
+          docker save "$TAG" -o /tmp/iyziops-api.tar
+          crane push /tmp/iyziops-api.tar "$TAG"
+          crane push /tmp/iyziops-api.tar "$LATEST"
+          rm -f /tmp/iyziops-api.tar
           # Get digest for manifest pinning
           DIGEST=$(crane digest "$TAG")
           echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
@@ -149,15 +149,15 @@ jobs:
           echo "Pinning manifests to: ${IMAGE}"
           # Match BOTH the legacy tag form (`...:abc1234`) and the new digest
           # form (`...@sha256:...`) so re-runs after this PR work cleanly.
-          sed -i -E "s|image: .*haven-api[:@][^[:space:]]+|image: ${IMAGE}|g" \
-            platform/manifests/haven-api/deployment.yaml \
-            platform/manifests/haven-api/git-worker-deployment.yaml
+          sed -i -E "s|image: .*(haven|iyziops)-api[:@][^[:space:]]+|image: ${IMAGE}|g" \
+            platform/argocd/apps/tenant-management/iyziops-api/deployment.yaml \
+            platform/argocd/apps/tenant-management/iyziops-api/git-worker-deployment.yaml
 
       - name: Commit updated manifest
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add platform/manifests/haven-api/deployment.yaml platform/manifests/haven-api/git-worker-deployment.yaml
-          git diff --cached --quiet || git commit -m "ci: pin haven-api to ${{ needs.build-and-push.outputs.short_sha }} (digest) [skip ci]"
+          git add platform/argocd/apps/tenant-management/iyziops-api/deployment.yaml platform/argocd/apps/tenant-management/iyziops-api/git-worker-deployment.yaml
+          git diff --cached --quiet || git commit -m "ci: pin iyziops-api to ${{ needs.build-and-push.outputs.short_sha }} (digest) [skip ci]"
           git pull --rebase origin main
           git push
