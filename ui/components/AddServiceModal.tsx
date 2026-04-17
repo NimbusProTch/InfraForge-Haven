@@ -72,6 +72,14 @@ const SERVICE_TYPES = [
     supportsPitr: false,
     hasDbName: false,
   },
+  {
+    value: "kafka",
+    label: "Apache Kafka",
+    description: "Distributed event streaming platform for real-time data pipelines",
+    supportsBackup: false,
+    supportsPitr: false,
+    hasDbName: false,
+  },
 ] as const;
 
 const SCHEDULE_PRESETS = [

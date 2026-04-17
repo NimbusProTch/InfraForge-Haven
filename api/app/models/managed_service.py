@@ -17,6 +17,7 @@ class ServiceType(PyEnum):
     MONGODB = "mongodb"
     REDIS = "redis"
     RABBITMQ = "rabbitmq"
+    KAFKA = "kafka"
 
 
 class ServiceTier(PyEnum):

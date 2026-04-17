@@ -14,6 +14,7 @@ const ICON_MAP: Record<string, { src: string; alt: string }> = {
   mongodb: { src: "/icons/mongodb.svg", alt: "MongoDB" },
   redis: { src: "/icons/redis.svg", alt: "Redis" },
   rabbitmq: { src: "/icons/rabbitmq.svg", alt: "RabbitMQ" },
+  kafka: { src: "/icons/kafka.svg", alt: "Apache Kafka" },
 };
 
 export function ServiceIcon({ type, className = "", size = 20 }: { type: string } & IconProps) {
@@ -48,4 +49,7 @@ export function MySQLIcon(props: IconProps) {
 }
 export function RabbitMQIcon(props: IconProps) {
   return <ServiceIcon type="rabbitmq" {...props} />;
+}
+export function KafkaIcon(props: IconProps) {
+  return <ServiceIcon type="kafka" {...props} />;
 }

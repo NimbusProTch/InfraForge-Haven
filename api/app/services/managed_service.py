@@ -100,6 +100,67 @@ def _rabbitmq_body(name: str, namespace: str, tier: ServiceTier) -> dict:
     }
 
 
+def _kafka_body(name: str, namespace: str, tier: ServiceTier) -> dict:
+    """Build a Strimzi Kafka cluster manifest."""
+    replicas = 1 if tier == ServiceTier.DEV else 3
+    storage_size = "5Gi" if tier == ServiceTier.DEV else "20Gi"
+    return {
+        "apiVersion": "kafka.strimzi.io/v1beta2",
+        "kind": "Kafka",
+        "metadata": {"name": name, "namespace": namespace},
+        "spec": {
+            "kafka": {
+                "version": "3.9.0",
+                "replicas": replicas,
+                "listeners": [
+                    {
+                        "name": "plain",
+                        "port": 9092,
+                        "type": "internal",
+                        "tls": False,
+                    },
+                ],
+                "config": {
+                    "offsets.topic.replication.factor": replicas,
+                    "transaction.state.log.replication.factor": replicas,
+                    "transaction.state.log.min.isr": 1,
+                    "default.replication.factor": replicas,
+                    "min.insync.replicas": 1,
+                },
+                "storage": {
+                    "type": "persistent-claim",
+                    "size": storage_size,
+                    "class": "longhorn",
+                    "deleteClaim": True,
+                },
+                "template": {
+                    "pod": {
+                        "tolerations": [{"operator": "Exists"}],
+                    },
+                },
+            },
+            "zookeeper": {
+                "replicas": replicas,
+                "storage": {
+                    "type": "persistent-claim",
+                    "size": "2Gi",
+                    "class": "longhorn",
+                    "deleteClaim": True,
+                },
+                "template": {
+                    "pod": {
+                        "tolerations": [{"operator": "Exists"}],
+                    },
+                },
+            },
+            "entityOperator": {
+                "topicOperator": {},
+                "userOperator": {},
+            },
+        },
+    }
+
+
 # ---------------------------------------------------------------------------
 # Secret name helpers (each operator creates a predictable secret)
 # ---------------------------------------------------------------------------
@@ -110,6 +171,7 @@ _SECRET_NAME_MAP = {
     ServiceType.MONGODB: lambda name: f"{name}-psmdb-secrets",
     ServiceType.REDIS: lambda name: f"{name}-redis",
     ServiceType.RABBITMQ: lambda name: f"{name}-default-user",
+    ServiceType.KAFKA: lambda name: f"{name}-cluster-ca-cert",
 }
 
 # Everest secret naming: created in the SAME namespace as the database
@@ -121,6 +183,7 @@ _CONNECTION_HINT_MAP = {
     ServiceType.MONGODB: lambda name, ns: f"mongodb://{name}-rs0@{name}-mongos.{ns}.svc:27017/{name.replace('-', '_')}",
     ServiceType.REDIS: lambda name, ns: f"redis://{name}.{ns}.svc:6379",
     ServiceType.RABBITMQ: lambda name, ns: f"amqp://{name}-default-user@{name}.{ns}.svc:5672",
+    ServiceType.KAFKA: lambda name, ns: f"{name}-kafka-bootstrap.{ns}.svc:9092",
 }
 
 
@@ -218,6 +281,12 @@ _CRD_CONFIG = {
         "version": "v1beta1",
         "plural": "rabbitmqclusters",
         "body_fn": _rabbitmq_body,
+    },
+    ServiceType.KAFKA: {
+        "group": "kafka.strimzi.io",
+        "version": "v1beta2",
+        "plural": "kafkas",
+        "body_fn": _kafka_body,
     },
 }
 
@@ -492,6 +561,12 @@ class ManagedServiceProvisioner:
                 if cond.get("type") == "AllReplicasReady" and cond.get("status") == "True":
                     service.status = ServiceStatus.READY
                     break
+        elif svc_type == ServiceType.KAFKA:
+            conditions = k8s_status.get("conditions", [])
+            for cond in conditions:
+                if cond.get("type") == "Ready" and cond.get("status") == "True":
+                    service.status = ServiceStatus.READY
+                    break
 
     async def _crd_deprovision(self, service: ManagedService) -> None:
         """Delete a service CRD."""
@@ -661,6 +736,9 @@ class ManagedServiceProvisioner:
             if service.service_type == ServiceType.REDIS:
                 host = f"{service.name}.{tenant_namespace}.svc"
                 creds["REDIS_URL"] = f"redis://{host}:6379"
+            elif service.service_type == ServiceType.KAFKA:
+                bootstrap = f"{service.name}-kafka-bootstrap.{tenant_namespace}.svc"
+                creds["KAFKA_BOOTSTRAP_SERVERS"] = f"{bootstrap}:9092"
             else:
                 if not service.secret_name:
                     return
@@ -767,6 +845,8 @@ class ManagedServiceProvisioner:
             await self._crd_scale_redis(service, replicas=replicas)
         elif service.service_type == ServiceType.RABBITMQ:
             await self._crd_scale_rabbitmq(service, replicas=replicas)
+        elif service.service_type == ServiceType.KAFKA:
+            await self._crd_scale_kafka(service, replicas=replicas)
         else:
             raise NotImplementedError(f"Update not supported for '{service.service_type.value}'")
 
@@ -813,6 +893,28 @@ class ManagedServiceProvisioner:
         except Exception as exc:
             logger.exception("RabbitMQ scale failed for %s", crd_name)
             raise RuntimeError(f"RabbitMQ scale failed: {exc}") from exc
+
+    async def _crd_scale_kafka(self, service: ManagedService, *, replicas: int | None = None) -> None:
+        """Scale Kafka via Strimzi CRD patch."""
+        if replicas is None:
+            return
+        namespace = service.service_namespace or f"tenant-{service.name.split('-')[0]}"
+        crd_name = service.name
+        body = {"spec": {"kafka": {"replicas": replicas}, "zookeeper": {"replicas": replicas}}}
+        try:
+            await asyncio.to_thread(
+                self.k8s.custom_objects.patch_namespaced_custom_object,
+                group="kafka.strimzi.io",
+                version="v1beta2",
+                namespace=namespace,
+                plural="kafkas",
+                name=crd_name,
+                body=body,
+            )
+            logger.info("Kafka %s scaled to %d replicas", crd_name, replicas)
+        except Exception as exc:
+            logger.exception("Kafka scale failed for %s", crd_name)
+            raise RuntimeError(f"Kafka scale failed: {exc}") from exc
 
     async def deprovision(self, service: ManagedService) -> None:
         """Delete the database/service."""
