@@ -149,7 +149,9 @@ jobs:
           echo "Pinning manifests to: ${IMAGE}"
           # Match BOTH the legacy tag form (`...:abc1234`) and the new digest
           # form (`...@sha256:...`) so re-runs after this PR work cleanly.
-          sed -i -E "s|image: .*(haven|iyziops)-api[:@][^[:space:]]+|image: ${IMAGE}|g" \
+          # NOTE: `|` inside the regex alternation conflicts with `|` as the sed
+          # delimiter — use `#` as delimiter instead.
+          sed -i -E "s#image: .*(haven|iyziops)-api[:@][^[:space:]]+#image: ${IMAGE}#g" \
             platform/argocd/apps/tenant-management/iyziops-api/deployment.yaml \
             platform/argocd/apps/tenant-management/iyziops-api/git-worker-deployment.yaml
 
