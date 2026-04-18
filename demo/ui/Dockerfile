@@ -21,7 +21,8 @@ WORKDIR /app
 ENV NODE_ENV=production \
     HOSTNAME=0.0.0.0 \
     PORT=3000
-COPY --from=builder /build/public ./public
+# `public` may or may not exist (placeholder .gitkeep ensures builder creates it)
+COPY --from=builder /build/public ./public/
 COPY --from=builder --chown=10001:10001 /build/.next/standalone ./
 COPY --from=builder --chown=10001:10001 /build/.next/static ./.next/static
 USER 10001
