@@ -52,6 +52,26 @@ write_files:
       kernel.panic=10
       kernel.panic_on_oops=1
 
+  # ---------- multipath-tools quarantine (Longhorn compatibility) ----------
+  # See master-cloud-init.yaml.tpl for the full rationale. Workers run the
+  # storage workloads, so this pin + blacklist is essential here too.
+  - path: /etc/apt/preferences.d/99-no-multipath
+    permissions: '0644'
+    content: |
+      Package: multipath-tools
+      Pin: release *
+      Pin-Priority: -1
+
+  - path: /etc/multipath.conf
+    permissions: '0644'
+    content: |
+      defaults { user_friendly_names yes }
+      blacklist {
+        devnode "^sd[a-z0-9]+"
+        devnode "^dasd[a-z0-9]+"
+        devnode "^nvme[0-9]+n[0-9]+"
+      }
+
   # ---------- RKE2 config template (base64, runtime IPs substituted in runcmd) ----------
   - path: /etc/rancher/rke2/config.yaml.tpl
     permissions: '0600'
@@ -60,6 +80,9 @@ write_files:
 
 runcmd:
   - sysctl --system
+  # Purge multipath-tools BEFORE iscsid starts. Pin file written above
+  # blocks future reinstallation. Idempotent / safe if not installed.
+  - DEBIAN_FRONTEND=noninteractive apt-get -y purge multipath-tools 2>/dev/null || true
   - systemctl enable --now iscsid
   - |
     set -eu

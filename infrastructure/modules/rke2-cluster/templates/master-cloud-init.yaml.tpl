@@ -67,6 +67,33 @@ write_files:
       kernel.panic=10
       kernel.panic_on_oops=1
 
+  # ---------- multipath-tools quarantine (Longhorn compatibility) ----------
+  # The Hetzner Ubuntu base image ships multipath-tools as an open-iscsi
+  # Recommends. Once installed it claims iSCSI block devices into mpath*
+  # device-mapper tables, blocking mke2fs on Longhorn volumes with
+  # "apparently in use by the system". The pin file below blocks any
+  # future apt operation from (re)installing it; the runcmd entry below
+  # purges it from the running system.
+  - path: /etc/apt/preferences.d/99-no-multipath
+    permissions: '0644'
+    content: |
+      Package: multipath-tools
+      Pin: release *
+      Pin-Priority: -1
+
+  # /etc/multipath.conf is harmless when multipathd is not installed but
+  # provides defense-in-depth: if multipath-tools is ever reinstalled by
+  # mistake, this blacklist keeps it from grabbing Longhorn block devices.
+  - path: /etc/multipath.conf
+    permissions: '0644'
+    content: |
+      defaults { user_friendly_names yes }
+      blacklist {
+        devnode "^sd[a-z0-9]+"
+        devnode "^dasd[a-z0-9]+"
+        devnode "^nvme[0-9]+n[0-9]+"
+      }
+
   # ---------- kube-apiserver audit policy ----------
   - path: /etc/rancher/rke2/audit-policy.yaml
     permissions: '0600'
@@ -166,6 +193,9 @@ write_files:
 runcmd:
   - useradd -r -c "etcd user" -s /sbin/nologin -M etcd 2>/dev/null || true
   - sysctl --system
+  # Purge multipath-tools BEFORE iscsid starts. Pin file written above
+  # blocks future reinstallation. Idempotent / safe if not installed.
+  - DEBIAN_FRONTEND=noninteractive apt-get -y purge multipath-tools 2>/dev/null || true
   - systemctl enable --now iscsid
   - mkdir -p /var/log/kube-audit
   - |
