@@ -1,0 +1,173 @@
+# =============================================================================
+#  iyziops — node-prep / longhorn-multipath-fixer
+# =============================================================================
+#  Privileged DaemonSet that runs once per node-pod-start (initContainer
+#  pattern, kured/node-problem-detector style) to:
+#
+#    1. Write /etc/apt/preferences.d/99-no-multipath (Pin-Priority -1)
+#       on the host so apt cannot install multipath-tools (e.g. as an
+#       open-iscsi Recommends).
+#    2. Write /etc/multipath.conf with a sd*/dasd*/nvme* blacklist
+#       (defense-in-depth in case the package ever ends up installed).
+#    3. apt-get purge multipath-tools if currently installed.
+#    4. Sweep stale "mpath*" device-mapper tables that hold sd* devices,
+#       which would otherwise block mke2fs on Longhorn block devices with
+#       "apparently in use by the system". Heavily guarded: only removes
+#       a dm-table when the name starts with "mpath" AND its open-count
+#       is 0 AND none of its slaves appear in any Longhorn kubelet mount.
+#
+#  Idempotent — safe to re-run on every pod restart (e.g., node reboot).
+#  Lives in `longhorn-system` because that namespace is already PSA
+#  privileged + exempt from Kyverno's `disallow-privileged` (gated on
+#  haven.io/managed=true label, which longhorn-system does not have).
+#
+#  This DaemonSet is the runtime curative half of the multipath fix; the
+#  preventive half lives in cloud-init (write_files + runcmd in
+#  master/worker/joining-master cloud-init templates).
+# =============================================================================
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: longhorn-multipath-fixer
+  namespace: longhorn-system
+  labels:
+    app: longhorn-multipath-fixer
+    haven.io/component: node-prep
+spec:
+  selector:
+    matchLabels:
+      app: longhorn-multipath-fixer
+  updateStrategy:
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app: longhorn-multipath-fixer
+    spec:
+      hostPID: true
+      hostNetwork: false
+      # Tolerate every taint so the fixer lands on every node, including
+      # cordoned (NoSchedule) and tainted (NoExecute) nodes. The default
+      # DaemonSet admission already adds NoSchedule, but be explicit.
+      tolerations:
+        - operator: Exists
+          effect: NoSchedule
+        - operator: Exists
+          effect: NoExecute
+        - operator: Exists
+          effect: PreferNoSchedule
+      # No SA — no API calls. The work is host-side only via nsenter.
+      automountServiceAccountToken: false
+      initContainers:
+        - name: fix-multipath
+          image: alpine:3.19
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            privileged: true
+            runAsUser: 0
+            runAsNonRoot: false
+          resources:
+            requests:
+              cpu: "20m"
+              memory: "32Mi"
+            limits:
+              cpu: "200m"
+              memory: "128Mi"
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -eu
+              apk add --no-cache device-mapper util-linux >/dev/null
+
+              # 1. Apt preference pin — block any future apt install of multipath-tools
+              nsenter -t 1 -m -u -i -n -p -- sh -c 'cat > /etc/apt/preferences.d/99-no-multipath <<PREF
+              Package: multipath-tools
+              Pin: release *
+              Pin-Priority: -1
+              PREF'
+
+              # 2. /etc/multipath.conf blacklist (defense-in-depth)
+              nsenter -t 1 -m -u -i -n -p -- sh -c 'cat > /etc/multipath.conf <<CONF
+              defaults { user_friendly_names yes }
+              blacklist {
+                devnode "^sd[a-z0-9]+"
+                devnode "^dasd[a-z0-9]+"
+                devnode "^nvme[0-9]+n[0-9]+"
+              }
+              CONF'
+
+              # 3. Purge multipath-tools if currently installed
+              if nsenter -t 1 -m -u -i -n -p -- dpkg -l multipath-tools 2>/dev/null | grep -q '^ii'; then
+                echo "multipath-tools installed; purging…"
+                nsenter -t 1 -m -u -i -n -p -- env DEBIAN_FRONTEND=noninteractive apt-get -y purge multipath-tools || true
+              fi
+
+              # 4. Sweep stale mpath* device-mapper tables. Safety-first:
+              #    - name MUST literally start with "mpath" (skip mpath_*, lvm_*, crypt_* etc.)
+              #    - dmsetup open-count MUST be 0 (never touch a busy device)
+              #    - none of the slave block devices may appear in any
+              #      Longhorn kubelet mountinfo line (defense against false-positives)
+              for dm in /sys/block/dm-*; do
+                [ -e "$dm/dm/name" ] || continue
+                name=$(cat "$dm/dm/name")
+                case "$name" in
+                  mpath*) ;;
+                  *) continue ;;
+                esac
+                open=$(dmsetup info -c --noheadings -o open "$name" 2>/dev/null || echo 1)
+                if [ "$open" != "0" ]; then
+                  echo "skip $name (open=$open)"
+                  continue
+                fi
+                slaves=$(ls "$dm/slaves" 2>/dev/null || echo "")
+                bad=0
+                for s in $slaves; do
+                  if grep -q "$s" /proc/self/mountinfo 2>/dev/null && grep -q longhorn /proc/self/mountinfo; then
+                    bad=1
+                  fi
+                done
+                if [ "$bad" != "0" ]; then
+                  echo "skip $name (slave in active longhorn mount)"
+                  continue
+                fi
+                echo "removing stale dm table: $name"
+                dmsetup remove "$name" 2>/dev/null || echo "dmsetup remove $name failed (ignoring)"
+              done
+
+              echo "node-prep done"
+          volumeMounts:
+            - name: dev
+              mountPath: /dev
+            - name: sys
+              mountPath: /sys
+              readOnly: true
+      containers:
+        # Pause container = presence marker so the DaemonSet stays Ready.
+        # On node reboot the pod restarts → initContainer runs again.
+        - name: pause
+          image: registry.k8s.io/pause:3.9
+          imagePullPolicy: IfNotPresent
+          resources:
+            requests:
+              cpu: "10m"
+              memory: "16Mi"
+            limits:
+              cpu: "50m"
+              memory: "32Mi"
+          securityContext:
+            allowPrivilegeEscalation: false
+            runAsNonRoot: true
+            runAsUser: 65535
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+            seccompProfile:
+              type: RuntimeDefault
+      volumes:
+        - name: dev
+          hostPath:
+            path: /dev
+        - name: sys
+          hostPath:
+            path: /sys

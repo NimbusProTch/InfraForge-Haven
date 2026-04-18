@@ -78,6 +78,19 @@ spec:
             syncWave: "0"
             path: platform/argocd/apps/platform/haven-crds
 
+          # ----- Wave 0: Node prep — multipath fixer ---------------------
+          # Privileged DaemonSet that purges multipath-tools + sweeps stale
+          # mpath* device-mapper tables on every node. Idempotent. Heals the
+          # iyziops-worker-2 Longhorn block-device deadlock that surfaced
+          # during the permanent demo bring-up (2026-04-18). Cloud-init has
+          # the preventive half; this is the curative half for already-
+          # running nodes. PSA-privileged longhorn-system namespace; outside
+          # the haven.io/managed=true Kyverno policy gate.
+          - name: node-prep
+            namespace: longhorn-system
+            syncWave: "0"
+            path: platform/argocd/apps/platform/node-prep
+
           # ----- Wave 1: Config (ClusterIssuers + ClusterPolicies) --------
           - name: cert-manager-config
             namespace: cert-manager
