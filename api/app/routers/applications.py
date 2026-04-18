@@ -51,7 +51,7 @@ async def _enqueue_app_values_update(
                 "repo": settings.gitea_gitops_repo,
                 "path": f"tenants/{tenant_slug}/{app.slug}/values.yaml",
                 "commit_message": f"[haven] update {tenant_slug}/{app.slug} — {reason}",
-                "author": "Haven Platform <haven@haven.dev>",
+                "author": "iyziops <noreply@iyziops.com>",
                 "content": content,
             },
         )

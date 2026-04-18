@@ -79,12 +79,17 @@ export function AppShell({ children, userEmail }: AppShellProps) {
       >
         {/* Logo */}
         <div className="flex items-center gap-2.5 px-5 h-16 border-b border-white/10">
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-emerald-400 to-emerald-600 shadow-md flex items-center justify-center shrink-0">
-            <Anchor className="w-4 h-4 text-white" />
+          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 via-indigo-500 to-violet-600 shadow-md flex items-center justify-center shrink-0">
+            <span className="font-extrabold text-sm text-white leading-none tracking-tighter">
+              iy
+            </span>
           </div>
-          <span className="font-bold text-sm text-white tracking-tight">
-            Haven Platform
-          </span>
+          <div className="flex flex-col leading-tight">
+            <span className="font-bold text-sm text-white tracking-tight">iyziops</span>
+            <span className="text-[10px] font-medium text-white/50 tracking-wider uppercase">
+              VNG Haven 15/15
+            </span>
+          </div>
         </div>
 
         {/* Nav */}

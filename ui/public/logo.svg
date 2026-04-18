@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <defs>
+    <linearGradient id="iyziopsGrad" x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#3b82f6" />
+      <stop offset="50%" stop-color="#6366f1" />
+      <stop offset="100%" stop-color="#8b5cf6" />
+    </linearGradient>
+  </defs>
+  <!-- Rounded square backdrop -->
+  <rect x="0" y="0" width="64" height="64" rx="14" fill="url(#iyziopsGrad)" />
+  <!-- "iy" wordmark, bold + tight tracking -->
+  <text
+    x="32"
+    y="42"
+    text-anchor="middle"
+    font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif"
+    font-weight="800"
+    font-size="28"
+    fill="#ffffff"
+    letter-spacing="-0.04em"
+  >iy</text>
+</svg>

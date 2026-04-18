@@ -50,7 +50,7 @@ test.describe.serial("Journey: Advanced Features", () => {
 
   test("V5. Swagger docs accessible with endpoints", async ({ page }) => {
     await page.goto("https://api.46.225.42.2.sslip.io/api/docs", { waitUntil: "networkidle" });
-    await expect(page.getByText("Haven Platform API")).toBeVisible();
+    await expect(page.getByText("iyziops")).toBeVisible();
     await expect(page.getByText("tenants").first()).toBeVisible();
     await expect(page.getByText("deployments").first()).toBeVisible();
     await screenshot(page, "v5-swagger");
@@ -58,7 +58,7 @@ test.describe.serial("Journey: Advanced Features", () => {
 
   test("V6. ReDoc accessible", async ({ page }) => {
     await page.goto("https://api.46.225.42.2.sslip.io/api/redoc", { waitUntil: "networkidle" });
-    await expect(page.getByText("Haven Platform API")).toBeVisible();
+    await expect(page.getByText("iyziops")).toBeVisible();
     await screenshot(page, "v6-redoc");
   });
 

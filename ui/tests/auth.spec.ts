@@ -3,7 +3,7 @@ import { test, expect } from "@playwright/test";
 test.describe("Authentication", () => {
   test("login page renders with Haven branding", async ({ page }) => {
     await page.goto("/auth/signin");
-    await expect(page.locator("text=Haven Platform")).toBeVisible();
+    await expect(page.locator("text=iyziops")).toBeVisible();
     await expect(page.locator("text=Haven-Compliant")).toBeVisible();
   });
 
