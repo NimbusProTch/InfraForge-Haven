@@ -64,7 +64,7 @@ def build_app_values(
         },
         "httproute": {
             "enabled": True,
-            "gateway": {"name": "haven-gateway", "namespace": "haven-gateway"},
+            "gateway": {"name": "iyziops-gateway", "namespace": "iyziops-gateway"},
             "hostname": f"{app_slug}.{tenant_slug}.apps.{settings.lb_ip}.sslip.io",
         },
         "tolerations": [{"operator": "Exists"}],

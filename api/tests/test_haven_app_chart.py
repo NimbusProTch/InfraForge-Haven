@@ -38,7 +38,7 @@ def _render(extra_values: dict) -> list[dict]:
         },
         "httproute": {
             "enabled": True,
-            "gateway": {"name": "haven-gateway", "namespace": "haven-gateway"},
+            "gateway": {"name": "iyziops-gateway", "namespace": "iyziops-gateway"},
             "hostname": "myapp.mytenant.apps.example",
         },
         "autoscaling": {
@@ -78,8 +78,8 @@ def test_httproute_parent_ref_has_explicit_group_and_kind():
     parent = route["spec"]["parentRefs"][0]
     assert parent.get("group") == "gateway.networking.k8s.io"
     assert parent.get("kind") == "Gateway"
-    assert parent.get("name") == "haven-gateway"
-    assert parent.get("namespace") == "haven-gateway"
+    assert parent.get("name") == "iyziops-gateway"
+    assert parent.get("namespace") == "iyziops-gateway"
 
 
 def test_httproute_backend_ref_has_explicit_group_kind_weight():

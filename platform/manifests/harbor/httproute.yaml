@@ -30,8 +30,8 @@ spec:
   parentRefs:
     - group: gateway.networking.k8s.io
       kind: Gateway
-      name: haven-gateway
-      namespace: haven-gateway
+      name: iyziops-gateway
+      namespace: iyziops-gateway
   hostnames:
     - harbor.46.225.42.2.sslip.io
   rules:

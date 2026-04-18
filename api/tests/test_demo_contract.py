@@ -72,6 +72,29 @@ def test_demo_ui_dockerfile_non_root():
     assert "USER 10001" in src or "USER app" in src
 
 
+def test_no_stale_haven_gateway_references():
+    """Regression: chart/API/template must reference iyziops-gateway only.
+
+    The gateway lives in ns/name iyziops-gateway. A stale 'haven-gateway' literal
+    was silently breaking HTTPRoute attachment and returning HTTP 404 on all
+    tenant app custom domains until demo bring-up exposed it.
+    """
+    chart_vals = (REPO_ROOT / "charts" / "haven-app" / "values.yaml").read_text()
+    assert "haven-gateway" not in chart_vals, "chart default must use iyziops-gateway"
+    assert "iyziops-gateway" in chart_vals
+
+    j2_tpl = (REPO_ROOT / "api" / "app" / "templates" / "gitops" / "app-values.yaml.j2").read_text()
+    assert "haven-gateway" not in j2_tpl
+    assert "iyziops-gateway" in j2_tpl
+
+    builder = (REPO_ROOT / "api" / "app" / "services" / "helm_values_builder.py").read_text()
+    assert '"haven-gateway"' not in builder, "helm_values_builder must use iyziops-gateway"
+    assert '"iyziops-gateway"' in builder
+
+    deploy = (REPO_ROOT / "api" / "app" / "services" / "deploy_service.py").read_text()
+    assert '"haven-gateway"' not in deploy, "deploy_service must use iyziops-gateway"
+
+
 def test_demo_readme_has_ui_deploy_steps():
     """README must document UI-driven deploy (customer pitch)."""
     src = (DEMO / "README.md").read_text()
