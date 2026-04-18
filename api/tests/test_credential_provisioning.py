@@ -480,8 +480,8 @@ class TestCredentialProvisioningTick:
         mock_svc.name = "stuck-pg"
         mock_svc.status = ServiceStatus.PROVISIONING
         mock_svc.credentials_provisioned = False
-        # Created 15 minutes ago — exceeds 10min timeout
-        mock_svc.created_at = datetime.now(UTC) - timedelta(minutes=15)
+        # Created 25 minutes ago — exceeds the 20min provision timeout
+        mock_svc.created_at = datetime.now(UTC) - timedelta(minutes=25)
 
         # Tenant mock for sync_details lookup
         mock_tenant = MagicMock()

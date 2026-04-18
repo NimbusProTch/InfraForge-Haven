@@ -140,7 +140,11 @@ async def _credential_provisioning_tick(session_factory: object) -> int:
     from app.models.tenant import Tenant
     from app.services.managed_service import ManagedServiceProvisioner
 
-    service_provision_timeout = timedelta(minutes=10)
+    # Percona Everest PG init on dev cluster has been observed at 12–15 min
+    # during the permanent demo self-service test (2026-04-18). Previous 10 min
+    # timeout stamped demo-pg FAILED while the DatabaseCluster was still
+    # `initializing`, breaking self-service re-provisioning.
+    service_provision_timeout = timedelta(minutes=20)
 
     # Fetch service IDs in a read-only session
     async with session_factory() as db:
