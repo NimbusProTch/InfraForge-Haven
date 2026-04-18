@@ -241,8 +241,12 @@ async def _argocd_login_and_mint_token(plain_password: str) -> str:
         return mint.json()["token"]
 
 
-def _write_token_secret(token: str) -> None:
-    """Create-or-replace the iyziops-argocd-token Secret in haven-system."""
+def _write_token_secret(token: str) -> bool:
+    """Create-or-replace the iyziops-argocd-token Secret in haven-system.
+
+    Returns True if a new Secret was created (= the running pod doesn't yet
+    have ARGOCD_AUTH_TOKEN injected and needs a restart to pick it up).
+    """
     encoded = base64.b64encode(token.encode()).decode()
     secret = V1Secret(
         api_version="v1",
@@ -258,12 +262,49 @@ def _write_token_secret(token: str) -> None:
     try:
         k8s_client.core_v1.create_namespaced_secret(ARGOCD_TOKEN_SECRET_NAMESPACE, secret)
         logger.info("Platform bootstrap: created Secret %s/%s", ARGOCD_TOKEN_SECRET_NAMESPACE, ARGOCD_TOKEN_SECRET_NAME)
-        return
+        return True
     except ApiException as exc:
         if exc.status != 409:
             raise
     k8s_client.core_v1.replace_namespaced_secret(ARGOCD_TOKEN_SECRET_NAME, ARGOCD_TOKEN_SECRET_NAMESPACE, secret)
     logger.info("Platform bootstrap: replaced Secret %s/%s", ARGOCD_TOKEN_SECRET_NAMESPACE, ARGOCD_TOKEN_SECRET_NAME)
+    return False
+
+
+def _trigger_iyziops_api_rollout() -> None:
+    """Trigger a rolling restart of iyziops-api Deployment.
+
+    kubelet does NOT propagate Secret changes into env-var bindings — once a
+    pod is running with `valueFrom.secretKeyRef` for an ARGOCD_AUTH_TOKEN
+    Secret that didn't exist at start, the env var is unset and the pod
+    needs a restart to pick up the now-populated value. This is the same
+    annotation `kubectl rollout restart` uses.
+    """
+    if k8s_client.apps_v1 is None:
+        logger.warning("Platform bootstrap: apps_v1 client unavailable — skipping self-rollout")
+        return
+    body = {
+        "spec": {
+            "template": {
+                "metadata": {
+                    "annotations": {
+                        "kubectl.kubernetes.io/restartedAt": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                        "haven.io/restart-reason": "argocd-token-bootstrap",
+                    }
+                }
+            }
+        }
+    }
+    try:
+        k8s_client.apps_v1.patch_namespaced_deployment(
+            name="iyziops-api", namespace=ARGOCD_TOKEN_SECRET_NAMESPACE, body=body
+        )
+        logger.info(
+            "Platform bootstrap: triggered self-rollout of iyziops-api so the new "
+            "ARGOCD_AUTH_TOKEN env var lands in a fresh pod"
+        )
+    except ApiException as exc:
+        logger.warning("Platform bootstrap: self-rollout patch failed — %s", exc)
 
 
 async def ensure_argocd_api_token() -> None:
@@ -307,12 +348,24 @@ async def ensure_argocd_api_token() -> None:
         return
 
     try:
-        _write_token_secret(token)
+        created_new_secret = _write_token_secret(token)
     except Exception:
         logger.exception("Platform bootstrap: write ArgoCD token Secret failed")
         return
 
     logger.info("Platform bootstrap: ArgoCD API token ready (account=%s)", ARGOCD_LOCAL_ACCOUNT)
+
+    # First-boot scenario: the running pod started without ARGOCD_AUTH_TOKEN
+    # because the Secret didn't exist yet. kubelet doesn't propagate Secret
+    # changes into env-var bindings, so we self-trigger a rolling restart so
+    # the next pod picks up the value. Subsequent boots see the existing
+    # Secret + short-circuit at the top, so this rollout only happens once
+    # per cluster install.
+    if created_new_secret:
+        try:
+            _trigger_iyziops_api_rollout()
+        except Exception:
+            logger.exception("Platform bootstrap: self-rollout patch raised")
 
 
 async def run_platform_bootstrap() -> None:

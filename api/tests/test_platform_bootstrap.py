@@ -23,6 +23,7 @@ from app.services.platform_bootstrap import (
     _patch_argocd_rbac_policy,
     _patch_argocd_secret_password,
     _read_existing_argocd_token,
+    _trigger_iyziops_api_rollout,
     _write_token_secret,
     ensure_argocd_api_token,
     ensure_argocd_gitea_repo_secret,
@@ -282,11 +283,12 @@ def test_patch_argocd_rbac_policy_no_op_when_role_already_present():
     fake_core.replace_namespaced_config_map.assert_not_called()
 
 
-def test_write_token_secret_creates_when_missing():
+def test_write_token_secret_creates_when_missing_returns_true():
     fake_core = MagicMock()
     with patch("app.services.platform_bootstrap.k8s_client") as k8s:
         k8s.core_v1 = fake_core
-        _write_token_secret("the.persistent.token")
+        result = _write_token_secret("the.persistent.token")
+    assert result is True, "fresh create must return True so caller triggers rollout"
     fake_core.create_namespaced_secret.assert_called_once()
     args, _kw = fake_core.create_namespaced_secret.call_args
     assert args[0] == ARGOCD_TOKEN_SECRET_NAMESPACE
@@ -297,13 +299,38 @@ def test_write_token_secret_creates_when_missing():
     assert base64.b64decode(body.data["token"]).decode() == "the.persistent.token"
 
 
-def test_write_token_secret_replaces_on_409():
+def test_write_token_secret_replaces_on_409_returns_false():
     fake_core = MagicMock()
     fake_core.create_namespaced_secret.side_effect = ApiException(status=409, reason="AlreadyExists")
     with patch("app.services.platform_bootstrap.k8s_client") as k8s:
         k8s.core_v1 = fake_core
-        _write_token_secret("the.token")
+        result = _write_token_secret("the.token")
+    assert result is False, "replace path must return False (no rollout needed — pod already has env)"
     fake_core.replace_namespaced_secret.assert_called_once()
+
+
+def test_trigger_iyziops_api_rollout_patches_pod_template_annotation():
+    """Self-rollout patches the pod template's `restartedAt` annotation —
+    same shape `kubectl rollout restart deploy/iyziops-api` produces."""
+    fake_apps = MagicMock()
+    with patch("app.services.platform_bootstrap.k8s_client") as k8s:
+        k8s.apps_v1 = fake_apps
+        _trigger_iyziops_api_rollout()
+    fake_apps.patch_namespaced_deployment.assert_called_once()
+    kwargs = fake_apps.patch_namespaced_deployment.call_args.kwargs
+    assert kwargs["name"] == "iyziops-api"
+    assert kwargs["namespace"] == ARGOCD_TOKEN_SECRET_NAMESPACE
+    annotations = kwargs["body"]["spec"]["template"]["metadata"]["annotations"]
+    assert "kubectl.kubernetes.io/restartedAt" in annotations
+    assert annotations["haven.io/restart-reason"] == "argocd-token-bootstrap"
+
+
+def test_trigger_iyziops_api_rollout_skips_when_apps_v1_unavailable():
+    """Defensive: if K8s client never initialized, swallow gracefully."""
+    with patch("app.services.platform_bootstrap.k8s_client") as k8s:
+        k8s.apps_v1 = None
+        # Must not raise
+        _trigger_iyziops_api_rollout()
 
 
 @pytest.mark.asyncio
@@ -328,8 +355,8 @@ async def test_ensure_argocd_api_token_short_circuits_when_secret_already_has_to
 
 
 @pytest.mark.asyncio
-async def test_ensure_argocd_api_token_full_flow_writes_secret():
-    """Happy path: no existing token → patch CM/Secret/RBAC → login → mint → write Secret."""
+async def test_ensure_argocd_api_token_full_flow_writes_secret_and_triggers_rollout():
+    """Happy path: no existing token → patch CM/Secret/RBAC → login → mint → write Secret → self-rollout."""
     with (
         patch("app.services.platform_bootstrap._read_existing_argocd_token", return_value=None),
         patch("app.services.platform_bootstrap._patch_argocd_cm_account") as cm_patch,
@@ -339,7 +366,8 @@ async def test_ensure_argocd_api_token_full_flow_writes_secret():
             "app.services.platform_bootstrap._argocd_login_and_mint_token",
             new=AsyncMock(return_value="minted.jwt.token"),
         ) as mint,
-        patch("app.services.platform_bootstrap._write_token_secret") as write_secret,
+        patch("app.services.platform_bootstrap._write_token_secret", return_value=True) as write_secret,
+        patch("app.services.platform_bootstrap._trigger_iyziops_api_rollout") as rollout,
         patch("app.services.platform_bootstrap.asyncio.sleep", new=AsyncMock()),
         patch("app.services.platform_bootstrap.k8s_client") as k8s,
         patch("app.services.platform_bootstrap.settings") as s,
@@ -353,6 +381,33 @@ async def test_ensure_argocd_api_token_full_flow_writes_secret():
     rbac_patch.assert_called_once()
     mint.assert_awaited_once()
     write_secret.assert_called_once_with("minted.jwt.token")
+    rollout.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_ensure_argocd_api_token_skips_rollout_when_secret_already_existed():
+    """If the Secret was just replaced (not freshly created), the running pod
+    already has the env var bound and we don't need a rollout."""
+    with (
+        patch("app.services.platform_bootstrap._read_existing_argocd_token", return_value=None),
+        patch("app.services.platform_bootstrap._patch_argocd_cm_account"),
+        patch("app.services.platform_bootstrap._patch_argocd_secret_password"),
+        patch("app.services.platform_bootstrap._patch_argocd_rbac_policy"),
+        patch(
+            "app.services.platform_bootstrap._argocd_login_and_mint_token",
+            new=AsyncMock(return_value="rotated.jwt.token"),
+        ),
+        patch("app.services.platform_bootstrap._write_token_secret", return_value=False),
+        patch("app.services.platform_bootstrap._trigger_iyziops_api_rollout") as rollout,
+        patch("app.services.platform_bootstrap.asyncio.sleep", new=AsyncMock()),
+        patch("app.services.platform_bootstrap.k8s_client") as k8s,
+        patch("app.services.platform_bootstrap.settings") as s,
+    ):
+        k8s.is_available.return_value = True
+        k8s.core_v1 = MagicMock()
+        s.argocd_url = "http://argocd-server.argocd.svc:80"
+        await ensure_argocd_api_token()
+    rollout.assert_not_called()
 
 
 @pytest.mark.asyncio
