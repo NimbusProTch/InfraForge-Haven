@@ -162,7 +162,12 @@ def _read_existing_argocd_token() -> str | None:
     if k8s_client.core_v1 is None:
         return None
     try:
-        s = k8s_client.core_v1.read_namespaced_secret(ARGOCD_TOKEN_SECRET_NAMESPACE, ARGOCD_TOKEN_SECRET_NAME)
+        # NOTE: read_namespaced_secret signature is (name, namespace) — getting the
+        # order wrong silently returns 404 every time, defeating the short-circuit
+        # and re-running the password-rotation on every pod boot, which races and
+        # invalidates previously-minted tokens. This bug shipped in the initial
+        # PR #149 commit and was caught during post-merge verification.
+        s = k8s_client.core_v1.read_namespaced_secret(ARGOCD_TOKEN_SECRET_NAME, ARGOCD_TOKEN_SECRET_NAMESPACE)
     except ApiException as exc:
         if exc.status == 404:
             return None

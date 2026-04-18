@@ -213,6 +213,24 @@ def test_read_existing_argocd_token_returns_decoded_value():
         assert _read_existing_argocd_token() == "abc.def.ghi"
 
 
+def test_read_existing_argocd_token_passes_args_in_kubernetes_client_order():
+    """Regression: kubernetes-client `read_namespaced_secret(name, namespace)`
+    NOT (namespace, name). Getting the order wrong silently returns 404 every
+    time, defeating the short-circuit and forcing the password-rotation race
+    on every pod boot. Caught during post-merge verification of PR #149."""
+    import base64
+
+    fake_core = MagicMock()
+    fake_core.read_namespaced_secret.return_value = _fake_v1_secret(data={"token": base64.b64encode(b"jwt").decode()})
+    with patch("app.services.platform_bootstrap.k8s_client") as k8s:
+        k8s.core_v1 = fake_core
+        _read_existing_argocd_token()
+    # Positional args: (name, namespace) — name comes first.
+    args, _kw = fake_core.read_namespaced_secret.call_args
+    assert args[0] == ARGOCD_TOKEN_SECRET_NAME, "first arg must be the Secret NAME (kubernetes-client convention)"
+    assert args[1] == ARGOCD_TOKEN_SECRET_NAMESPACE, "second arg must be the namespace"
+
+
 def test_patch_argocd_cm_account_no_op_when_already_set():
     fake_core = MagicMock()
     fake_core.read_namespaced_config_map.return_value = _fake_v1_cm(
