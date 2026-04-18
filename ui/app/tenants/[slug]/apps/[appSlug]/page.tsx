@@ -11,6 +11,7 @@ import { useToast } from "@/components/Toast";
 import { api, type Application, type Deployment, type BuildStatus, type ContainerStatus, getLogsUrl } from "@/lib/api";
 import AppSettings from "@/components/AppSettings";
 import ObservabilityTab from "@/components/ObservabilityTab";
+import { LiveResourceBadge } from "@/components/LiveResourceBadge";
 import EnvVarEditor from "@/components/EnvVarEditor";
 import { AnsiTerminal } from "@/components/ui/ansi-terminal";
 import { BuildModal, DeployModal } from "@/components/BuildDeployModal";
@@ -1099,6 +1100,17 @@ export default function AppDetailPage() {
               </div>
             </div>
           </div>
+        </div>
+
+        {/* Live resource pill — visible from every tab. Backed by the
+            cluster's built-in `rke2-metrics-server` (metrics.k8s.io). */}
+        <div className="mb-4 flex items-center gap-2">
+          <span className="text-xs text-gray-500 dark:text-zinc-500">Live usage:</span>
+          <LiveResourceBadge
+            tenantSlug={tenantSlug}
+            appSlug={appSlug}
+            accessToken={accessToken}
+          />
         </div>
 
         {/* Provisioning banner */}
