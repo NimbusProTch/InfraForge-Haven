@@ -412,8 +412,8 @@ class DeployService:
             "spec": {
                 "parentRefs": [
                     {
-                        "namespace": "haven-gateway",
-                        "name": "haven-gateway",
+                        "namespace": "iyziops-gateway",
+                        "name": "iyziops-gateway",
                     }
                 ],
                 "hostnames": hostnames,

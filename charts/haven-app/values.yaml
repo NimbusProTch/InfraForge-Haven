@@ -63,8 +63,8 @@ autoscaling:
 httproute:
   enabled: true
   gateway:
-    name: haven-gateway
-    namespace: haven-gateway
+    name: iyziops-gateway
+    namespace: iyziops-gateway
   hostname: ""       # auto-generated: {appSlug}.{tenantSlug}.apps.{domain}
   customDomain: ""
   domain: "sslip.io" # override with real domain
