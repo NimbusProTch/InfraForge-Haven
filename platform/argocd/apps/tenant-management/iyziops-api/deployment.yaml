@@ -104,6 +104,16 @@ spec:
           env:
             - name: K8S_INCLUSTER
               value: "true"
+            # ArgoCD API token, minted at platform_bootstrap startup. The Secret
+            # is created by iyziops-api itself on first boot — optional=true so
+            # the pod still starts before the bootstrap has run; on the next
+            # restart kubelet picks up the populated value automatically.
+            - name: ARGOCD_AUTH_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: iyziops-argocd-token
+                  key: token
+                  optional: true
           envFrom:
             - configMapRef:
                 name: iyziops-api-config
