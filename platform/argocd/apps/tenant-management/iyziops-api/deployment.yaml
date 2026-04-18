@@ -59,7 +59,7 @@ spec:
                 topologyKey: kubernetes.io/hostname
       initContainers:
         - name: db-migrate
-          image: harbor.iyziops.com/library/iyziops-api@sha256:fe95004db9cc5a04d89e5553912499b396da33f27317b9953836de4422730bd4
+          image: harbor.iyziops.com/library/iyziops-api@sha256:382e555ae6d05340ea882f2c6de022c19aaeb9390d57242bda5443b657527e13
           imagePullPolicy: IfNotPresent
           command:
             - sh
@@ -96,7 +96,7 @@ spec:
               type: RuntimeDefault
       containers:
         - name: iyziops-api
-          image: harbor.iyziops.com/library/iyziops-api@sha256:fe95004db9cc5a04d89e5553912499b396da33f27317b9953836de4422730bd4
+          image: harbor.iyziops.com/library/iyziops-api@sha256:382e555ae6d05340ea882f2c6de022c19aaeb9390d57242bda5443b657527e13
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
