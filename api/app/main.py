@@ -169,8 +169,18 @@ async def _credential_provisioning_tick(session_factory: object) -> int:
                 if svc is None:
                     continue
 
-                # Timeout: if stuck in PROVISIONING/UPDATING for too long → FAILED
-                # Use updated_at for UPDATING (reflects when status changed), created_at for PROVISIONING
+                # Sync status from live CRD/Everest FIRST — if a service that
+                # was stuck in PROVISIONING has actually reached ready on the
+                # cluster (e.g. operator took longer than expected), we want
+                # to promote it to READY instead of flipping to FAILED on age.
+                # Pre-fix (<= 2026-04-18): timeout check ran first and stamped
+                # FAILED on services that were 1 second away from READY.
+                tenant = await db.get(Tenant, svc.tenant_id)
+                if tenant and tenant.namespace:
+                    await provisioner.sync_details(svc, tenant_namespace=tenant.namespace)
+
+                # Timeout: if STILL stuck in PROVISIONING/UPDATING after sync → FAILED.
+                # Use updated_at for UPDATING (reflects when status changed), created_at for PROVISIONING.
                 if svc.status in (ServiceStatus.PROVISIONING, ServiceStatus.UPDATING):
                     ref_time = svc.updated_at if svc.status == ServiceStatus.UPDATING else svc.created_at
                     age = now - ref_time.replace(tzinfo=UTC) if ref_time.tzinfo is None else now - ref_time
@@ -182,9 +192,6 @@ async def _credential_provisioning_tick(session_factory: object) -> int:
                         processed += 1
                         continue
 
-                tenant = await db.get(Tenant, svc.tenant_id)
-                if tenant and tenant.namespace:
-                    await provisioner.sync_details(svc, tenant_namespace=tenant.namespace)
                 await db.commit()
 
                 # Auto-connect: if service just became READY with credentials,

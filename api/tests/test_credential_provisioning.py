@@ -463,7 +463,14 @@ class TestCredentialProvisioningTick:
 
     @pytest.mark.asyncio
     async def test_tick_timeout_marks_stuck_service_failed(self):
-        """Service stuck in PROVISIONING for >10min must be marked FAILED."""
+        """Service stuck in PROVISIONING for >10min must be marked FAILED.
+
+        Updated 2026-04-18: `_credential_provisioning_tick` now calls
+        `sync_details` BEFORE the age-based timeout check (so services that
+        finished provisioning late get promoted to READY instead of stamped
+        FAILED). Mock the provisioner's sync_details as a no-op AsyncMock —
+        status stays PROVISIONING, timeout check then stamps FAILED.
+        """
         from datetime import datetime, timedelta
 
         from app.main import _credential_provisioning_tick
@@ -476,7 +483,16 @@ class TestCredentialProvisioningTick:
         # Created 15 minutes ago — exceeds 10min timeout
         mock_svc.created_at = datetime.now(UTC) - timedelta(minutes=15)
 
+        # Tenant mock for sync_details lookup
+        mock_tenant = MagicMock()
+        mock_tenant.namespace = "tenant-stuck"
+
         call_count = [0]
+
+        def get_by_model(model_cls, _id):
+            if model_cls.__name__ == "Tenant":
+                return mock_tenant
+            return mock_svc
 
         def make_session():
             call_count[0] += 1
@@ -486,7 +502,7 @@ class TestCredentialProvisioningTick:
                 mock_result.all.return_value = [(svc_id,)]
                 session.execute = AsyncMock(return_value=mock_result)
             else:
-                session.get = AsyncMock(return_value=mock_svc)
+                session.get = AsyncMock(side_effect=get_by_model)
                 session.commit = AsyncMock()
             ctx = MagicMock()
             ctx.__aenter__ = AsyncMock(return_value=session)
@@ -495,7 +511,16 @@ class TestCredentialProvisioningTick:
 
         factory = MagicMock(side_effect=make_session)
 
-        with patch("app.services.managed_service.ManagedServiceProvisioner"):
+        # Provisioner must be a proper AsyncMock now that sync_details is
+        # called FIRST (see fix/service-timeout-sync-order). Without this
+        # patch, `await provisioner.sync_details(...)` raises TypeError on
+        # the default MagicMock return value.
+        mock_provisioner_class = MagicMock()
+        mock_provisioner_instance = MagicMock()
+        mock_provisioner_instance.sync_details = AsyncMock(return_value=None)
+        mock_provisioner_class.return_value = mock_provisioner_instance
+
+        with patch("app.services.managed_service.ManagedServiceProvisioner", mock_provisioner_class):
             count = await _credential_provisioning_tick(factory)
 
         assert count == 1
