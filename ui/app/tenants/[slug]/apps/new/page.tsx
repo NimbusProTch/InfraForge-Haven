@@ -7,8 +7,9 @@ import Link from "next/link";
 import { AppShell } from "@/components/AppShell";
 import { GitHubRepoPicker } from "@/components/GitHubRepoPicker";
 import { GitHubFileBrowser } from "@/components/GitHubFileBrowser";
+import { GiteaRepoSelector } from "@/components/GiteaRepoSelector";
 import EnvVarEditor from "@/components/EnvVarEditor";
-import { api, GitHubRepo, GitHubBranch } from "@/lib/api";
+import { api, GitHubRepo, GitHubBranch, GiteaRepo } from "@/lib/api";
 import {
   ArrowLeft,
   ArrowRight,
@@ -185,6 +186,12 @@ export default function NewAppPage() {
   const [repoUrl, setRepoUrl] = useState("");
   const [branch, setBranch] = useState("main");
   const [manualMode, setManualMode] = useState(false);
+  // Source picker: "github" (default), "gitea" (self-hosted tenant org), or "manual" URL
+  const [sourceType, setSourceType] = useState<"github" | "gitea" | "manual">("github");
+  const [giteaRepos, setGiteaRepos] = useState<GiteaRepo[]>([]);
+  const [giteaReposLoading, setGiteaReposLoading] = useState(false);
+  const [giteaReposError, setGiteaReposError] = useState("");
+  const [selectedGiteaRepo, setSelectedGiteaRepo] = useState<GiteaRepo | null>(null);
 
   // Step 3 — Build
   const [autoDetect, setAutoDetect] = useState(true);
@@ -623,22 +630,54 @@ export default function NewAppPage() {
         {/* ── Step 2: Source Code ── */}
         {currentStep === 2 && !showReview && (
           <div className={cardBase}>
-            <div className="flex items-center justify-between mb-1">
+            <div className="mb-1">
               <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Source Code</h2>
-              <button
-                type="button"
-                onClick={() => setManualMode(!manualMode)}
-                className="text-xs text-blue-500 hover:text-blue-600 transition-colors font-medium"
-              >
-                {manualMode ? "Use GitHub" : "Enter manually"}
-              </button>
             </div>
-            <p className="text-sm text-gray-500 dark:text-[#888] mb-6">
-              Connect your GitHub repository or enter a URL manually.
+            <p className="text-sm text-gray-500 dark:text-[#888] mb-4">
+              Pick a repository from GitHub, your tenant&apos;s self-hosted Gitea, or paste a URL.
             </p>
 
+            {/* 3-way source picker */}
+            <div
+              role="tablist"
+              aria-label="Source type"
+              className="inline-flex rounded-lg border border-gray-200 dark:border-zinc-700 bg-gray-50 dark:bg-zinc-900 p-1 mb-6"
+            >
+              {(
+                [
+                  { id: "github", label: "GitHub" },
+                  { id: "gitea", label: "Gitea (self-hosted)" },
+                  { id: "manual", label: "Manual URL" },
+                ] as const
+              ).map((tab) => (
+                <button
+                  key={tab.id}
+                  role="tab"
+                  type="button"
+                  aria-selected={sourceType === tab.id}
+                  data-testid={`source-tab-${tab.id}`}
+                  onClick={() => {
+                    setSourceType(tab.id);
+                    setManualMode(tab.id === "manual");
+                    // Clear stale repoUrl on tab switch so the user has to
+                    // re-select from the new source
+                    if (tab.id !== "manual") {
+                      setRepoUrl("");
+                    }
+                  }}
+                  className={`px-4 py-1.5 text-sm font-medium rounded-md transition-colors ${
+                    sourceType === tab.id
+                      ? "bg-white dark:bg-zinc-800 text-gray-900 dark:text-white shadow-sm"
+                      : "text-gray-500 dark:text-zinc-400 hover:text-gray-700 dark:hover:text-zinc-200"
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+
             <div className="space-y-4">
-              {!manualMode && (
+              {sourceType === "github" && (
                 <>
                   {/* GitHub connection */}
                   {isConnected ? (
@@ -768,11 +807,62 @@ export default function NewAppPage() {
                       Loading repositories...
                     </div>
                   )}
+
+                  {/* Org-repo visibility hint — OAuth App approval is a GitHub-side
+                      setting that org owners must toggle; nothing we can fix in code.
+                      Surface it so the operator knows where to look. */}
+                  {isConnected && !reposLoading && repos.length > 0 && (
+                    <div
+                      data-testid="github-org-approval-hint"
+                      className="text-xs text-gray-500 dark:text-zinc-400 bg-gray-50 dark:bg-zinc-900/50 border border-gray-200 dark:border-zinc-700 rounded-lg px-3 py-2"
+                    >
+                      Not seeing repos from one of your organizations? An org owner
+                      must approve the <strong>iyziops</strong> OAuth App at{" "}
+                      <code className="font-mono text-gray-600 dark:text-zinc-300">
+                        github.com/organizations/&lt;org&gt;/settings/oauth_application_policy
+                      </code>
+                      .
+                    </div>
+                  )}
                 </>
               )}
 
+              {/* Gitea (self-hosted tenant org) */}
+              {sourceType === "gitea" && (
+                <GiteaRepoSelector
+                  tenantSlug={tenantSlug}
+                  accessToken={accessToken}
+                  repos={giteaRepos}
+                  loading={giteaReposLoading}
+                  error={giteaReposError}
+                  selected={selectedGiteaRepo}
+                  branch={branch}
+                  onBranchChange={setBranch}
+                  onLoad={async () => {
+                    if (!accessToken) return;
+                    setGiteaReposLoading(true);
+                    setGiteaReposError("");
+                    try {
+                      const result = await api.gitea.listRepos(tenantSlug, accessToken);
+                      setGiteaRepos(result);
+                    } catch (err) {
+                      setGiteaReposError(
+                        err instanceof Error ? err.message : "Failed to load Gitea repos"
+                      );
+                    } finally {
+                      setGiteaReposLoading(false);
+                    }
+                  }}
+                  onSelect={(repo) => {
+                    setSelectedGiteaRepo(repo);
+                    setRepoUrl(repo ? repo.clone_url : "");
+                    setBranch(repo ? repo.default_branch : "main");
+                  }}
+                />
+              )}
+
               {/* Manual mode */}
-              {manualMode && (
+              {sourceType === "manual" && (
                 <div className="space-y-4">
                   <div>
                     <label className={labelClass}>GitHub Repository URL</label>

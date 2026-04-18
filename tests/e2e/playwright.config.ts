@@ -43,7 +43,7 @@ export default defineConfig({
     // 4. UI tests — use saved auth state
     {
       name: "ui",
-      testMatch: /0[4-8]-.+\.spec\.ts/,
+      testMatch: /(0[4-9]|[1-9][0-9])-.+\.spec\.ts/,
       dependencies: ["auth-setup"],
       use: {
         ...devices["Desktop Chrome"],
