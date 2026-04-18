@@ -29,7 +29,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: git-worker
-          image: harbor.iyziops.com/library/iyziops-api@sha256:cd447a1dafc3e199c3919cc55bf5f30ad1ee97c7661f3511f426560468bb5d51
+          image: harbor.iyziops.com/library/iyziops-api@sha256:2e3a3d355bc3ad1706cf2c7b6b4a53f0547bd098d8cb10fdcf16253e8c1188d1
           command: ["python", "-m", "app.workers.git_worker"]
           envFrom:
             - configMapRef:
