@@ -82,6 +82,9 @@ logs/*
 tsconfig.tsbuildinfo
 test-results/
 playwright-report/
+playwright-report-demo/
+tests/e2e/results/*.json
+!tests/e2e/results/.gitkeep
 
 # ===== Haven CLI (official VNG binary + generated reports) =====
 haven/bin/haven
