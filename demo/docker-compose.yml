@@ -1,0 +1,32 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: demo
+      POSTGRES_PASSWORD: demo
+      POSTGRES_DB: demo
+    ports: ["5432:5432"]
+  redis:
+    image: redis:7-alpine
+    ports: ["6379:6379"]
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+  api:
+    build: ./api
+    depends_on: [postgres, redis, rabbitmq]
+    environment:
+      DATABASE_URL: "postgresql+asyncpg://demo:demo@postgres:5432/demo"
+      REDIS_URL: "redis://redis:6379/0"
+      RABBITMQ_URL: "amqp://guest:guest@rabbitmq:5672/"
+      DEMO_CORS_ORIGINS: "http://localhost:3000"
+    ports: ["8000:8000"]
+  ui:
+    build:
+      context: ./ui
+      args:
+        NEXT_PUBLIC_API_URL: http://localhost:8000
+    depends_on: [api]
+    ports: ["3000:3000"]
