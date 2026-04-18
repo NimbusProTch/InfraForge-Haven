@@ -24,6 +24,7 @@ from app.services.platform_bootstrap import (
     _patch_argocd_secret_password,
     _read_existing_argocd_token,
     _trigger_iyziops_api_rollout,
+    _validate_argocd_token,
     _write_token_secret,
     ensure_argocd_api_token,
     ensure_argocd_gitea_repo_secret,
@@ -352,13 +353,17 @@ def test_trigger_iyziops_api_rollout_skips_when_apps_v1_unavailable():
 
 
 @pytest.mark.asyncio
-async def test_ensure_argocd_api_token_short_circuits_when_secret_already_has_token():
-    """If the Secret already has a non-empty token we must not contact ArgoCD again."""
+async def test_ensure_argocd_api_token_short_circuits_when_existing_token_validates():
+    """Stored token + ArgoCD says 200 → no rotation, no mint."""
     with (
         patch(
             "app.services.platform_bootstrap._read_existing_argocd_token",
             return_value="existing.jwt.token",
         ),
+        patch(
+            "app.services.platform_bootstrap._validate_argocd_token",
+            new=AsyncMock(return_value=True),
+        ) as validate,
         patch("app.services.platform_bootstrap._patch_argocd_cm_account") as cm_patch,
         patch("app.services.platform_bootstrap._argocd_login_and_mint_token") as mint,
         patch("app.services.platform_bootstrap.k8s_client") as k8s,
@@ -368,8 +373,131 @@ async def test_ensure_argocd_api_token_short_circuits_when_secret_already_has_to
         k8s.core_v1 = MagicMock()
         s.argocd_url = "http://argocd-server.argocd.svc:80"
         await ensure_argocd_api_token()
+    validate.assert_awaited_once_with("existing.jwt.token")
     cm_patch.assert_not_called()
     mint.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_ensure_argocd_api_token_re_mints_when_existing_token_rejected():
+    """Stored token + ArgoCD says 401 → fall through to rotate + re-mint + Secret update.
+
+    This is the recovery path for the "stale token after a prior password
+    rotation race" failure mode caught during PR #149 post-merge verification.
+    """
+    with (
+        patch(
+            "app.services.platform_bootstrap._read_existing_argocd_token",
+            return_value="stale.invalid.token",
+        ),
+        patch(
+            "app.services.platform_bootstrap._validate_argocd_token",
+            new=AsyncMock(return_value=False),
+        ) as validate,
+        patch("app.services.platform_bootstrap._patch_argocd_cm_account") as cm_patch,
+        patch("app.services.platform_bootstrap._patch_argocd_secret_password"),
+        patch("app.services.platform_bootstrap._patch_argocd_rbac_policy"),
+        patch(
+            "app.services.platform_bootstrap._argocd_login_and_mint_token",
+            new=AsyncMock(return_value="freshly.minted.token"),
+        ) as mint,
+        patch(
+            "app.services.platform_bootstrap._write_token_secret",
+            return_value=False,
+        ) as write_secret,
+        patch("app.services.platform_bootstrap._trigger_iyziops_api_rollout") as rollout,
+        patch("app.services.platform_bootstrap.asyncio.sleep", new=AsyncMock()),
+        patch("app.services.platform_bootstrap.k8s_client") as k8s,
+        patch("app.services.platform_bootstrap.settings") as s,
+    ):
+        k8s.is_available.return_value = True
+        k8s.core_v1 = MagicMock()
+        s.argocd_url = "http://argocd-server.argocd.svc:80"
+        await ensure_argocd_api_token()
+    validate.assert_awaited_once_with("stale.invalid.token")
+    cm_patch.assert_called_once(), "stale token must trigger full re-provisioning"
+    mint.assert_awaited_once()
+    write_secret.assert_called_once_with("freshly.minted.token")
+    # Secret REPLACE (not create) → no rollout needed (env was already bound,
+    # the new value will be picked up next time the pod restarts naturally)
+    rollout.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_validate_argocd_token_returns_true_on_2xx():
+    fake_resp = MagicMock()
+    fake_resp.is_success = True
+
+    class FakeClient:
+        def __init__(self, *a, **kw):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+        async def get(self, *a, **kw):
+            return fake_resp
+
+    with (
+        patch("app.services.platform_bootstrap.httpx.AsyncClient", FakeClient),
+        patch("app.services.platform_bootstrap.settings") as s,
+    ):
+        s.argocd_url = "http://argocd-server.argocd.svc:80"
+        assert await _validate_argocd_token("the.token") is True
+
+
+@pytest.mark.asyncio
+async def test_validate_argocd_token_returns_false_on_401():
+    fake_resp = MagicMock()
+    fake_resp.is_success = False
+
+    class FakeClient:
+        def __init__(self, *a, **kw):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+        async def get(self, *a, **kw):
+            return fake_resp
+
+    with (
+        patch("app.services.platform_bootstrap.httpx.AsyncClient", FakeClient),
+        patch("app.services.platform_bootstrap.settings") as s,
+    ):
+        s.argocd_url = "http://argocd-server.argocd.svc:80"
+        assert await _validate_argocd_token("stale.token") is False
+
+
+@pytest.mark.asyncio
+async def test_validate_argocd_token_returns_true_on_network_error():
+    """Conservative: don't rotate on transient network errors — next pod boot retries."""
+
+    class FakeClient:
+        def __init__(self, *a, **kw):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+        async def get(self, *a, **kw):
+            raise RuntimeError("connection refused")
+
+    with (
+        patch("app.services.platform_bootstrap.httpx.AsyncClient", FakeClient),
+        patch("app.services.platform_bootstrap.settings") as s,
+    ):
+        s.argocd_url = "http://argocd-server.argocd.svc:80"
+        assert await _validate_argocd_token("any.token") is True
 
 
 @pytest.mark.asyncio
