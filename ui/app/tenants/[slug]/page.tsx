@@ -310,10 +310,16 @@ export default function TenantDetailPage() {
     load();
   }, [load]);
 
-  // Poll services while any is in "provisioning" state
+  // Poll services while any is in a transitional ("provisioning" /
+  // "updating") state. Pre-fix: only "provisioning" was polled, so a
+  // tier change that flips a service to "updating" would sit on a stale
+  // status until the user manually refreshed. Customer trusts only the
+  // UI — see L09 in the long-sprint backlog.
   useEffect(() => {
-    const hasProvisioning = services.some((s) => s.status === "provisioning");
-    if (!hasProvisioning || status !== "authenticated") return;
+    const hasTransitional = services.some(
+      (s) => s.status === "provisioning" || s.status === "updating"
+    );
+    if (!hasTransitional || status !== "authenticated") return;
 
     const interval = setInterval(async () => {
       try {
@@ -836,6 +842,19 @@ export default function TenantDetailPage() {
                         {svc.status}
                       </Badge>
                     </div>
+
+                    {/* L09: surface error_message when status=failed so the
+                        operator understands WHY it failed without leaving
+                        the UI for kubectl. */}
+                    {svc.status === "failed" && svc.error_message && (
+                      <div
+                        data-testid={`service-error-${svc.name}`}
+                        className="mt-3 flex items-start gap-2 rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-xs text-red-700 dark:border-red-700/40 dark:bg-red-950/30 dark:text-red-300"
+                      >
+                        <span className="font-semibold shrink-0">Reason:</span>
+                        <span className="break-words">{svc.error_message}</span>
+                      </div>
+                    )}
 
                     {svc.connection_hint && (
                       <div className="mt-3 flex items-center gap-1 bg-gray-100 dark:bg-zinc-800 rounded-lg px-2 py-1.5">
