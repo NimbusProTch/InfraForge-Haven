@@ -41,7 +41,7 @@ spec:
                 topologyKey: kubernetes.io/hostname
       containers:
         - name: iyziops-ui
-          image: harbor.iyziops.com/library/iyziops-ui@sha256:49b77e1d7d59b01356946d1dc2db501ec8599a1a8c27ef5db9c28da6abe39dbf
+          image: harbor.iyziops.com/library/iyziops-ui@sha256:7b290756cea5be04c5e9a5b1be127765edbde8a86be6a37e00f5a933578f1378
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
