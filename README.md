@@ -35,3 +35,4 @@ make haven          # verify 15/15
 - `.claude/CLAUDE.md` — architecture decisions (English)
 - `docs/sprints/` — sprint history + active roadmap
 - `haven/` — official Haven CLI binary, baseline reports, remediation notes
+

@@ -77,14 +77,38 @@ def _auth_headers(token: str) -> dict:
     return {**_HEADERS, "Authorization": f"token {token}"}
 
 
+def _effective_github_client_id() -> str:
+    """Return the configured client_id, or "" if it is a known placeholder literal.
+
+    Treating "placeholder" / "changeme" / etc. as empty prevents the popup flow
+    from redirecting the user to github.com with an invalid client_id (which
+    renders a GitHub-side 404 that looks like *our* bug).
+    """
+    cid = (settings.github_client_id or "").strip()
+    placeholders = getattr(settings, "github_client_id_placeholder_values", ())
+    if not isinstance(placeholders, (tuple, list, set, frozenset)):
+        placeholders = ()
+    if cid.lower() in placeholders:
+        return ""
+    return cid
+
+
 # ---- OAuth endpoints ----
 
 
 @router.get("/auth/url")
 async def get_auth_url(tenant_slug: str = Query("", description="Tenant slug for CSRF binding")) -> dict:
     """Return a GitHub OAuth authorization URL for the Connect GitHub popup flow."""
-    if not settings.github_client_id:
-        raise HTTPException(status_code=503, detail="GitHub OAuth not configured (GITHUB_CLIENT_ID missing)")
+    client_id = _effective_github_client_id()
+    if not client_id:
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "GitHub OAuth not configured — GITHUB_CLIENT_ID is empty or set to a "
+                "placeholder. Register an OAuth App and wire it into the "
+                "iyziops-api-secrets Secret."
+            ),
+        )
 
     state = secrets.token_urlsafe(32)
     # Store state in Redis (or in-memory fallback) for CSRF validation
@@ -95,7 +119,7 @@ async def get_auth_url(tenant_slug: str = Query("", description="Tenant slug for
     # to preserve the colon while encoding the space as %20.
     scope = quote("repo read:user read:org", safe=":")
     params = {
-        "client_id": settings.github_client_id,
+        "client_id": client_id,
         "redirect_uri": settings.github_redirect_uri,
         "state": state,
     }
@@ -114,7 +138,8 @@ async def oauth_callback(
 
     Validates the state parameter against the stored value to prevent CSRF attacks.
     """
-    if not settings.github_client_id or not settings.github_client_secret:
+    client_id = _effective_github_client_id()
+    if not client_id or not settings.github_client_secret:
         raise HTTPException(status_code=503, detail="GitHub OAuth not configured")
 
     # CSRF validation: state must match a previously issued token
@@ -127,7 +152,7 @@ async def oauth_callback(
         response = await client.post(
             GITHUB_TOKEN_URL,
             json={
-                "client_id": settings.github_client_id,
+                "client_id": client_id,
                 "client_secret": settings.github_client_secret,
                 "code": code,
                 "redirect_uri": settings.github_redirect_uri,
