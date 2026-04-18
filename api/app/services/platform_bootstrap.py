@@ -182,6 +182,32 @@ def _read_existing_argocd_token() -> str | None:
         return None
 
 
+async def _validate_argocd_token(token: str) -> bool:
+    """Ping ArgoCD with the token. Return True iff it accepts (200/2xx).
+
+    Used to decide whether the existing-token short-circuit is safe. If
+    ArgoCD has invalidated the token (e.g. its account password rotated
+    by a previous race), we should not trust the stale Secret and instead
+    rotate fresh credentials.
+    """
+    base_url = settings.argocd_url.rstrip("/")
+    if not base_url:
+        return False
+    try:
+        async with httpx.AsyncClient(verify=False, timeout=10.0) as client:  # noqa: S501
+            r = await client.get(
+                f"{base_url}/api/v1/applications",
+                headers={"Authorization": f"Bearer {token}"},
+                params={"limit": "1"},
+            )
+        return r.is_success
+    except Exception as exc:
+        logger.warning("Platform bootstrap: token validation request failed — %s", exc)
+        # Conservative: treat network errors as "valid" to avoid rotating on
+        # a transient network blip. The next pod boot will retry.
+        return True
+
+
 def _patch_argocd_cm_account() -> None:
     """Ensure argocd-cm has `accounts.iyziops-api: apiKey,login` data key."""
     cm = k8s_client.core_v1.read_namespaced_config_map(ARGOCD_CM_NAME, ARGOCD_NAMESPACE)
@@ -330,9 +356,21 @@ async def ensure_argocd_api_token() -> None:
     except Exception:
         logger.exception("Platform bootstrap: read existing ArgoCD token failed")
         return
-    if existing:
-        logger.info("Platform bootstrap: ArgoCD token already present in Secret — skipping mint")
+
+    # Validate-then-rotate: the Secret is the system-of-record for the token,
+    # but ArgoCD is the system-of-record for whether the token is *still* valid
+    # (it can invalidate tokens whenever account.passwordMtime advances). If the
+    # stored token still works → no-op. If ArgoCD rejects it (401 due to a prior
+    # password rotation race, or 404 if the account was wiped), fall through to
+    # re-rotate + re-mint + overwrite the Secret.
+    if existing and await _validate_argocd_token(existing):
+        logger.info("Platform bootstrap: ArgoCD token still valid — skipping mint")
         return
+    if existing:
+        logger.warning(
+            "Platform bootstrap: stored ArgoCD token rejected by ArgoCD (likely a "
+            "prior password rotation invalidated it) — re-minting fresh credentials"
+        )
 
     plain = secrets.token_urlsafe(32)
     try:
