@@ -621,6 +621,26 @@ async def get_sync_status(
     return await argocd.get_app_status(app_name)
 
 
+@router.get("/live-status")
+async def get_live_status(
+    tenant_slug: str,
+    app_slug: str,
+    db: DBSession,
+    argocd: ArgoCDDep,
+    tenant: TenantMembership,
+) -> dict:
+    """Compact, UI-friendly live status (health + sync + one-line reason).
+
+    Polled by the LiveStatusBadge component on the app detail header. The
+    one-line `reason` lets the UI render a useful tooltip when health is
+    Degraded or Missing instead of just a red dot.
+    """
+    await _get_app_or_404(tenant.id, app_slug, db)
+
+    app_name = f"{tenant_slug}-{app_slug}"
+    return await argocd.get_live_status(app_name)
+
+
 @router.get("/deploy-history")
 async def get_deploy_history(
     tenant_slug: str,

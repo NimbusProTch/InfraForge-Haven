@@ -63,6 +63,95 @@ class ArgoCDService:
             logger.warning("ArgoCD API unreachable: %s", exc)
             return {}
 
+    async def get_live_status(self, app_name: str) -> dict:
+        """Compact, UI-friendly view of ArgoCD Application status.
+
+        Returns:
+            {
+              "health":    "Healthy" | "Degraded" | "Progressing" | "Missing" | "Unknown",
+              "sync":      "Synced"  | "OutOfSync" | "Unknown",
+              "reason":    "<short human-readable explanation>" | "",
+              "phase":     "<operation phase>" | "",
+              "finished_at": "<ISO timestamp or empty>",
+              "available": <bool — whether ArgoCD answered at all>,
+            }
+
+        The `reason` field is extracted from `status.operationState.message`,
+        falling back to the latest of `status.conditions` so a Degraded app
+        always carries enough context for the UI to render a one-line tooltip
+        instead of just a red dot.
+        """
+        if not self._url:
+            return {
+                "health": "Unknown",
+                "sync": "Unknown",
+                "reason": "",
+                "phase": "",
+                "finished_at": "",
+                "available": False,
+            }
+
+        try:
+            async with httpx.AsyncClient(verify=False) as client:  # noqa: S501
+                response = await client.get(
+                    f"{self._url}/api/v1/applications/{app_name}",
+                    headers=self._headers(),
+                    timeout=15.0,
+                )
+            if response.status_code == 404:
+                return {
+                    "health": "Missing",
+                    "sync": "Unknown",
+                    "reason": "Application not present in ArgoCD",
+                    "phase": "",
+                    "finished_at": "",
+                    "available": True,
+                }
+            if not response.is_success:
+                logger.warning("ArgoCD API error: %d for app %s", response.status_code, app_name)
+                return {
+                    "health": "Unknown",
+                    "sync": "Unknown",
+                    "reason": f"ArgoCD API error {response.status_code}",
+                    "phase": "",
+                    "finished_at": "",
+                    "available": False,
+                }
+
+            data = response.json()
+            status_block = data.get("status", {})
+            health = status_block.get("health", {}).get("status", "Unknown")
+            sync = status_block.get("sync", {}).get("status", "Unknown")
+            op_state = status_block.get("operationState", {}) or {}
+
+            reason = (op_state.get("message") or "").strip()
+            if not reason and health in ("Degraded", "Missing"):
+                # Fall back to the most recent non-empty condition message
+                for cond in reversed(status_block.get("conditions", []) or []):
+                    msg = (cond.get("message") or "").strip()
+                    if msg:
+                        reason = msg
+                        break
+
+            return {
+                "health": health,
+                "sync": sync,
+                "reason": reason,
+                "phase": op_state.get("phase", ""),
+                "finished_at": op_state.get("finishedAt", ""),
+                "available": True,
+            }
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("ArgoCD API unreachable: %s", exc)
+            return {
+                "health": "Unknown",
+                "sync": "Unknown",
+                "reason": "",
+                "phase": "",
+                "finished_at": "",
+                "available": False,
+            }
+
     async def wait_for_healthy(self, app_name: str, timeout: int = 300) -> tuple[bool, str]:
         """Poll ArgoCD Application until Healthy or timeout.
 
