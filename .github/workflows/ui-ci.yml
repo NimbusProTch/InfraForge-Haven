@@ -76,9 +76,15 @@ jobs:
         run: |
           TAG="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.sha.outputs.short }}"
           LATEST="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest"
-          # Build image
+          # Build image — NEXT_PUBLIC_API_URL is baked at build time (Next.js
+          # client bundle requirement), so it MUST match the production gateway
+          # hostname. Previously read from a secret which still pointed at the
+          # old `api.46.225.42.2.sslip.io` cluster, causing every UI page that
+          # makes client-side API calls to ERR_ABORTED on connect. Hardcoded
+          # to the canonical iyziops gateway here — non-sensitive value, no
+          # reason to keep it in secrets.
           docker build --platform linux/amd64 \
-            --build-arg NEXT_PUBLIC_API_URL=${{ secrets.NEXT_PUBLIC_API_URL }} \
+            --build-arg NEXT_PUBLIC_API_URL=https://api.iyziops.com \
             -t "$TAG" -f ui/Dockerfile ui
           # Login + push via crane (HTTPS with Let's Encrypt TLS)
           crane auth login ${{ env.REGISTRY }} -u ${{ secrets.HARBOR_USER }} -p ${{ secrets.HARBOR_PASSWORD }}
