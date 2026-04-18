@@ -108,7 +108,7 @@ function SignInInner() {
           {/* Links */}
           <div className="flex items-center justify-center gap-4 mt-6">
             <a
-              href={`${process.env.NEXT_PUBLIC_KEYCLOAK_URL ?? "https://keycloak.46.225.42.2.sslip.io"}/realms/${process.env.NEXT_PUBLIC_KEYCLOAK_REALM ?? "haven"}/login-actions/reset-credentials`}
+              href={`${process.env.NEXT_PUBLIC_KEYCLOAK_URL ?? "https://keycloak.iyziops.com"}/realms/${process.env.NEXT_PUBLIC_KEYCLOAK_REALM ?? "haven"}/login-actions/reset-credentials`}
               target="_blank"
               rel="noopener noreferrer"
               className="text-xs text-gray-400 dark:text-zinc-600 hover:text-emerald-400 transition-colors"
