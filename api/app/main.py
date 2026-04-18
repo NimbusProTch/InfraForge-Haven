@@ -231,6 +231,12 @@ async def _credential_provisioning_loop() -> None:
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     logger.info("Starting Haven Platform API")
     await k8s_client.initialize()
+    try:
+        from app.services.platform_bootstrap import run_platform_bootstrap
+
+        await run_platform_bootstrap()
+    except Exception:
+        logger.exception("Platform bootstrap raised — continuing startup")
     task = asyncio.create_task(_credential_provisioning_loop())
     yield
     task.cancel()
