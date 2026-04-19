@@ -519,9 +519,13 @@ async def rollback_deployment(
             detail="Target deployment has no image_tag to roll back to",
         )
 
+    # commit_sha column is VARCHAR(40). A full UUID (36 chars) + "rollback-to-"
+    # prefix (12 chars) = 48 chars → StringDataRightTruncationError at INSERT.
+    # Use the short-SHA convention: first 8 chars of the target deployment id
+    # are enough to unambiguously identify the rollback target for audit purposes.
     rollback_record = Deployment(
         application_id=app.id,
-        commit_sha=f"rollback-to-{deployment_id}",
+        commit_sha=f"rollback-to-{str(deployment_id)[:8]}",
         status=DeploymentStatus.DEPLOYING,
         image_tag=target_deployment.image_tag,
     )
