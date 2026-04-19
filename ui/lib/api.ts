@@ -534,6 +534,24 @@ export interface GitHubRepo {
   private: boolean;
 }
 
+/** A repository inside the tenant's self-hosted Gitea org (tenant-{slug}). */
+export interface GiteaRepo {
+  id: number;
+  name: string;
+  full_name: string;
+  clone_url: string;
+  ssh_url: string;
+  html_url: string;
+  default_branch: string;
+  private: boolean;
+  empty: boolean;
+}
+
+export interface GiteaBranch {
+  name: string;
+  commit_sha: string;
+}
+
 export interface GitHubBranch {
   name: string;
   commit: { sha: string };
@@ -844,6 +862,18 @@ export const api = {
       apiFetch<DetectedDeps>(
         `/github/repos/${owner}/${repo}/detect?ref=${ref}&token=${encodeURIComponent(githubToken)}`,
         {}
+      ),
+  },
+  gitea: {
+    /** List repositories inside the tenant's Gitea org (tenant-{slug}). */
+    listRepos: (tenantSlug: string, token?: string) =>
+      apiFetch<GiteaRepo[]>(`/tenants/${tenantSlug}/repos`, {}, token),
+    /** List branches of a Gitea repo. */
+    listBranches: (tenantSlug: string, repoName: string, token?: string) =>
+      apiFetch<GiteaBranch[]>(
+        `/tenants/${tenantSlug}/repos/${repoName}/branches`,
+        {},
+        token
       ),
   },
   members: {
