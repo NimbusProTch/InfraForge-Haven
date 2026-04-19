@@ -341,10 +341,63 @@ export default function TenantDetailPage() {
       setServices((s) => s.filter((svc) => svc.name !== serviceName));
       toastSuccess(`Service "${serviceName}" deleted`);
     } catch (err) {
-      toastError(err instanceof Error ? err.message : "Failed to delete service");
+      // L08: DELETE returns 409 when apps are connected. Parse the
+      // structured detail (connected_apps + hint) and offer a force-
+      // delete confirmation instead of showing a raw JSON error.
+      const parsed = parseConflictDetail(err);
+      if (parsed) {
+        const connectedList = parsed.connected_apps.join(", ");
+        const ok = confirm(
+          `"${serviceName}" is connected to: ${connectedList}.\n\n` +
+            `Force-deleting will auto-disconnect those apps and trigger a ` +
+            `final snapshot (for Postgres/MySQL/MongoDB). Continue?`
+        );
+        if (ok) {
+          try {
+            await api.services.delete(slug, serviceName, accessToken, {
+              force: true,
+            });
+            setServices((s) => s.filter((svc) => svc.name !== serviceName));
+            toastSuccess(`Service "${serviceName}" force-deleted`);
+          } catch (forceErr) {
+            toastError(
+              forceErr instanceof Error
+                ? forceErr.message
+                : "Force-delete failed"
+            );
+          }
+        }
+      } else {
+        toastError(err instanceof Error ? err.message : "Failed to delete service");
+      }
     } finally {
       setDeletingService(null);
     }
+  }
+
+  /** Parse a 409 error thrown by apiFetch into the structured detail
+   * body the backend returns from DELETE /services/{name}. Returns null
+   * if the error isn't a 409 or the detail isn't the expected shape.
+   */
+  function parseConflictDetail(
+    err: unknown
+  ): { message: string; connected_apps: string[]; hint: string } | null {
+    if (!(err instanceof Error)) return null;
+    if (!err.message.startsWith("API 409:")) return null;
+    try {
+      const body = JSON.parse(err.message.slice("API 409:".length).trim());
+      const d = body.detail;
+      if (d && Array.isArray(d.connected_apps) && typeof d.message === "string") {
+        return {
+          message: d.message,
+          connected_apps: d.connected_apps,
+          hint: d.hint ?? "",
+        };
+      }
+    } catch {
+      // Detail wasn't JSON — fall through
+    }
+    return null;
   }
 
   async function openCredentials(svc: ManagedService) {

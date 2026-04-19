@@ -344,7 +344,10 @@ async def delete_service(
     # 2) Final snapshot (best-effort — failure does NOT block delete; it is
     #    audit-logged so the operator can see what happened)
     final_snapshot_name: str | None = None
+    final_snapshot_attempted: bool = False
+    final_snapshot_error: str | None = None
     if take_final_snapshot and svc.service_type.value in _BACKUP_SUPPORTED_TYPES and svc.status == ServiceStatus.READY:
+        final_snapshot_attempted = True
         try:
             from app.services.backup_service import BackupService
 
@@ -363,6 +366,7 @@ async def delete_service(
         except Exception as exc:  # noqa: BLE001
             # Don't block delete — but make sure the operator can see this in
             # the audit log so they know there is no recovery snapshot.
+            final_snapshot_error = str(exc)[:500]
             logger.warning(
                 "Final snapshot failed for %s/%s: %s — proceeding with delete anyway",
                 tenant_slug,
@@ -370,6 +374,35 @@ async def delete_service(
                 exc,
             )
             final_snapshot_name = None
+
+    # 2b) TOCTOU guard — re-check connection list before irreversible steps.
+    #     If a concurrent /connect-service landed between the first 409 check
+    #     and now, abort (unless force=true — in which case the newly-
+    #     connected app will be auto-disconnected below).
+    if not force:
+        refreshed_apps = await db.execute(select(Application).where(Application.tenant_id == tenant.id))
+        refreshed_list = list(refreshed_apps.scalars())
+        late_connected = [
+            app_obj.slug
+            for app_obj in refreshed_list
+            if app_obj.env_from_secrets and any(e.get("service_name") == svc.name for e in app_obj.env_from_secrets)
+        ]
+        new_slugs = [s for s in late_connected if s not in connected_slugs]
+        if new_slugs:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "message": (
+                        f"Service '{svc.name}' was connected to a new app during the "
+                        "deletion flow. Retry with ?force=true or disconnect first."
+                    ),
+                    "connected_apps": late_connected,
+                    "new_since_first_check": new_slugs,
+                    "hint": "Race detected mid-delete — re-run with ?force=true.",
+                },
+            )
+        # Refresh apps_list so the auto-disconnect operates on the freshest snapshot
+        apps_list = refreshed_list
 
     # 3) Auto-disconnect (only reached when force=true OR there were no
     #    connected apps to begin with). Reassign JSON columns rather than
@@ -402,7 +435,17 @@ async def delete_service(
             "name": svc.name,
             "service_type": svc.service_type.value,
             "force": force,
+            # Explicit tri-state so audit row is never ambiguous post-incident:
+            # attempted=true + name=null + error=set → we tried and it failed
+            # attempted=true + name=set            → CRD created (may still be
+            #                                        uploading to MinIO when
+            #                                        this row is written)
+            # attempted=false                      → skipped (Redis, or
+            #                                        take_final_snapshot=false,
+            #                                        or service not READY)
             "final_snapshot": final_snapshot_name,
+            "final_snapshot_attempted": final_snapshot_attempted,
+            "final_snapshot_error": final_snapshot_error,
             "auto_disconnected_apps": connected_slugs if force else [],
         },
     )
