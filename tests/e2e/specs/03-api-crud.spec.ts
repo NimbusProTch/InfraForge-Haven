@@ -140,20 +140,52 @@ const PG_TENANT = "testing";
 const PG_SERVICE = "e2e-pg";
 const PG_APP = "test";
 
+/**
+ * Ensure the shared PG_TENANT exists + has a PG_APP. Pre-fix the service
+ * lifecycle tests assumed these had been bootstrapped out-of-band and
+ * failed against a clean production cluster with 404. Safe to call
+ * repeatedly — the API returns 409 on duplicate, which we ignore.
+ */
+async function ensureSharedTenant(
+  request: Parameters<typeof apiCall>[0],
+  token: string,
+) {
+  // tenant
+  await apiCall(request, "POST", "/tenants", token, {
+    name: "E2E testing tenant",
+    slug: PG_TENANT,
+  });
+  // app (used by connect-service tests later)
+  await apiCall(request, "POST", `/tenants/${PG_TENANT}/apps`, token, {
+    name: PG_APP,
+    slug: PG_APP,
+    repo_url: "https://github.com/test/placeholder",
+    branch: "main",
+    port: 8080,
+  });
+}
+
 test.describe("PostgreSQL Service Lifecycle", () => {
   let token: string;
 
   test.beforeAll(async ({ request }) => {
     token = await getApiToken(request);
+    await ensureSharedTenant(request, token);
     // Cleanup from previous runs (delete service if it exists)
-    await apiCall(request, "DELETE", `/tenants/${PG_TENANT}/services/${PG_SERVICE}`, token);
+    await apiCall(
+      request,
+      "DELETE",
+      `/tenants/${PG_TENANT}/services/${PG_SERVICE}?force=true&take_final_snapshot=false`,
+      token,
+    );
   });
 
   test.afterAll(async ({ request }) => {
     token = await getApiToken(request);
+    await ensureSharedTenant(request, token);
     // Cleanup: delete service and disconnect from app
     await apiCall(request, "DELETE", `/tenants/${PG_TENANT}/apps/${PG_APP}/connect-service/${PG_SERVICE}`, token);
-    await apiCall(request, "DELETE", `/tenants/${PG_TENANT}/services/${PG_SERVICE}`, token);
+    await apiCall(request, "DELETE", `/tenants/${PG_TENANT}/services/${PG_SERVICE}?force=true&take_final_snapshot=false`, token);
   });
 
   test("create PostgreSQL service returns 201 with provisioning status", async ({ request }) => {
@@ -262,7 +294,7 @@ test.describe("PostgreSQL Service Lifecycle", () => {
   });
 
   test("delete PostgreSQL service", async ({ request }) => {
-    const resp = await apiCall(request, "DELETE", `/tenants/${PG_TENANT}/services/${PG_SERVICE}`, token);
+    const resp = await apiCall(request, "DELETE", `/tenants/${PG_TENANT}/services/${PG_SERVICE}?force=true&take_final_snapshot=false`, token);
     expect(resp.status()).toBe(204);
   });
 
@@ -284,13 +316,15 @@ test.describe("MySQL Service Lifecycle", () => {
 
   test.beforeAll(async ({ request }) => {
     token = await getApiToken(request);
-    await apiCall(request, "DELETE", `/tenants/${MYSQL_TENANT}/services/${MYSQL_SERVICE}`, token);
+    await ensureSharedTenant(request, token);
+    await apiCall(request, "DELETE", `/tenants/${MYSQL_TENANT}/services/${MYSQL_SERVICE}?force=true&take_final_snapshot=false`, token);
   });
 
   test.afterAll(async ({ request }) => {
     token = await getApiToken(request);
+    await ensureSharedTenant(request, token);
     await apiCall(request, "DELETE", `/tenants/${MYSQL_TENANT}/apps/${MYSQL_APP}/connect-service/${MYSQL_SERVICE}`, token);
-    await apiCall(request, "DELETE", `/tenants/${MYSQL_TENANT}/services/${MYSQL_SERVICE}`, token);
+    await apiCall(request, "DELETE", `/tenants/${MYSQL_TENANT}/services/${MYSQL_SERVICE}?force=true&take_final_snapshot=false`, token);
   });
 
   test("create MySQL service returns 201", async ({ request }) => {
@@ -357,7 +391,7 @@ test.describe("MySQL Service Lifecycle", () => {
   });
 
   test("delete MySQL service", async ({ request }) => {
-    const resp = await apiCall(request, "DELETE", `/tenants/${MYSQL_TENANT}/services/${MYSQL_SERVICE}`, token);
+    const resp = await apiCall(request, "DELETE", `/tenants/${MYSQL_TENANT}/services/${MYSQL_SERVICE}?force=true&take_final_snapshot=false`, token);
     expect(resp.status()).toBe(204);
   });
 
@@ -379,13 +413,15 @@ test.describe("MongoDB Service Lifecycle", () => {
 
   test.beforeAll(async ({ request }) => {
     token = await getApiToken(request);
-    await apiCall(request, "DELETE", `/tenants/${MONGO_TENANT}/services/${MONGO_SERVICE}`, token);
+    await ensureSharedTenant(request, token);
+    await apiCall(request, "DELETE", `/tenants/${MONGO_TENANT}/services/${MONGO_SERVICE}?force=true&take_final_snapshot=false`, token);
   });
 
   test.afterAll(async ({ request }) => {
     token = await getApiToken(request);
+    await ensureSharedTenant(request, token);
     await apiCall(request, "DELETE", `/tenants/${MONGO_TENANT}/apps/${MONGO_APP}/connect-service/${MONGO_SERVICE}`, token);
-    await apiCall(request, "DELETE", `/tenants/${MONGO_TENANT}/services/${MONGO_SERVICE}`, token);
+    await apiCall(request, "DELETE", `/tenants/${MONGO_TENANT}/services/${MONGO_SERVICE}?force=true&take_final_snapshot=false`, token);
   });
 
   test("create MongoDB service returns 201", async ({ request }) => {
@@ -451,7 +487,7 @@ test.describe("MongoDB Service Lifecycle", () => {
   });
 
   test("delete MongoDB service", async ({ request }) => {
-    const resp = await apiCall(request, "DELETE", `/tenants/${MONGO_TENANT}/services/${MONGO_SERVICE}`, token);
+    const resp = await apiCall(request, "DELETE", `/tenants/${MONGO_TENANT}/services/${MONGO_SERVICE}?force=true&take_final_snapshot=false`, token);
     expect(resp.status()).toBe(204);
   });
 
@@ -472,11 +508,13 @@ test.describe("DB Credentials to App Env Vars Flow", () => {
 
   test.beforeAll(async ({ request }) => {
     token = await getApiToken(request);
+    await ensureSharedTenant(request, token);
     await apiCall(request, "DELETE", `/tenants/${TENANT}/services/${DB_NAME}`, token);
   });
 
   test.afterAll(async ({ request }) => {
     token = await getApiToken(request);
+    await ensureSharedTenant(request, token);
     await apiCall(request, "DELETE", `/tenants/${TENANT}/services/${DB_NAME}`, token);
     // Clear env vars
     await apiCall(request, "PATCH", `/tenants/${TENANT}/apps/${APP}`, token, { env_vars: {} });
@@ -557,11 +595,13 @@ test.describe("Redis Service Lifecycle", () => {
 
   test.beforeAll(async ({ request }) => {
     token = await getApiToken(request);
+    await ensureSharedTenant(request, token);
     await apiCall(request, "DELETE", `/tenants/${TENANT}/services/${SVC}`, token);
   });
 
   test.afterAll(async ({ request }) => {
     token = await getApiToken(request);
+    await ensureSharedTenant(request, token);
     await apiCall(request, "DELETE", `/tenants/${TENANT}/services/${SVC}`, token);
   });
 
@@ -615,11 +655,13 @@ test.describe("RabbitMQ Service Lifecycle", () => {
 
   test.beforeAll(async ({ request }) => {
     token = await getApiToken(request);
+    await ensureSharedTenant(request, token);
     await apiCall(request, "DELETE", `/tenants/${TENANT}/services/${SVC}`, token);
   });
 
   test.afterAll(async ({ request }) => {
     token = await getApiToken(request);
+    await ensureSharedTenant(request, token);
     await apiCall(request, "DELETE", `/tenants/${TENANT}/services/${SVC}`, token);
   });
 
