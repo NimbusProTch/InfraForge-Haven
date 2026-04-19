@@ -7,6 +7,7 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
@@ -467,14 +468,14 @@ export function AddServiceModal({ tenantSlug, appSlug, accessToken, onCreated }:
 
             {error && <p className="text-sm text-destructive">{error}</p>}
 
-            <div className="flex justify-end gap-2 pt-1">
+            <DialogFooter data-testid="add-service-footer">
               <Button type="button" variant="outline" onClick={() => setOpen(false)}>
                 Cancel
               </Button>
               <Button type="submit" disabled={loading}>
                 {loading ? "Provisioning..." : "Create"}
               </Button>
-            </div>
+            </DialogFooter>
           </form>
         )}
       </DialogContent>
