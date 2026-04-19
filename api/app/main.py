@@ -14,6 +14,7 @@ from app.config import settings
 from app.k8s.client import k8s_client
 from app.rate_limit import limiter
 from app.routers import (
+    access_requests,
     applications,
     audit,
     backup,
@@ -330,6 +331,7 @@ async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONR
 # Routers
 # ---------------------------------------------------------------------------
 app.include_router(health.router)
+app.include_router(access_requests.router, prefix=settings.api_prefix)
 app.include_router(tenants.router, prefix=settings.api_prefix)
 app.include_router(applications.router, prefix=settings.api_prefix)
 app.include_router(deployments.router, prefix=settings.api_prefix)

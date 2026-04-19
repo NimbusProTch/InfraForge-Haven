@@ -261,7 +261,9 @@ async def test_rollback_creates_new_deployment(scale_client, db_session):
     assert resp.status_code == 202
     data = resp.json()
     assert data["status"] == "deploying"
-    assert data["commit_sha"] == f"rollback-to-{d1.id}"
+    # PR #165: commit_sha is VARCHAR(40) so the router truncates to first
+    # 8 chars of the target deployment uuid ("rollback-to-<8hex>" = 20 chars).
+    assert data["commit_sha"] == f"rollback-to-{str(d1.id)[:8]}"
 
 
 @pytest.mark.asyncio

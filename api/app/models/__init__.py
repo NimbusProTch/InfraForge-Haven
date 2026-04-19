@@ -1,3 +1,4 @@
+from app.models.access_request import AccessRequest, AccessRequestStatus
 from app.models.application import Application, AppType
 from app.models.audit_log import AuditLog
 from app.models.base import Base
@@ -37,4 +38,6 @@ __all__ = [
     "SSOConfig",
     "OrgTenantMembership",
     "Cluster",
+    "AccessRequest",
+    "AccessRequestStatus",
 ]
