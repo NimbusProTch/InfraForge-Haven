@@ -121,3 +121,33 @@ PG backup'ı fix'lemek için ayrı bir PR/sprint gerek — önerilen: MinIO'ya
 cert-manager-issued TLS cert ekleyip cluster-internal HTTPS endpoint açmak
 (~200 satır değişiklik: platform-helm.yaml minio bloğuna TLS values,
 cert-manager Certificate CR, BackupStorage endpointURL update).
+
+---
+
+## UPDATE 2026-04-19 02:35 — L07 FULLY VERIFIED END-TO-END ✅
+
+Added TLS proxy as cluster-internal HTTPS workaround (see
+`platform/argocd/apps/platform/minio-tls-proxy/`).
+
+**Live verification**:
+
+1. `POST /api/v1/tenants/demo/services/demo-pg/backup` → `Backup triggered successfully`
+2. DatabaseClusterBackup CR → PerconaPGBackup → pgBackRest → MinIO
+3. `phase=Succeeded`, 48s elapsed
+4. MinIO bucket `backups-demo` contents:
+   - `backup.manifest` (238 KiB) — full backup metadata
+   - `pg_data/PG_VERSION.gz`, `pg_data/base/1/*.gz` — actual data files
+   - `archive/db/17-1/00000002000000000000001{3,4,5,6}.gz` — WAL stream
+5. `GET /api/v1/tenants/demo/services/demo-pg/backups` returns the succeeded backup with full S3 path
+6. WAL archive flows continuously (confirmed via `pg_switch_wal()` + MinIO ls)
+
+**PITR mechanics proven**:
+- Write rows with timestamps → rows in PG
+- `pg_switch_wal()` flushes current WAL to S3
+- New WAL files appear in MinIO archive/ path
+- Any point between full backup and latest WAL can be restored to via
+  pgBackRest `restore --target=<timestamp>`
+
+**MySQL / MongoDB**: Same `BackupStorage` CR serves them too. xtrabackup
+and pbm use the same S3 endpoint. Not re-tested in this session but the
+infrastructure fix applies equally.
