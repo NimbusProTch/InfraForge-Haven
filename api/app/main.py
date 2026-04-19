@@ -354,3 +354,4 @@ app.include_router(gitea_repos.router, prefix=settings.api_prefix)
 app.include_router(queue_status.router, prefix=settings.api_prefix)
 app.include_router(build_queue.router, prefix=settings.api_prefix)
 app.include_router(events.router, prefix=settings.api_prefix)
+
