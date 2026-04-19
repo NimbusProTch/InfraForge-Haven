@@ -934,3 +934,74 @@ spec:
             - .spec.volumeClaimTemplates[].kind
             - .spec.volumeClaimTemplates[].metadata.creationTimestamp
             - .spec.volumeClaimTemplates[].status
+        # Everest OLM + operator drift — kept this Application OutOfSync
+        # indefinitely with a perpetual 15-resource drift (3 PodSchedulingPolicy
+        # + 2 namespace + 4 cert/secret + 2 webhook configs + 1 APIService +
+        # 3 helm-hook leftovers). None of these can ever converge via chart
+        # sync because they are managed by OLM / Everest's own operator /
+        # one-shot Helm hooks / cert rotation. Ignore them so the Application
+        # shows Synced when it actually matches intent.
+        - group: ""
+          kind: Namespace
+          name: everest
+          jqPathExpressions:
+            - .metadata.labels
+            - .metadata.annotations
+        - group: ""
+          kind: Namespace
+          name: everest-olm
+          jqPathExpressions:
+            - .metadata.labels
+            - .metadata.annotations
+        # OLM-injected APIService — caBundle + group annotations are written
+        # by the OLM runtime and rotate on every OLM upgrade.
+        - group: apiregistration.k8s.io
+          kind: APIService
+          name: v1.packages.operators.coreos.com
+          jqPathExpressions:
+            - .spec.caBundle
+            - .metadata.labels
+            - .metadata.annotations
+        # Webhook cert rotation — the caBundle field gets re-patched on
+        # every cert renewal (ours + the L07 fix-up where we synced
+        # caBundle to the current webhook-server-cert Secret).
+        - group: admissionregistration.k8s.io
+          kind: ValidatingWebhookConfiguration
+          name: everest-operator-validating-webhook-configuration
+          jqPathExpressions:
+            - .webhooks[].clientConfig.caBundle
+        - group: admissionregistration.k8s.io
+          kind: MutatingWebhookConfiguration
+          name: everest-operator-mutating-webhook-configuration
+          jqPathExpressions:
+            - .webhooks[].clientConfig.caBundle
+        # Cert + account secrets are randomly generated at chart install
+        # time; they never match a static manifest.
+        - group: ""
+          kind: Secret
+          name: webhook-server-cert
+          jqPathExpressions:
+            - .data
+        - group: ""
+          kind: Secret
+          name: packageserver-service-cert
+          jqPathExpressions:
+            - .data
+        - group: ""
+          kind: Secret
+          name: everest-accounts
+          jqPathExpressions:
+            - .data
+            - .metadata.annotations
+        - group: ""
+          kind: Secret
+          name: everest-jwt
+          jqPathExpressions:
+            - .data
+        # Everest operator creates default PodSchedulingPolicy CRs on
+        # start-up. Never present in the chart manifest → permanent drift.
+        - group: everest.percona.com
+          kind: PodSchedulingPolicy
+          jqPathExpressions:
+            - .spec
+            - .metadata
