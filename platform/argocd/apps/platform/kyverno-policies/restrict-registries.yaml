@@ -7,7 +7,7 @@ metadata:
     policies.kyverno.io/category: Supply Chain Security
     policies.kyverno.io/severity: high
     policies.kyverno.io/description: >-
-      Tenant workloads may only pull images from the Haven Harbor registry.
+      Tenant workloads may only pull images from the iyziops Harbor registry.
       This prevents supply chain attacks via untrusted public registries.
 spec:
   validationFailureAction: Audit  # TODO: switch to Enforce after 24-48h observation
@@ -25,12 +25,19 @@ spec:
       validate:
         message: >-
           Image '{{request.object.spec.containers[*].image}}' is not from an
-          approved registry. Only images from Harbor (harbor.46.225.42.2.sslip.io)
-          are allowed in tenant namespaces.
-        pattern:
-          spec:
-            containers:
-              - image: "harbor.46.225.42.2.sslip.io/*"
+          approved registry. Only images from the iyziops Harbor registry
+          (harbor.iyziops.com or the legacy harbor.46.225.42.2.sslip.io) are
+          allowed in tenant namespaces.
+        # Support both the new hostname (harbor.iyziops.com, current pipeline
+        # target) and the legacy sslip.io hostname (kept during the rename
+        # transition — can be removed after a full rebuild of every tenant).
+        anyPattern:
+          - spec:
+              containers:
+                - image: "harbor.iyziops.com/*"
+          - spec:
+              containers:
+                - image: "harbor.46.225.42.2.sslip.io/*"
     - name: validate-init-container-registries
       match:
         any:
@@ -42,8 +49,9 @@ spec:
                   haven.io/managed: "true"
       validate:
         message: >-
-          Init container image is not from an approved registry.
+          Init container image is not from an approved registry (harbor.iyziops.com
+          or legacy harbor.46.225.42.2.sslip.io; alpine/busybox allowed).
         pattern:
           spec:
             =(initContainers):
-              - image: "harbor.46.225.42.2.sslip.io/* | alpine:* | busybox:*"
+              - image: "harbor.iyziops.com/* | harbor.46.225.42.2.sslip.io/* | alpine:* | busybox:*"
