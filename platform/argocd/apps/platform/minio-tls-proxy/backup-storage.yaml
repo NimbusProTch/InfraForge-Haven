@@ -1,0 +1,32 @@
+---
+# Credentials copied from minio-system/minio-credentials into everest namespace
+# so the Everest operator (running in everest-system) can read them.
+# Uses ESO in a future sprint — for now a plain kubectl-synced Secret.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: minio-backup-creds
+  namespace: everest
+type: Opaque
+stringData:
+  # Managed by scripts/setup-minio-backup-bucket.sh which reads the root
+  # password from minio-system/minio-credentials and writes here. After
+  # ESO is wired, this becomes an ExternalSecret pointing at Vault.
+  AWS_ACCESS_KEY_ID: "REPLACE_ME_FROM_SCRIPT"
+  AWS_SECRET_ACCESS_KEY: "REPLACE_ME_FROM_SCRIPT"
+---
+apiVersion: everest.percona.com/v1alpha1
+kind: BackupStorage
+metadata:
+  name: minio-backup
+  namespace: everest
+spec:
+  type: s3
+  bucket: backups-demo
+  region: us-east-1
+  # HTTPS via in-cluster TLS proxy (minio-tls-proxy) — required because
+  # pgBackRest 2.55+ rejects http:// S3 endpoints. See README.md.
+  endpointURL: https://minio-tls.minio-system.svc:9443
+  credentialsSecretName: minio-backup-creds
+  verifyTLS: false
+  forcePathStyle: true

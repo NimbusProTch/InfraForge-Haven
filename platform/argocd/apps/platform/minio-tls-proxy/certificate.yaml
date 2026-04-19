@@ -1,0 +1,29 @@
+---
+# Self-signed ClusterIssuer — dedicated to the MinIO TLS proxy.
+# Kept cluster-internal; no external trust required.
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: minio-tls-selfsigned
+  namespace: minio-system
+spec:
+  selfSigned: {}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: minio-tls-proxy-cert
+  namespace: minio-system
+spec:
+  secretName: minio-tls-proxy-cert
+  duration: 87600h     # 10 years
+  renewBefore: 720h    # 30 days
+  commonName: minio-tls.minio-system.svc
+  dnsNames:
+    - minio-tls.minio-system.svc
+    - minio-tls.minio-system.svc.cluster.local
+    - minio-tls
+    - minio.minio-system.svc
+  issuerRef:
+    name: minio-tls-selfsigned
+    kind: Issuer
