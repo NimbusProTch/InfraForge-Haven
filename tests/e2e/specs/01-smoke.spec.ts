@@ -3,7 +3,7 @@ import { test, expect } from "@playwright/test";
 test.describe("Smoke Tests — Pages Load", () => {
   test("login page loads", async ({ page }) => {
     await page.goto("/auth/signin");
-    await expect(page.getByText("Haven Platform")).toBeVisible();
+    await expect(page.getByText("iyziops")).toBeVisible();
     await expect(page.getByRole("button", { name: /sso|keycloak/i })).toBeVisible();
   });
 

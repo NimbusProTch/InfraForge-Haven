@@ -3,8 +3,12 @@ import "./globals.css";
 import { Providers } from "./providers";
 
 export const metadata: Metadata = {
-  title: "Haven Platform",
-  description: "Haven-Compliant Self-Service DevOps Platform",
+  title: "iyziops",
+  description: "Self-service DevOps platform — VNG Haven 15/15 compliant",
+  icons: {
+    icon: "/logo.svg",
+    apple: "/logo.svg",
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

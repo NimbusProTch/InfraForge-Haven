@@ -58,7 +58,7 @@ class GitQueueService:
                 "path": "gitops/tenants/gemeente-a/my-app/values.yaml",
                 "content": "image:\\n  tag: abc123\\n",
                 "commit_message": "[haven] deploy gemeente-a/my-app",
-                "author": "Haven Platform <haven@haven.dev>",
+                "author": "iyziops <noreply@iyziops.com>",
             }
         )
     """

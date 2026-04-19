@@ -62,14 +62,16 @@ function SignInInner() {
         <div className="bg-white dark:bg-zinc-900/80 backdrop-blur-xl border border-gray-200 dark:border-zinc-800 rounded-2xl p-8 shadow-2xl shadow-emerald-500/5">
           {/* Logo */}
           <div className="flex flex-col items-center mb-8">
-            <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center mb-4 shadow-lg shadow-emerald-500/20">
-              <Anchor className="w-7 h-7 text-white" />
+            <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-blue-500 via-indigo-500 to-violet-600 flex items-center justify-center mb-4 shadow-lg shadow-indigo-500/30">
+              <span className="font-extrabold text-2xl text-white leading-none tracking-tighter">
+                iy
+              </span>
             </div>
             <h1 className="text-xl font-bold text-gray-900 dark:text-white tracking-tight">
-              Haven Platform
+              iyziops
             </h1>
             <p className="text-sm text-gray-500 dark:text-zinc-500 mt-1 text-center">
-              EU-Sovereign PaaS for Dutch Municipalities
+              EU-sovereign PaaS for Dutch municipalities — VNG Haven 15/15 compliant
             </p>
           </div>
 

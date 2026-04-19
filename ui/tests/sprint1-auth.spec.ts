@@ -28,7 +28,7 @@ test.describe.serial("Sprint 1: Auth & Login", () => {
     await page.goto(`${UI}/auth/signin`, { waitUntil: "networkidle" });
 
     // Haven branding
-    await expect(page.getByText("Haven Platform")).toBeVisible();
+    await expect(page.getByText("iyziops")).toBeVisible();
 
     // EU-Sovereign subtitle
     await expect(page.getByText(/EU-Sovereign|municipalities/i)).toBeVisible();
@@ -119,7 +119,7 @@ test.describe.serial("Sprint 1: Auth & Login", () => {
 
     // Should redirect to signin
     await page.waitForURL(/signin/, { timeout: 10_000 });
-    await expect(page.getByText("Haven Platform")).toBeVisible();
+    await expect(page.getByText("iyziops")).toBeVisible();
 
     await page.screenshot({ path: "test-results/sprint1/p06-logged-out.png" });
   });
@@ -155,7 +155,7 @@ test.describe.serial("Sprint 1: Auth & Login", () => {
 
   test("P10. Swagger docs accessible", async ({ page }) => {
     await page.goto(`${API}/api/docs`, { waitUntil: "networkidle" });
-    await expect(page.getByText("Haven Platform API")).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText("iyziops")).toBeVisible({ timeout: 10_000 });
     await page.screenshot({ path: "test-results/sprint1/p10-swagger.png" });
   });
 });

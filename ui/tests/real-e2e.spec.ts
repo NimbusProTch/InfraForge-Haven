@@ -52,7 +52,7 @@ test.describe("Real E2E — Full Customer Journey", () => {
     await page.goto(`${UI_URL}/auth/signin`, { waitUntil: "networkidle" });
 
     // Haven branding
-    await expect(page.getByText("Haven Platform")).toBeVisible();
+    await expect(page.getByText("iyziops")).toBeVisible();
 
     // Keycloak login button
     await expect(page.getByText(/Keycloak|Sign in/i).first()).toBeVisible();
@@ -137,7 +137,7 @@ test.describe("Real E2E — Full Customer Journey", () => {
     await page.goto(`${API_URL}/api/docs`, { waitUntil: "networkidle" });
 
     // Swagger UI renders
-    await expect(page.getByText("Haven Platform API")).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText("iyziops")).toBeVisible({ timeout: 10_000 });
 
     // Should show endpoint sections
     await expect(page.getByText("tenants").first()).toBeVisible();
