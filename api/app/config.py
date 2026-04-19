@@ -27,6 +27,16 @@ class Settings(BaseSettings):
             recommended.append("HARBOR_ADMIN_PASSWORD")
         if not self.github_client_id:
             recommended.append("GITHUB_CLIENT_ID")
+        elif self.github_client_id.strip().lower() in self.github_client_id_placeholder_values:
+            # Loud error, not fatal — lets local dev run without GitHub wired,
+            # but surfaces the misconfig on every startup log so it does not
+            # silently ship to prod again.
+            logger.error(
+                "GITHUB_CLIENT_ID is set to a placeholder literal (%r). "
+                "The Connect-GitHub wizard will 503 until a real OAuth App "
+                "client_id is wired into the iyziops-api-secrets Secret.",
+                self.github_client_id,
+            )
         if not self.webhook_secret:
             recommended.append("WEBHOOK_SECRET")
         if recommended:
@@ -65,6 +75,16 @@ class Settings(BaseSettings):
     github_client_id: str = ""
     github_client_secret: str = ""
     github_redirect_uri: str = "http://localhost:3001/github/callback"
+    # Values that indicate the secret was never wired up — treated as empty
+    # so that /github/auth/url returns 503 instead of building a broken URL
+    # that takes the user to github.com with client_id=placeholder.
+    github_client_id_placeholder_values: tuple[str, ...] = (
+        "placeholder",
+        "changeme",
+        "change-me",
+        "your-client-id",
+        "xxx",
+    )
 
     # Webhook
     # GitHub webhook secret — set via WEBHOOK_SECRET env var, never hard-coded
