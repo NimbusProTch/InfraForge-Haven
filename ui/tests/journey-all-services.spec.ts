@@ -72,10 +72,14 @@ test.describe.serial(`Journey: All Managed Service Types (${TENANT_SLUG})`, () =
     });
   }
 
-  // Cleanup all services (best-effort, don't fail the whole suite if one 404s)
+  // Cleanup all services (best-effort, don't fail the whole suite if one 404s).
+  // L08: DELETE returns 409 when a service is connected unless ?force=true.
   test("cleanup — delete all services", async () => {
     for (const svc of SERVICES) {
-      await apiCall("DELETE", `/tenants/${TENANT_SLUG}/services/${svc.name}`);
+      await apiCall(
+        "DELETE",
+        `/tenants/${TENANT_SLUG}/services/${svc.name}?force=true&take_final_snapshot=false`
+      );
     }
   });
 });

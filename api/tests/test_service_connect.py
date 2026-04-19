@@ -510,7 +510,12 @@ async def test_delete_service_cleans_app_env_from_secrets(async_client: AsyncCli
     db_session.add(svc)
     await db_session.commit()
 
-    resp = await async_client.delete(f"/api/v1/tenants/{tenant.slug}/services/{svc.name}")
+    # L08: DELETE now rejects 409 when apps are connected, unless ?force=true.
+    # Use force=true here to assert the auto-disconnect cleanup still works
+    # when the operator explicitly opts in to the bulldozer path.
+    resp = await async_client.delete(
+        f"/api/v1/tenants/{tenant.slug}/services/{svc.name}?force=true&take_final_snapshot=false"
+    )
     assert resp.status_code == 204
 
     # Verify app's env_from_secrets is cleaned

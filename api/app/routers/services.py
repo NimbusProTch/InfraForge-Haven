@@ -9,7 +9,7 @@ been removed. Endpoints that write audit log entries still take
 import base64
 import logging
 
-from fastapi import APIRouter, HTTPException, Request, status
+from fastapi import APIRouter, HTTPException, Query, Request, status
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
@@ -268,15 +268,48 @@ async def update_service(
     return svc
 
 
+# Service types that produce a meaningful final snapshot before drop. Redis
+# / RabbitMQ / Kafka are runtime-state engines without a backup CRD on this
+# platform, so a "final snapshot" there is a no-op.
+_BACKUP_SUPPORTED_TYPES = {"postgres", "mysql", "mongodb"}
+
+
 @router.delete("/{service_name}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_service(
-    tenant_slug: str,  # noqa: ARG001 — used by TenantMembership dep, kept for OpenAPI
+    tenant_slug: str,
     service_name: str,
     db: DBSession,
     k8s: K8sDep,
     tenant: TenantMembership,
     current_user: CurrentUser,
+    force: bool = Query(
+        default=False,
+        description=(
+            "If true, skip the connected-apps safety check and auto-disconnect "
+            "every app pointing at this service. Default rejects with 409."
+        ),
+    ),
+    take_final_snapshot: bool = Query(
+        default=True,
+        description=(
+            "If true and the service supports backups (postgres/mysql/mongodb), "
+            "trigger a one-shot Backup CRD before drop. Default true."
+        ),
+    ),
 ) -> None:
+    """Delete a managed service.
+
+    Safety contract (added in L08):
+    1. **Connected-app guard** — if at least one Application references this
+       service through `env_from_secrets`, default to 409 with the list of
+       connected app slugs. Caller must either disconnect first or pass
+       ``?force=true``. Pre-fix the endpoint silently auto-disconnected,
+       which lost a one-way door for the user.
+    2. **Final snapshot** — for postgres/mysql/mongodb (the backup-supported
+       types), trigger a one-shot Backup CRD before deprovision so the user
+       can restore in case of accidental delete. Pass ``?take_final_snapshot=false``
+       to skip when the data is intentionally being thrown away.
+    """
     result = await db.execute(
         select(ManagedService).where(
             ManagedService.tenant_id == tenant.id,
@@ -287,24 +320,107 @@ async def delete_service(
     if svc is None:
         raise HTTPException(status_code=404, detail="Service not found")
 
-    # Clean up app connections referencing this service
+    # 1) Connected-app guard
     apps_result = await db.execute(select(Application).where(Application.tenant_id == tenant.id))
-    for app_obj in apps_result.scalars():
+    apps_list = list(apps_result.scalars())
+    connected_slugs = [
+        app_obj.slug
+        for app_obj in apps_list
+        if app_obj.env_from_secrets and any(e.get("service_name") == svc.name for e in app_obj.env_from_secrets)
+    ]
+    if connected_slugs and not force:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "message": (
+                    f"Service '{svc.name}' is connected to {len(connected_slugs)} app(s). "
+                    "Disconnect them first or retry with ?force=true."
+                ),
+                "connected_apps": connected_slugs,
+                "hint": "DELETE this URL again with ?force=true to auto-disconnect and proceed.",
+            },
+        )
+
+    # 2) Final snapshot (best-effort — failure does NOT block delete; it is
+    #    audit-logged so the operator can see what happened)
+    final_snapshot_name: str | None = None
+    final_snapshot_attempted: bool = False
+    final_snapshot_error: str | None = None
+    if take_final_snapshot and svc.service_type.value in _BACKUP_SUPPORTED_TYPES and svc.status == ServiceStatus.READY:
+        final_snapshot_attempted = True
+        try:
+            from app.services.backup_service import BackupService
+
+            backup_svc = BackupService(k8s)
+            final_snapshot_name = await backup_svc.trigger_backup(
+                tenant_slug=tenant_slug,
+                service_name=svc.name,
+                service_type=svc.service_type,
+            )
+            logger.info(
+                "Final snapshot triggered before delete: tenant=%s svc=%s name=%s",
+                tenant_slug,
+                svc.name,
+                final_snapshot_name,
+            )
+        except Exception as exc:  # noqa: BLE001
+            # Don't block delete — but make sure the operator can see this in
+            # the audit log so they know there is no recovery snapshot.
+            final_snapshot_error = str(exc)[:500]
+            logger.warning(
+                "Final snapshot failed for %s/%s: %s — proceeding with delete anyway",
+                tenant_slug,
+                svc.name,
+                exc,
+            )
+            final_snapshot_name = None
+
+    # 2b) TOCTOU guard — re-check connection list before irreversible steps.
+    #     If a concurrent /connect-service landed between the first 409 check
+    #     and now, abort (unless force=true — in which case the newly-
+    #     connected app will be auto-disconnected below).
+    if not force:
+        refreshed_apps = await db.execute(select(Application).where(Application.tenant_id == tenant.id))
+        refreshed_list = list(refreshed_apps.scalars())
+        late_connected = [
+            app_obj.slug
+            for app_obj in refreshed_list
+            if app_obj.env_from_secrets and any(e.get("service_name") == svc.name for e in app_obj.env_from_secrets)
+        ]
+        new_slugs = [s for s in late_connected if s not in connected_slugs]
+        if new_slugs:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "message": (
+                        f"Service '{svc.name}' was connected to a new app during the "
+                        "deletion flow. Retry with ?force=true or disconnect first."
+                    ),
+                    "connected_apps": late_connected,
+                    "new_since_first_check": new_slugs,
+                    "hint": "Race detected mid-delete — re-run with ?force=true.",
+                },
+            )
+        # Refresh apps_list so the auto-disconnect operates on the freshest snapshot
+        apps_list = refreshed_list
+
+    # 3) Auto-disconnect (only reached when force=true OR there were no
+    #    connected apps to begin with). Reassign JSON columns rather than
+    #    mutating in place — SQLAlchemy does not detect dict/list mutation
+    #    on JSON columns by default and the change would silently not persist.
+    for app_obj in apps_list:
         if app_obj.env_from_secrets and any(e.get("service_name") == svc.name for e in app_obj.env_from_secrets):
             app_obj.env_from_secrets = [e for e in app_obj.env_from_secrets if e.get("service_name") != svc.name]
-            # Clean up injected env vars (DATABASE_URL, MYSQL_URL, etc.)
             if app_obj.env_vars:
-                for key in list(app_obj.env_vars.keys()):
-                    if app_obj.env_vars[key] == svc.connection_hint:
-                        del app_obj.env_vars[key]
+                app_obj.env_vars = {k: v for k, v in app_obj.env_vars.items() if v != svc.connection_hint}
 
-    # Delete tenant-namespace secret (svc-{name})
+    # 4) Delete tenant-namespace secret (svc-{name})
     from app.services.db_provisioner import delete_tenant_secret, tenant_secret_name
 
     if svc.credentials_provisioned and tenant.namespace:
         await delete_tenant_secret(k8s, tenant.namespace, tenant_secret_name(svc.name))
 
-    # Deprovision K8s/Everest resources
+    # 5) Deprovision K8s/Everest resources
     provisioner = ManagedServiceProvisioner(k8s)
     await provisioner.deprovision(svc)
 
@@ -315,7 +431,23 @@ async def delete_service(
         user_id=current_user.get("sub", ""),
         resource_type="managed_service",
         resource_id=str(svc.id),
-        extra={"name": svc.name, "service_type": svc.service_type.value},
+        extra={
+            "name": svc.name,
+            "service_type": svc.service_type.value,
+            "force": force,
+            # Explicit tri-state so audit row is never ambiguous post-incident:
+            # attempted=true + name=null + error=set → we tried and it failed
+            # attempted=true + name=set            → CRD created (may still be
+            #                                        uploading to MinIO when
+            #                                        this row is written)
+            # attempted=false                      → skipped (Redis, or
+            #                                        take_final_snapshot=false,
+            #                                        or service not READY)
+            "final_snapshot": final_snapshot_name,
+            "final_snapshot_attempted": final_snapshot_attempted,
+            "final_snapshot_error": final_snapshot_error,
+            "auto_disconnected_apps": connected_slugs if force else [],
+        },
     )
 
     await db.delete(svc)

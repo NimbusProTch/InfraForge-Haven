@@ -790,12 +790,22 @@ export const api = {
         { method: "PATCH", body: JSON.stringify(body) },
         token
       ),
-    delete: (tenantSlug: string, serviceName: string, token?: string) =>
-      apiFetch<void>(
-        `/tenants/${tenantSlug}/services/${serviceName}`,
+    delete: (
+      tenantSlug: string,
+      serviceName: string,
+      token?: string,
+      opts?: { force?: boolean; takeFinalSnapshot?: boolean }
+    ) => {
+      const params = new URLSearchParams();
+      if (opts?.force) params.set("force", "true");
+      if (opts?.takeFinalSnapshot === false) params.set("take_final_snapshot", "false");
+      const qs = params.toString();
+      return apiFetch<void>(
+        `/tenants/${tenantSlug}/services/${serviceName}${qs ? `?${qs}` : ""}`,
         { method: "DELETE" },
         token
-      ),
+      );
+    },
     credentials: (tenantSlug: string, serviceName: string, token?: string) =>
       apiFetch<ServiceCredentials>(
         `/tenants/${tenantSlug}/services/${serviceName}/credentials`,

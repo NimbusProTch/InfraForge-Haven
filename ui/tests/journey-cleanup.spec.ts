@@ -22,16 +22,26 @@ test.describe.serial("Journey: Cleanup & Cascade Delete", () => {
   });
 
   test("C2. Delete PG service via API", async ({ page }) => {
-    const { status } = await apiCall("DELETE", `/tenants/${SLUG}/services/app-pg`);
+    // L08: DELETE returns 409 when connected unless ?force=true. App has
+    // already been deleted in C1 so there should be no connected apps —
+    // but force=true is harmless and keeps the cleanup robust to ordering.
+    const { status } = await apiCall(
+      "DELETE",
+      `/tenants/${SLUG}/services/app-pg?force=true&take_final_snapshot=false`
+    );
     expect([204, 404]).toContain(status);
   });
 
   test("C3. Delete remaining services", async ({ page }) => {
-    // Clean up any remaining services
+    // Clean up any remaining services — force=true so this is robust to
+    // any lingering env_from_secrets references (L08 safety contract).
     const { data: svcs } = await apiCall("GET", `/tenants/${SLUG}/services`);
     if (Array.isArray(svcs)) {
       for (const svc of svcs) {
-        await apiCall("DELETE", `/tenants/${SLUG}/services/${svc.name}`);
+        await apiCall(
+          "DELETE",
+          `/tenants/${SLUG}/services/${svc.name}?force=true&take_final_snapshot=false`
+        );
       }
     }
   });
