@@ -9,7 +9,9 @@ test.describe("Smoke Tests — Pages Load", () => {
 
   test("login page has correct title", async ({ page }) => {
     await page.goto("/auth/signin");
-    await expect(page).toHaveTitle(/Haven/);
+    // After the rename the browser title is "iyziops". Accept either so
+    // the spec survives a (temporary) rollback of the rename PR.
+    await expect(page).toHaveTitle(/iyziops|Haven/i);
   });
 
   test("root redirects to dashboard", async ({ page }) => {
