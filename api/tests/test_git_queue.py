@@ -51,7 +51,7 @@ def _make_app_payload(
         "repo": "InfraForge-Haven",
         "path": path,
         "commit_message": "[haven] test commit",
-        "author": "Haven Platform <haven@haven.dev>",
+        "author": "iyziops <noreply@iyziops.com>",
         "tenant_slug": "gem-a",
         "app_slug": "my-app",
         "values": {"image": {"tag": "abc123"}},
@@ -123,7 +123,7 @@ async def test_enqueue_validates_missing_content_for_update():
         "repo": "InfraForge-Haven",
         "path": "gitops/tenants/gem-a/my-app/values.yaml",
         "commit_message": "[haven] oops",
-        "author": "Haven Platform <haven@haven.dev>",
+        "author": "iyziops <noreply@iyziops.com>",
         # 'content' missing intentionally
     }
     with pytest.raises(ValueError, match="content"):
@@ -140,7 +140,7 @@ async def test_enqueue_delete_does_not_require_content():
         "repo": "InfraForge-Haven",
         "path": "gitops/tenants/gem-a/my-app/values.yaml",
         "commit_message": "[haven] delete gem-a/my-app",
-        "author": "Haven Platform <haven@haven.dev>",
+        "author": "iyziops <noreply@iyziops.com>",
         "tenant_slug": "gem-a",
         "app_slug": "my-app",
     }

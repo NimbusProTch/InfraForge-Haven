@@ -88,8 +88,8 @@ class GitOpsService:
             if not (self._clone_dir / ".git").exists():
                 await self._run_git("init", cwd=self._clone_dir)
                 await self._run_git("checkout", "-b", self._branch, cwd=self._clone_dir)
-                await self._run_git("config", "user.email", "haven@haven.dev", cwd=self._clone_dir)
-                await self._run_git("config", "user.name", "Haven Platform", cwd=self._clone_dir)
+                await self._run_git("config", "user.email", "noreply@iyziops.com", cwd=self._clone_dir)
+                await self._run_git("config", "user.name", "iyziops", cwd=self._clone_dir)
             self._initialized = True
             return
 
@@ -121,8 +121,8 @@ class GitOpsService:
             cwd=Path("/tmp"),
         )
         # Configure git identity for commits
-        await self._run_git("config", "user.email", "haven@haven.dev")
-        await self._run_git("config", "user.name", "Haven Platform")
+        await self._run_git("config", "user.email", "noreply@iyziops.com")
+        await self._run_git("config", "user.name", "iyziops")
         # Set authenticated remote for push
         await self._run_git("remote", "set-url", "origin", clone_url)
         self._initialized = True
@@ -145,7 +145,7 @@ class GitOpsService:
             "-m",
             message,
             "--author",
-            "Haven Platform <haven@haven.dev>",
+            "iyziops <noreply@iyziops.com>",
         )
         sha = await self._run_git("rev-parse", "HEAD")
 

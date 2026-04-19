@@ -233,7 +233,7 @@ async def _credential_provisioning_loop() -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
-    logger.info("Starting Haven Platform API")
+    logger.info("Starting iyziops API")
     await k8s_client.initialize()
     try:
         from app.services.platform_bootstrap import run_platform_bootstrap
@@ -244,13 +244,13 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     task = asyncio.create_task(_credential_provisioning_loop())
     yield
     task.cancel()
-    logger.info("Shutting down Haven Platform API")
+    logger.info("Shutting down iyziops API")
     await k8s_client.close()
 
 
 app = FastAPI(
-    title="Haven Platform API",
-    description="Haven-Compliant Self-Service DevOps Platform",
+    title="iyziops API",
+    description="Self-service DevOps platform — VNG Haven 15/15 compliant",
     version="1.0.0",
     lifespan=lifespan,
     docs_url="/api/docs",

@@ -331,7 +331,7 @@ async def run_pipeline(
                         "repo": settings.gitea_gitops_repo,
                         "path": f"tenants/{tenant_slug}/{app_slug}/values.yaml",
                         "commit_message": f"[haven] deploy {tenant_slug}/{app_slug} image={commit_sha[:8]}",
-                        "author": "Haven Platform <haven@haven.dev>",
+                        "author": "iyziops <noreply@iyziops.com>",
                         "content": yaml.dump(values, default_flow_style=False, sort_keys=False),
                     },
                 )
