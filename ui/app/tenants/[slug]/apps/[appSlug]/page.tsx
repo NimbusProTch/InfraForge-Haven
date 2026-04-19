@@ -12,6 +12,7 @@ import { api, type Application, type Deployment, type BuildStatus, type Containe
 import AppSettings from "@/components/AppSettings";
 import ObservabilityTab from "@/components/ObservabilityTab";
 import { LiveResourceBadge } from "@/components/LiveResourceBadge";
+import { LiveStatusBadge } from "@/components/LiveStatusBadge";
 import EnvVarEditor from "@/components/EnvVarEditor";
 import { AnsiTerminal } from "@/components/ui/ansi-terminal";
 import { BuildModal, DeployModal } from "@/components/BuildDeployModal";
@@ -878,6 +879,14 @@ export default function AppDetailPage() {
                   {currentStatus}
                 </Badge>
               )}
+              {/* Live ArgoCD health — independent of the deployment-state
+                  badge above. Gives the user a real-time view of cluster
+                  state (Degraded vs the cached "running" status). */}
+              <LiveStatusBadge
+                tenantSlug={tenantSlug}
+                appSlug={appSlug}
+                accessToken={accessToken}
+              />
               <button
                 onClick={() => void refreshStatus()}
                 disabled={refreshingStatus}

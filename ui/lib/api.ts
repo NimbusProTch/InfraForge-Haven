@@ -830,6 +830,16 @@ export const api = {
       apiFetch<PodsResponse>(`/tenants/${tenantSlug}/apps/${appSlug}/pods`, {}, token),
     events: (tenantSlug: string, appSlug: string, token?: string) =>
       apiFetch<EventsResponse>(`/tenants/${tenantSlug}/apps/${appSlug}/events`, {}, token),
+    /** Live ArgoCD health/sync/reason — UI badge polls this every 10s */
+    liveStatus: (tenantSlug: string, appSlug: string, token?: string) =>
+      apiFetch<{
+        health: "Healthy" | "Degraded" | "Progressing" | "Missing" | "Unknown";
+        sync: "Synced" | "OutOfSync" | "Unknown";
+        reason: string;
+        phase: string;
+        finished_at: string;
+        available: boolean;
+      }>(`/tenants/${tenantSlug}/apps/${appSlug}/live-status`, {}, token),
   },
   github: {
     authUrl: () => apiFetch<{ url: string; state: string }>("/github/auth/url"),
