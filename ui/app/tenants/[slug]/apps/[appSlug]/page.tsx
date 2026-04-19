@@ -12,7 +12,7 @@ import { api, type Application, type Deployment, type BuildStatus, type Containe
 import AppSettings from "@/components/AppSettings";
 import ObservabilityTab from "@/components/ObservabilityTab";
 import { LiveResourceBadge } from "@/components/LiveResourceBadge";
-import { LiveStatusBadge } from "@/components/LiveStatusBadge";
+import { CombinedAppStatus } from "@/components/CombinedAppStatus";
 import EnvVarEditor from "@/components/EnvVarEditor";
 import { AnsiTerminal } from "@/components/ui/ansi-terminal";
 import { BuildModal, DeployModal } from "@/components/BuildDeployModal";
@@ -661,25 +661,44 @@ export default function AppDetailPage() {
   }, [tenantSlug, appSlug, status, accessToken]);
 
   useEffect(() => {
+    // Active build (building/deploying/pending): 5s tight loop — operator
+    // is watching the pipeline steps.
+    // Failed: 15s — catch the retry/recovery cycle without hammering the
+    // API. Live health (CombinedAppStatus) already polls every 10s, so
+    // this only needs to catch the deployment.status flip.
+    // Running (quiet state): 30s background refresh — so if the user sits
+    // on the page after a deploy and something flips to Failed, they see
+    // it without a manual refresh.
+    //
+    // Pre-fix: poll was ONLY active while isActiveBuild. After a deploy
+    // landed, the user had to manually refresh to see any status change.
+    const pollMs = isActiveBuild
+      ? 5000
+      : latestDeployment?.status === "failed"
+        ? 15_000
+        : 30_000;
+
+    deployPollRef.current = setInterval(() => {
+      loadDeployments();
+      if (isActiveBuild) loadBuildStatus();
+      loadApp();
+    }, pollMs);
+
     if (isActiveBuild) {
-      deployPollRef.current = setInterval(() => {
-        loadDeployments();
-        loadBuildStatus();
-        loadApp();
-      }, 5000);
       loadBuildStatus();
     } else {
       setBuildStatus(null);
       setActiveLogStep(null);
       loadApp();
     }
+
     return () => {
       if (deployPollRef.current) {
         clearInterval(deployPollRef.current);
         deployPollRef.current = null;
       }
     };
-  }, [isActiveBuild, loadDeployments, loadBuildStatus, loadApp]);
+  }, [isActiveBuild, latestDeployment?.status, loadDeployments, loadBuildStatus, loadApp]);
 
   useEffect(() => {
     const shouldStream =
@@ -874,17 +893,16 @@ export default function AppDetailPage() {
                 <Rocket className="w-4.5 h-4.5 text-white" />
               </div>
               <h1 className="text-2xl font-extrabold text-gray-900 dark:text-white tracking-tight">{app.name}</h1>
-              {currentStatus && (
-                <Badge variant={DEPLOY_STATUS_VARIANT[currentStatus] ?? "secondary"}>
-                  {currentStatus}
-                </Badge>
-              )}
-              {/* Live ArgoCD health — independent of the deployment-state
-                  badge above. Gives the user a real-time view of cluster
-                  state (Degraded vs the cached "running" status). */}
-              <LiveStatusBadge
+              {/* Single authoritative status badge — combines cached
+                  deployment.status with live ArgoCD health. See
+                  CombinedAppStatus.tsx for the state-machine table.
+                  Pre-fix we rendered two pills ("failed" + "Progressing"
+                  next to each other) which confused operators reading
+                  the UI at-a-glance. */}
+              <CombinedAppStatus
                 tenantSlug={tenantSlug}
                 appSlug={appSlug}
+                deploymentStatus={(currentStatus as "pending" | "building" | "built" | "deploying" | "running" | "failed") ?? null}
                 accessToken={accessToken}
               />
               <button
