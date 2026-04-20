@@ -101,3 +101,8 @@ keycloak/haven-realm.rendered.json
 keycloak/*.rendered.json
 *.rendered.json
 scripts/bootstrap-iyziops.sh
+
+# ===== Local credential dumps for operator convenience =====
+# Generated from the repo via `make access-urls-local` or hand-filled from
+# the fetch commands in docs/access-urls.md. Never commit — repo is public.
+docs/credentials-local.md

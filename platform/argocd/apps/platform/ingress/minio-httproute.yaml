@@ -23,9 +23,16 @@ spec:
       kind: HTTPRoute
       namespace: iyziops-gateway
   to:
+    # S3 API → `minio` Service (port 9000)
     - group: ""
       kind: Service
       name: minio
+    # Console UI → `minio-console` Service (port 9001). Helm chart
+    # splits console onto its own Service; routing to `minio:9001`
+    # 404s because that port isn't exposed on the S3 Service.
+    - group: ""
+      kind: Service
+      name: minio-console
 ---
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
@@ -50,7 +57,7 @@ spec:
       backendRefs:
         - group: ""
           kind: Service
-          name: minio
+          name: minio-console
           namespace: minio-system
           port: 9001
           weight: 1
