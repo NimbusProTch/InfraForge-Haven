@@ -81,5 +81,6 @@ export const config = {
     "/apps/:path*",
     "/services/:path*",
     "/settings/:path*",
+    "/admin/:path*",
   ],
 };

@@ -58,6 +58,7 @@ async def isolation_client(db_session: AsyncSession) -> AsyncGenerator[AsyncClie
     app.dependency_overrides[verify_token] = lambda: {
         "sub": "attacker",
         "email": "attacker@evil.example",
+        "realm_access": {"roles": ["platform-admin"]},
     }
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
@@ -198,6 +199,7 @@ async def viewer_client(db_session: AsyncSession) -> AsyncGenerator[AsyncClient,
     app.dependency_overrides[verify_token] = lambda: {
         "sub": "viewer-user",
         "email": "viewer@example.com",
+        "realm_access": {"roles": ["platform-admin"]},
     }
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:

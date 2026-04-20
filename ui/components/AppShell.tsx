@@ -9,17 +9,26 @@ import {
   LayoutDashboard,
   Building2,
   FolderKanban,
-  Activity,
   ListOrdered,
-  Settings,
   LogOut,
-  Anchor,
   Sun,
   Moon,
+  Shield,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-const NAV_SECTIONS = [
+interface NavItem {
+  href: string;
+  label: string;
+  icon: typeof LayoutDashboard;
+}
+interface NavSection {
+  label: string;
+  items: NavItem[];
+  adminOnly?: boolean;
+}
+
+const NAV_SECTIONS: NavSection[] = [
   {
     label: "Platform",
     items: [
@@ -30,8 +39,14 @@ const NAV_SECTIONS = [
   },
   {
     label: "Operations",
+    items: [{ href: "/platform/queue", label: "Build Queue", icon: ListOrdered }],
+  },
+  {
+    label: "Admin",
+    adminOnly: true,
     items: [
-      { href: "/platform/queue", label: "Build Queue", icon: ListOrdered },
+      { href: "/admin", label: "Admin console", icon: Shield },
+      { href: "/admin/access-requests", label: "Access requests", icon: LayoutDashboard },
     ],
   },
 ];
@@ -87,14 +102,19 @@ export function AppShell({ children, userEmail }: AppShellProps) {
           <div className="flex flex-col leading-tight">
             <span className="font-bold text-sm text-white tracking-tight">iyziops</span>
             <span className="text-[10px] font-medium text-white/50 tracking-wider uppercase">
-              VNG Haven 15/15
+              Enterprise DevOps
             </span>
           </div>
         </div>
 
         {/* Nav */}
         <nav className="flex-1 px-3 py-4 overflow-y-auto">
-          {NAV_SECTIONS.map((section) => (
+          {NAV_SECTIONS.filter((section) => {
+            if (!section.adminOnly) return true;
+            const admin =
+              (session as typeof session & { platformAdmin?: boolean })?.platformAdmin ?? false;
+            return admin;
+          }).map((section) => (
             <div key={section.label} className="mb-5">
               <p className="px-3 mb-2 text-xs font-bold uppercase tracking-widest text-white/40">
                 {section.label}

@@ -181,8 +181,23 @@ async def test_submit_access_request_rejects_control_chars(async_client):
 
 @pytest.mark.asyncio
 async def test_list_requires_platform_admin(async_client):
-    """Default async_client user has NO platform-admin role → 403."""
-    resp = await async_client.get("/api/v1/access-requests")
+    """A user WITHOUT the platform-admin role gets 403.
+
+    The global conftest grants the role to the default user (so existing
+    POST /tenants tests pass after the ET4 role-gate). Override here.
+    """
+    from app.auth.jwt import verify_token_not_revoked
+    from app.main import app
+
+    app.dependency_overrides[verify_token_not_revoked] = lambda: {
+        "sub": "plain-user",
+        "email": "plain@example.com",
+        "realm_access": {"roles": ["default-roles-haven"]},
+    }
+    try:
+        resp = await async_client.get("/api/v1/access-requests")
+    finally:
+        app.dependency_overrides.pop(verify_token_not_revoked, None)
     assert resp.status_code == 403
     assert "platform-admin" in resp.json()["detail"]
 
@@ -259,15 +274,26 @@ async def test_list_filters_by_status(async_client, db_session):
 
 @pytest.mark.asyncio
 async def test_patch_requires_platform_admin(async_client, db_session):
+    from app.auth.jwt import verify_token_not_revoked
+    from app.main import app
+
     ar = AccessRequest(name="X", email="x@ex.com", org_name="X Corp", status=AccessRequestStatus.PENDING)
     db_session.add(ar)
     await db_session.commit()
     await db_session.refresh(ar)
 
-    resp = await async_client.patch(
-        f"/api/v1/access-requests/{ar.id}",
-        json={"status": "approved"},
-    )
+    app.dependency_overrides[verify_token_not_revoked] = lambda: {
+        "sub": "plain-user",
+        "email": "plain@example.com",
+        "realm_access": {"roles": ["default-roles-haven"]},
+    }
+    try:
+        resp = await async_client.patch(
+            f"/api/v1/access-requests/{ar.id}",
+            json={"status": "approved"},
+        )
+    finally:
+        app.dependency_overrides.pop(verify_token_not_revoked, None)
     assert resp.status_code == 403
 
 

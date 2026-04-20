@@ -250,6 +250,7 @@ async def real_revocation_client(db_session: AsyncSession) -> AsyncGenerator[Asy
         "sub": "verified-user",
         "email": "verified@example.com",
         "iat": int(time.time() - 60),  # token issued 1 minute ago
+        "realm_access": {"roles": ["platform-admin"]},
     }
     # Deliberately do NOT override verify_token_not_revoked — let the
     # real wrapper hit the (in-memory SQLite) DB.
