@@ -42,7 +42,11 @@ async def tc(db_session: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
 
     app.dependency_overrides[get_db] = _db
     app.dependency_overrides[get_k8s] = _mock_k8s
-    app.dependency_overrides[verify_token] = lambda: {"sub": "user-1", "email": "u@t.nl"}
+    app.dependency_overrides[verify_token] = lambda: {
+        "sub": "user-1",
+        "email": "u@t.nl",
+        "realm_access": {"roles": ["platform-admin"]},
+    }
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
         yield c

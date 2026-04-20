@@ -38,7 +38,11 @@ def _make_ac_with_queue_override(db_session: AsyncSession, queue_svc):
 
     app.dependency_overrides[get_db] = _db
     app.dependency_overrides[get_k8s] = lambda: MagicMock()
-    app.dependency_overrides[verify_token] = lambda: {"sub": "admin-user", "email": "admin@haven.nl"}
+    app.dependency_overrides[verify_token] = lambda: {
+        "sub": "admin-user",
+        "email": "admin@haven.nl",
+        "realm_access": {"roles": ["platform-admin"]},
+    }
     app.dependency_overrides[_get_queue_service] = lambda: queue_svc
 
     return AsyncClient(transport=ASGITransport(app=app), base_url="http://test")

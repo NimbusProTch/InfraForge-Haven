@@ -49,7 +49,11 @@ def _client(db_session, uid="s2-user"):
 
     app.dependency_overrides[get_db] = _db
     app.dependency_overrides[get_k8s] = _mock_k8s
-    app.dependency_overrides[verify_token] = lambda: {"sub": uid, "email": f"{uid}@t.nl"}
+    app.dependency_overrides[verify_token] = lambda: {
+        "sub": uid,
+        "email": f"{uid}@t.nl",
+        "realm_access": {"roles": ["platform-admin"]},
+    }
     return AsyncClient(transport=ASGITransport(app=app), base_url="http://test")
 
 

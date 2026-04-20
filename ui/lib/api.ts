@@ -64,6 +64,23 @@ async function apiFetch<T>(
 
 // ---- Types ----
 
+// Access requests (enterprise funnel — platform_admin only)
+export type AccessRequestStatus = "pending" | "approved" | "rejected";
+
+export interface AccessRequest {
+  id: string;
+  name: string;
+  email: string;
+  org_name: string;
+  message: string | null;
+  status: AccessRequestStatus;
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+  review_notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 // Members
 export interface TenantMember {
   id: string;
@@ -1280,6 +1297,25 @@ export const api = {
       apiFetch<QueueJob>(`/platform/queue/jobs/${jobId}`, {}, token),
     buildQueueStatus: (token?: string) =>
       apiFetch<BuildQueueStatus>("/platform/build-queue/status", {}, token),
+  },
+  accessRequests: {
+    // Admin-only: list all requests, optionally filtered by status.
+    list: (token?: string, status?: AccessRequestStatus) => {
+      const qs = status ? `?status=${status}` : "";
+      return apiFetch<AccessRequest[]>(`/access-requests${qs}`, {}, token);
+    },
+    get: (id: string, token?: string) =>
+      apiFetch<AccessRequest>(`/access-requests/${id}`, {}, token),
+    review: (
+      id: string,
+      body: { status: "approved" | "rejected"; review_notes?: string },
+      token?: string
+    ) =>
+      apiFetch<AccessRequest>(
+        `/access-requests/${id}`,
+        { method: "PATCH", body: JSON.stringify(body) },
+        token
+      ),
   },
   // H3d (P2.4): The `api.clusters` namespace was deleted here. It exposed
   // ~10 cluster-management methods (list/create/update/delete/healthCheck/
