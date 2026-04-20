@@ -16,6 +16,40 @@ const KC_REALM = process.env.KEYCLOAK_REALM ?? "haven";
 const KC_CLIENT_ID = process.env.KEYCLOAK_CLIENT_ID!;
 const KC_CLIENT_SECRET = process.env.KEYCLOAK_CLIENT_SECRET!;
 
+// Must match api/app/deps.py:PLATFORM_ADMIN_ROLE. Keycloak JWTs carry
+// realm-level roles under `realm_access.roles`.
+const PLATFORM_ADMIN_ROLE = "platform-admin";
+
+/**
+ * Decode a JWT payload without verification. We only use this to surface
+ * the `realm_access.roles` claim to the React tree — the backend is the
+ * source of truth for authorization and verifies the signature on every
+ * request. This is read-only UI affordance, never a security gate.
+ */
+function decodeJwtPayload(jwt: string | undefined): Record<string, unknown> | null {
+  if (!jwt) return null;
+  const parts = jwt.split(".");
+  if (parts.length !== 3) return null;
+  try {
+    const payload = Buffer.from(
+      parts[1].replace(/-/g, "+").replace(/_/g, "/"),
+      "base64"
+    ).toString("utf-8");
+    return JSON.parse(payload) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
+function isPlatformAdmin(accessToken: string | undefined): boolean {
+  const payload = decodeJwtPayload(accessToken);
+  if (!payload) return false;
+  const realmAccess = payload["realm_access"];
+  if (!realmAccess || typeof realmAccess !== "object") return false;
+  const roles = (realmAccess as { roles?: unknown }).roles;
+  return Array.isArray(roles) && roles.includes(PLATFORM_ADMIN_ROLE);
+}
+
 const providers: NextAuthOptions["providers"] = [
   KeycloakProvider({
     clientId: KC_CLIENT_ID,
@@ -108,9 +142,11 @@ export const authOptions: NextAuthOptions = {
         accessToken: string;
         provider: string;
         error?: string;
+        platformAdmin: boolean;
       };
       s.accessToken = token.accessToken as string;
       s.provider = token.provider as string;
+      s.platformAdmin = isPlatformAdmin(token.accessToken as string | undefined);
       if (token.error) {
         s.error = token.error as string;
       }

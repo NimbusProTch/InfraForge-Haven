@@ -14,9 +14,14 @@ test.describe("Smoke Tests — Pages Load", () => {
     await expect(page).toHaveTitle(/iyziops|Haven/i);
   });
 
-  test("root redirects to dashboard", async ({ page }) => {
+  test("root shows public landing for anonymous", async ({ page }) => {
+    // ET2: unauthenticated users see the marketing landing at /, not a
+    // redirect to /auth/signin. The page must surface both CTAs. Authed
+    // users get server-side redirected to /dashboard via getServerSession.
     await page.goto("/");
-    await page.waitForURL(/\/(dashboard|auth)/);
+    await expect(page).toHaveURL(/\/$/);
+    await expect(page.getByRole("link", { name: /request access/i }).first()).toBeVisible();
+    await expect(page.getByRole("link", { name: /sign in/i }).first()).toBeVisible();
   });
 
   test("API health endpoint returns ok", async ({ request }) => {

@@ -17,6 +17,7 @@ export default function TenantsPage() {
   const [search, setSearch] = useState("");
 
   const accessToken = (session as typeof session & { accessToken?: string })?.accessToken;
+  const platformAdmin = (session as typeof session & { platformAdmin?: boolean })?.platformAdmin ?? false;
 
   useEffect(() => {
     if (status === "unauthenticated") router.push("/auth/signin");
@@ -61,13 +62,16 @@ export default function TenantsPage() {
               {tenants.length} project{tenants.length !== 1 ? "s" : ""}
             </p>
           </div>
-          <Link
-            href="/tenants/new"
-            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium transition-colors"
-          >
-            <Plus className="w-3.5 h-3.5" />
-            New Project
-          </Link>
+          {platformAdmin && (
+            <Link
+              href="/tenants/new"
+              data-testid="tenants-new-project"
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium transition-colors"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              New Project
+            </Link>
+          )}
         </div>
 
         {/* Search */}
@@ -85,15 +89,28 @@ export default function TenantsPage() {
         )}
 
         {filtered.length === 0 && tenants.length === 0 ? (
-          <div className="text-center py-20 border border-dashed border-gray-200 dark:border-zinc-800 rounded-xl">
+          <div className="text-center py-20 border border-dashed border-gray-200 dark:border-zinc-800 rounded-xl" data-testid="tenants-empty">
             <FolderKanban className="w-10 h-10 mx-auto mb-3 text-gray-400 dark:text-zinc-700" />
-            <p className="text-sm text-gray-500 dark:text-zinc-500">No projects yet.</p>
-            <Link
-              href="/tenants/new"
-              className="inline-block mt-3 text-sm text-emerald-500 hover:text-emerald-400 transition-colors"
-            >
-              Create your first project →
-            </Link>
+            {platformAdmin ? (
+              <>
+                <p className="text-sm text-gray-500 dark:text-zinc-500">No projects yet.</p>
+                <Link
+                  href="/tenants/new"
+                  className="inline-block mt-3 text-sm text-emerald-500 hover:text-emerald-400 transition-colors"
+                >
+                  Create your first project →
+                </Link>
+              </>
+            ) : (
+              <>
+                <p className="text-sm text-gray-500 dark:text-zinc-500">
+                  You haven&apos;t been assigned to a project yet.
+                </p>
+                <p className="text-xs text-gray-400 dark:text-zinc-600 mt-2">
+                  Contact your administrator to be added to one.
+                </p>
+              </>
+            )}
           </div>
         ) : filtered.length === 0 ? (
           <div className="text-center py-12 text-gray-400 dark:text-zinc-600">
