@@ -137,16 +137,24 @@ async def async_client(db_session: AsyncSession, mock_k8s: K8sClient) -> AsyncGe
 
     app.dependency_overrides[get_db] = _override_db
     app.dependency_overrides[get_k8s] = lambda: mock_k8s
-    app.dependency_overrides[verify_token] = lambda: {"sub": "test-user", "email": "test@haven.nl"}
+    # ET4: the default test user is granted the `platform-admin` realm role
+    # so existing POST /tenants tests still pass. Tests that specifically
+    # exercise the non-admin 403 path override `verify_token` /
+    # `verify_token_not_revoked` locally (see test_tenants_role_gate.py
+    # and test_access_requests.py).
+    app.dependency_overrides[verify_token] = lambda: {
+        "sub": "test-user",
+        "email": "test@haven.nl",
+        "realm_access": {"roles": ["platform-admin"]},
+    }
     # Sprint H2 P9: CurrentUser now flows through `verify_token_not_revoked`
     # which would otherwise hit the real DB session factory (not the test
-    # in-memory SQLite). Override it with the same stub user. Tests that
-    # specifically want to exercise the revocation flow can build their
-    # own client without this override (see test_token_revocation.py).
+    # in-memory SQLite). Override it with the same stub user.
     app.dependency_overrides[verify_token_not_revoked] = lambda: {
         "sub": "test-user",
         "email": "test@haven.nl",
         "iat": 9999999999,
+        "realm_access": {"roles": ["platform-admin"]},
     }
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:

@@ -18,7 +18,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
 from app.auth.rbac import require_role  # noqa: F401 — available for future use
-from app.deps import CurrentUser, DBSession, K8sDep, TenantMembership
+from app.deps import CurrentUser, DBSession, K8sDep, PlatformAdminUser, TenantMembership
 from app.models.managed_service import ManagedService
 from app.models.tenant import Tenant
 from app.models.tenant_member import MemberRole, TenantMember
@@ -100,8 +100,17 @@ async def list_tenants(db: DBSession, current_user: CurrentUser) -> list[Tenant]
 @router.post("", response_model=TenantResponse, status_code=status.HTTP_201_CREATED)
 @limiter.limit(RATE_TENANT_CREATE)
 async def create_tenant(
-    request: Request, body: TenantCreate, db: DBSession, k8s: K8sDep, current_user: CurrentUser
+    request: Request,
+    body: TenantCreate,
+    db: DBSession,
+    k8s: K8sDep,
+    current_user: PlatformAdminUser,
 ) -> Tenant:
+    # ET4: enterprise-only pivot. Previously any authenticated user could
+    # create a tenant; now restricted to `platform-admin` realm role. The
+    # creator is still auto-added as tenant owner so admin-provisioned
+    # tenants are immediately usable by the admin, and the admin can
+    # transfer ownership later via /members.
     # Check slug uniqueness
     existing = await db.execute(select(Tenant).where(Tenant.slug == body.slug))
     if existing.scalar_one_or_none() is not None:

@@ -126,7 +126,11 @@ async def obs_client(db_session: AsyncSession) -> AsyncGenerator[AsyncClient, No
 
     app.dependency_overrides[get_db] = _override_db
     app.dependency_overrides[get_k8s] = lambda: mock_k8s
-    app.dependency_overrides[verify_token] = lambda: {"sub": "test", "email": "t@t.nl"}
+    app.dependency_overrides[verify_token] = lambda: {
+        "sub": "test",
+        "email": "t@t.nl",
+        "realm_access": {"roles": ["platform-admin"]},
+    }
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         yield client
@@ -144,7 +148,11 @@ async def obs_client_no_k8s(db_session: AsyncSession) -> AsyncGenerator[AsyncCli
 
     app.dependency_overrides[get_db] = _override_db
     app.dependency_overrides[get_k8s] = lambda: mock_k8s
-    app.dependency_overrides[verify_token] = lambda: {"sub": "test", "email": "t@t.nl"}
+    app.dependency_overrides[verify_token] = lambda: {
+        "sub": "test",
+        "email": "t@t.nl",
+        "realm_access": {"roles": ["platform-admin"]},
+    }
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         yield client

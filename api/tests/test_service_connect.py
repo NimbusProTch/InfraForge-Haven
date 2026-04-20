@@ -52,7 +52,11 @@ async def async_client_with_secret(db_session: AsyncSession, mock_k8s_with_secre
 
     app.dependency_overrides[get_db] = _override_db
     app.dependency_overrides[get_k8s] = lambda: mock_k8s_with_secret
-    app.dependency_overrides[verify_token] = lambda: {"sub": "test-user", "email": "test@haven.nl"}
+    app.dependency_overrides[verify_token] = lambda: {
+        "sub": "test-user",
+        "email": "test@haven.nl",
+        "realm_access": {"roles": ["platform-admin"]},
+    }
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         yield client

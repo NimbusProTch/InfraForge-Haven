@@ -131,7 +131,11 @@ async def deploy_client(db_session: AsyncSession) -> AsyncGenerator[AsyncClient,
 
     app.dependency_overrides[get_db] = _override_db
     app.dependency_overrides[get_k8s] = lambda: mock_k8s
-    app.dependency_overrides[verify_token] = lambda: {"sub": "test-user", "email": "test@haven.nl"}
+    app.dependency_overrides[verify_token] = lambda: {
+        "sub": "test-user",
+        "email": "test@haven.nl",
+        "realm_access": {"roles": ["platform-admin"]},
+    }
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         yield client
@@ -150,7 +154,11 @@ async def deploy_client_no_k8s(db_session: AsyncSession) -> AsyncGenerator[Async
 
     app.dependency_overrides[get_db] = _override_db
     app.dependency_overrides[get_k8s] = lambda: mock_k8s
-    app.dependency_overrides[verify_token] = lambda: {"sub": "test-user", "email": "test@haven.nl"}
+    app.dependency_overrides[verify_token] = lambda: {
+        "sub": "test-user",
+        "email": "test@haven.nl",
+        "realm_access": {"roles": ["platform-admin"]},
+    }
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         yield client
@@ -291,7 +299,11 @@ async def test_log_streaming_failed_deployment(deploy_client, db_session):
 
     app.dependency_overrides[get_db] = _override_db
     app.dependency_overrides[get_k8s] = lambda: mock_k8s
-    app.dependency_overrides[verify_token] = lambda: {"sub": "test-user", "email": "test@t.nl"}
+    app.dependency_overrides[verify_token] = lambda: {
+        "sub": "test-user",
+        "email": "test@t.nl",
+        "realm_access": {"roles": ["platform-admin"]},
+    }
 
     tenant = await _make_tenant(db_session, "fail-log")
     application = await _make_app(db_session, tenant)

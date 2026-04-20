@@ -25,10 +25,11 @@ from app.models.tenant_member import MemberRole, TenantMember
 # Test users
 # ---------------------------------------------------------------------------
 
-USER_OWNER = {"sub": "user-owner-001", "email": "owner@test.nl", "name": "Owner"}
-USER_ADMIN = {"sub": "user-admin-002", "email": "admin@test.nl", "name": "Admin"}
-USER_MEMBER = {"sub": "user-member-003", "email": "member@test.nl", "name": "Member"}
-USER_OUTSIDER = {"sub": "user-outsider-999", "email": "outsider@test.nl", "name": "Outsider"}
+_PA_ROLE = {"realm_access": {"roles": ["platform-admin"]}}
+USER_OWNER = {"sub": "user-owner-001", "email": "owner@test.nl", "name": "Owner", **_PA_ROLE}
+USER_ADMIN = {"sub": "user-admin-002", "email": "admin@test.nl", "name": "Admin", **_PA_ROLE}
+USER_MEMBER = {"sub": "user-member-003", "email": "member@test.nl", "name": "Member", **_PA_ROLE}
+USER_OUTSIDER = {"sub": "user-outsider-999", "email": "outsider@test.nl", "name": "Outsider", **_PA_ROLE}
 PREFIX = "/api/v1/organizations"
 
 

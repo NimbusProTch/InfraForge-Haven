@@ -24,7 +24,12 @@ from app.models.managed_service import ServiceStatus, ServiceTier, ServiceType
 # Fixtures
 # ---------------------------------------------------------------------------
 
-_USER = {"sub": "lifecycle-user", "email": "lifecycle@haven.nl", "name": "Lifecycle User"}
+_USER = {
+    "sub": "lifecycle-user",
+    "email": "lifecycle@haven.nl",
+    "name": "Lifecycle User",
+    "realm_access": {"roles": ["platform-admin"]},
+}
 
 
 def _mock_k8s():

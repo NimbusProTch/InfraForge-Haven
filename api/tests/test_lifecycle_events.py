@@ -73,7 +73,11 @@ async def client(db, k8s_mock):
 
     app.dependency_overrides[get_db] = _override_db
     app.dependency_overrides[get_k8s] = lambda: k8s_mock
-    app.dependency_overrides[verify_token] = lambda: {"sub": "test-user", "email": "test@haven.nl"}
+    app.dependency_overrides[verify_token] = lambda: {
+        "sub": "test-user",
+        "email": "test@haven.nl",
+        "realm_access": {"roles": ["platform-admin"]},
+    }
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
         yield c
