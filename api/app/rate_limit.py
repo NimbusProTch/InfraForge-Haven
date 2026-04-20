@@ -15,3 +15,5 @@ RATE_BUILD = "10/minute"
 RATE_SERVICE_PROVISION = "5/minute"
 RATE_WEBHOOK = "60/minute"
 RATE_TENANT_CREATE = "3/minute"
+# Public access-request form — anonymous writers, keep tight.
+RATE_ACCESS_REQUEST = "5/hour"

@@ -95,6 +95,7 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
 
   const accessToken = (session as typeof session & { accessToken?: string })?.accessToken;
+  const platformAdmin = (session as typeof session & { platformAdmin?: boolean })?.platformAdmin ?? false;
 
   useEffect(() => {
     if (status === "unauthenticated") {
@@ -233,13 +234,16 @@ export default function DashboardPage() {
 
         {/* Quick Actions */}
         <div className="mb-8 flex items-center gap-3">
-          <Link
-            href="/tenants/new"
-            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 text-white text-sm font-medium transition-all shadow-md shadow-emerald-500/20"
-          >
-            <Plus className="w-4 h-4" />
-            New Project
-          </Link>
+          {platformAdmin && (
+            <Link
+              href="/tenants/new"
+              data-testid="dashboard-new-project"
+              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 text-white text-sm font-medium transition-all shadow-md shadow-emerald-500/20"
+            >
+              <Plus className="w-4 h-4" />
+              New Project
+            </Link>
+          )}
           <Link
             href="/tenants"
             className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-white dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700 text-gray-600 dark:text-zinc-300 hover:bg-gray-50 dark:hover:bg-zinc-700 text-sm font-medium transition-colors shadow-sm"
@@ -284,12 +288,25 @@ export default function DashboardPage() {
                 ))}
               </div>
             ) : (
-              <div className="text-center py-12">
+              <div className="text-center py-12" data-testid="dashboard-projects-empty">
                 <FolderKanban className="w-10 h-10 mx-auto mb-3 text-gray-300" />
-                <p className="text-sm text-gray-500">No projects yet.</p>
-                <Link href="/tenants/new" className="inline-block mt-3 text-sm text-emerald-500 hover:text-emerald-600">
-                  Create your first project →
-                </Link>
+                {platformAdmin ? (
+                  <>
+                    <p className="text-sm text-gray-500">No projects yet.</p>
+                    <Link href="/tenants/new" className="inline-block mt-3 text-sm text-emerald-500 hover:text-emerald-600">
+                      Create your first project →
+                    </Link>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-sm text-gray-500">
+                      You haven&apos;t been assigned to a project yet.
+                    </p>
+                    <p className="text-xs text-gray-400 mt-2">
+                      Contact your administrator to be added to one.
+                    </p>
+                  </>
+                )}
               </div>
             )}
           </div>

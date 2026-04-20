@@ -100,6 +100,56 @@ CurrentUser = Annotated[dict[str, Any], Depends(verify_token_not_revoked)]
 
 
 # ---------------------------------------------------------------------------
+# Platform-admin guard (Enterprise model — ET1)
+# ---------------------------------------------------------------------------
+# iyziops is enterprise-only: only users with the `platform-admin` realm
+# role in Keycloak can create new tenants, review access requests, and
+# provision customers. The JWT carries `realm_access.roles: [...]` from
+# Keycloak; we check for the canonical role name here.
+#
+# Deliberately NOT tied to a specific tenant — this is a cross-tenant
+# platform privilege. Tenant-scoped roles (owner/admin/member/viewer)
+# live in `tenant_members` and are checked by `require_tenant_member`.
+
+PLATFORM_ADMIN_ROLE = "platform-admin"
+
+
+def _is_platform_admin(user: dict[str, Any]) -> bool:
+    """Return True when the JWT payload carries the platform-admin realm role.
+
+    The Keycloak access-token shape is:
+      { "realm_access": {"roles": ["platform-admin", "default-roles-haven", ...]}, ... }
+
+    We only check realm_access (cross-application role); client-scoped
+    resource_access roles are ignored for this guard.
+    """
+    realm_access = user.get("realm_access") or {}
+    roles = realm_access.get("roles") if isinstance(realm_access, dict) else None
+    return isinstance(roles, list) and PLATFORM_ADMIN_ROLE in roles
+
+
+async def require_platform_admin(current_user: CurrentUser) -> dict[str, Any]:
+    """FastAPI dependency: require the caller to have the platform-admin role.
+
+    Returns the same user dict as `CurrentUser` (so downstream code can
+    keep using `current_user["sub"]` / `["email"]` etc.) or raises 403.
+    """
+    from fastapi import HTTPException
+
+    if not _is_platform_admin(current_user):
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                "platform-admin role required. Contact an existing platform administrator to request this privilege."
+            ),
+        )
+    return current_user
+
+
+PlatformAdminUser = Annotated[dict[str, Any], Depends(require_platform_admin)]
+
+
+# ---------------------------------------------------------------------------
 # Common tenant lookup helpers (shared across routers)
 # ---------------------------------------------------------------------------
 #

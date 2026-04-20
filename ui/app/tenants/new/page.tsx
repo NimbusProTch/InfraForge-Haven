@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { AppShell } from "@/components/AppShell";
 import { api } from "@/lib/api";
-import { ArrowLeft, Loader2 } from "lucide-react";
+import { ArrowLeft, Loader2, ShieldAlert } from "lucide-react";
 
 function slugify(s: string) {
   return s
@@ -27,6 +27,7 @@ export default function NewTenantPage() {
   const [error, setError] = useState("");
 
   const accessToken = (session as typeof session & { accessToken?: string })?.accessToken;
+  const platformAdmin = (session as typeof session & { platformAdmin?: boolean })?.platformAdmin ?? false;
 
   function handleNameChange(v: string) {
     setName(v);
@@ -52,6 +53,48 @@ export default function NewTenantPage() {
     } finally {
       setLoading(false);
     }
+  }
+
+  // Client-side affordance only. Backend POST /tenants enforces the
+  // same role check (ET4); this just prevents a dead-end submit.
+  if (session && !platformAdmin) {
+    return (
+      <AppShell userEmail={session?.user?.email}>
+        <div className="p-6 max-w-lg" data-testid="tenants-new-forbidden">
+          <div className="flex items-center gap-3 mb-8">
+            <Link
+              href="/tenants"
+              className="text-gray-400 dark:text-[#555] hover:text-gray-900 dark:hover:text-white transition-colors"
+            >
+              <ArrowLeft className="w-4 h-4" />
+            </Link>
+            <h1 className="text-xl font-semibold text-gray-900 dark:text-white">
+              New Tenant
+            </h1>
+          </div>
+
+          <div className="bg-white dark:bg-[#141414] border border-amber-200 dark:border-amber-900/50 rounded-lg p-6 flex items-start gap-3">
+            <ShieldAlert className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
+            <div>
+              <p className="text-sm font-medium text-gray-900 dark:text-white">
+                Only platform administrators can create new tenants.
+              </p>
+              <p className="text-sm text-gray-500 dark:text-[#888] mt-1">
+                Contact your iyziops administrator to get a new project
+                provisioned. If you need access to an existing tenant, ask
+                the owner to add you under Settings → Members.
+              </p>
+              <Link
+                href="/tenants"
+                className="inline-block mt-4 text-sm text-indigo-600 dark:text-indigo-400 hover:text-indigo-500"
+              >
+                ← Back to projects
+              </Link>
+            </div>
+          </div>
+        </div>
+      </AppShell>
+    );
   }
 
   return (

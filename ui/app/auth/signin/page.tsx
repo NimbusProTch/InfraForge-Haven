@@ -1,7 +1,8 @@
 "use client";
 
 import { signIn, getProviders } from "next-auth/react";
-import { Anchor, Github, Shield, Globe, Lock, AlertCircle } from "lucide-react";
+import Link from "next/link";
+import { Github, Lock, AlertCircle } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
 
@@ -70,9 +71,6 @@ function SignInInner() {
             <h1 className="text-xl font-bold text-gray-900 dark:text-white tracking-tight">
               iyziops
             </h1>
-            <p className="text-sm text-gray-500 dark:text-zinc-500 mt-1 text-center">
-              EU-sovereign PaaS for Dutch municipalities — VNG Haven 15/15 compliant
-            </p>
           </div>
 
           {/* P10: surface session-expired reason from middleware */}
@@ -119,20 +117,17 @@ function SignInInner() {
             </a>
           </div>
 
-          {/* Compliance footer */}
-          <div className="mt-8 pt-5 border-t border-gray-100 dark:border-zinc-800/60">
-            <div className="flex items-center justify-center gap-4">
-              <div className="flex items-center gap-1.5">
-                <Globe className="w-3 h-3 text-emerald-600" />
-                <span className="text-xs text-gray-400 dark:text-zinc-600">EU Data Sovereignty</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <Shield className="w-3 h-3 text-emerald-600" />
-                <span className="text-xs text-gray-400 dark:text-zinc-600">VNG Haven Certified</span>
-              </div>
-            </div>
-            <p className="text-center text-xs text-gray-400 dark:text-zinc-700 mt-2">
-              GDPR Compliant · Haven 12/15 Infrastructure
+          {/* Enterprise-only: no self-signup. Prospective customers
+              request access → admin provisions. */}
+          <div className="mt-6 pt-5 border-t border-gray-100 dark:border-zinc-800/60 text-center">
+            <p className="text-xs text-gray-500 dark:text-zinc-500">
+              Need an account?{" "}
+              <Link
+                href="/auth/request-access"
+                className="font-medium text-indigo-600 dark:text-indigo-400 hover:text-indigo-500 transition-colors"
+              >
+                Request access →
+              </Link>
             </p>
           </div>
         </div>
