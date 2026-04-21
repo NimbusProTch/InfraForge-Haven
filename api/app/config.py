@@ -78,9 +78,10 @@ class Settings(BaseSettings):
     # Values that indicate the secret was never wired up — treated as empty
     # so that /github/auth/url returns 503 instead of building a broken URL
     # that takes the user to github.com with client_id=placeholder.
+    # hardcoded-scan: allow (rejection list — these literals are refused, not used)
     github_client_id_placeholder_values: tuple[str, ...] = (
-        "placeholder",
-        "changeme",
+        "placeholder",  # hardcoded-scan: allow
+        "changeme",  # hardcoded-scan: allow
         "change-me",
         "your-client-id",
         "xxx",

@@ -133,13 +133,25 @@ Rationale for Vault auto-unseal deprioritization:
 - Auto-unseal için Hetzner'da kolay KMS yok; Transit self-unseal ayrı bir Vault gerektirir — büyük iş
 - Önce data migration, sonra operational hardening
 
+**Interim runbook requirement** (architect review gereği): Vault pod'u bir sebepten yeniden
+başlarsa (node drain, kernel patch, OOM kill) cluster 3am'de sealed kalır ve tüm ExternalSecret
+reconciliation durur. On-call prosedürü:
+
+1. `kubectl --kubeconfig=$KC -n vault-system exec vault-0 -- vault status` → sealed teyit
+2. Unseal key: `memory/vault_credentials_20260417.md` (1-of-1 Shamir)
+3. `kubectl --kubeconfig=$KC -n vault-system exec vault-0 -- vault operator unseal <key>`
+4. ESO'nun yeniden connect olduğunu doğrula: `kubectl get externalsecret -A` → SecretSynced True
+
+Faz 2.V.1 tamamlanınca bu manual adım kaybolur.
+
 ## 9. Secret naming convention (bundan sonraki her şey için)
 
-- Vault KV v2 path: `kv/data/platform/<service>/<purpose>`
+- **Vault KV v2 logical path**: `platform/<service>/<purpose>` — ESO `vault` provider `/data/`'ı kendisi ekler, elle yazma
+- **Vault API REST path** (kcli / curl için): `v1/kv/data/platform/<service>/<purpose>` — ESO değil, manuel test için
 - ExternalSecret name: `<target-secret-name>-vault`
 - Target K8s Secret name: mevcut adı koru (Deployment `envFrom` değişmesin)
 - Refresh interval: 1h
-- Retain policy: CreatePolicy: Merge (mevcut field'ları silme)
+- `creationPolicy: Owner` — Secret tamamen ESO-yönetimli (Merge deprecated v0.9+)
 
 Örnek (2.V.3 için):
 ```yaml
@@ -155,11 +167,11 @@ spec:
     kind: ClusterSecretStore
   target:
     name: iyziops-api-secrets
-    creationPolicy: Merge
+    creationPolicy: Owner  # ESO fully manages; Merge deprecated since v0.9
   data:
     - secretKey: DATABASE_URL
       remoteRef:
-        key: platform/iyziops-api/database
+        key: platform/iyziops-api/database  # logical path — ESO inserts /data/
         property: url
     - secretKey: GITHUB_CLIENT_SECRET
       remoteRef:

@@ -12,15 +12,24 @@
 #   scripts/hardcoded-scan.sh --diff          # compare to baseline, exit 1 on new hits
 #
 # Categories (P0 = severe, P1 = painful):
-#   P0 literal_pwd   — known dev defaults: Harbor12345, dev-placeholder, overnight-dev-*, etc.
-#   P0 sslip         — legacy 46.225.42.2.sslip.io references
-#   P0 cluster_ip    — hardcoded public IPs (prod-only-specific) in non-tfvars files
-#   P1 domain        — *.iyziops.com literal in code
-#   P1 namespace     — literal "haven-system" in backend services
-#   P1 tenant_demo   — tenant-demo / sprint-demo / demo-tenant in prod code
-#   P1 localhost     — localhost:PORT defaults in non-test code
+#   P0 literal_pwd     — known dev defaults: Harbor12345, dev-placeholder, etc.
+#   P0 generic_secret  — AWS keys, GitHub PATs, PEM blocks, common weak passwords
+#   P0 sslip           — legacy 46.225.42.2.sslip.io references
+#   P0 cluster_ip      — hardcoded public IPs (prod-only-specific)
+#   P1 domain          — *.iyziops.com literal in code
+#   P1 namespace       — literal "haven-system" in backend services
+#   P1 tenant_demo     — tenant-demo / sprint-demo / demo-tenant
+#   P1 localhost       — localhost:PORT defaults in non-test code
+#
+# Inline allow-marker:
+#   A source line containing `# hardcoded-scan: allow` (or `// hardcoded-scan: allow`)
+#   is ignored even if it matches a pattern. Use for rejection-list literals
+#   (e.g. `"placeholder"` inside a guard tuple that says "reject this string").
 
 set -euo pipefail
+
+# Locale-stable sort across runners
+export LC_ALL=C
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
@@ -32,13 +41,13 @@ for arg in "$@"; do
     --fail-on-p0) MODE="fail-on-p0" ;;
     --baseline)   MODE="baseline" ;;
     --diff)       MODE="diff" ;;
-    --help|-h)    sed -n '2,25p' "$0"; exit 0 ;;
+    --help|-h)    sed -n '2,30p' "$0"; exit 0 ;;
     *) echo "unknown arg: $arg" >&2; exit 2 ;;
   esac
 done
 
 # Path excludes via git pathspec.
-# Note: macOS git requires `:(glob,exclude)**/pattern` for recursive globs;
+# macOS git requires `:(glob,exclude)**/pattern` for recursive globs;
 # plain `:!tests` matches top-level only so nested test dirs are added.
 PATH_EXCLUDES=(
   ':(glob,exclude)**/node_modules/**'
@@ -77,9 +86,11 @@ grep_hits() {
   local severity="$1"
   local category="$2"
   local pattern="$3"
-  # git grep -E uses extended POSIX regex; -n line numbers; -I skip binary
+  # git grep -E uses extended POSIX regex; -n line numbers; -I skip binary.
+  # Filter out any line carrying the allow-marker.
   local results
-  results=$(git grep -nIE "$pattern" -- . "${PATH_EXCLUDES[@]}" 2>/dev/null || true)
+  results=$(git grep -nIE "$pattern" -- . "${PATH_EXCLUDES[@]}" 2>/dev/null \
+              | grep -v 'hardcoded-scan: allow' || true)
   if [[ -n "$results" ]]; then
     while IFS= read -r line; do
       printf '%s\t%s\t%s\n' "$severity" "$category" "$line" >> "$TMP"
@@ -87,7 +98,7 @@ grep_hits() {
   fi
 }
 
-# --- P0 literal passwords / placeholders ---
+# --- P0 literal passwords / placeholders (known dev defaults) ---
 grep_hits P0 literal_pwd 'Harbor12345'
 grep_hits P0 literal_pwd 'dev-placeholder'
 grep_hits P0 literal_pwd 'overnight-dev-key-do-not-use'
@@ -101,6 +112,25 @@ grep_hits P0 literal_pwd 'changeme'
 grep_hits P0 literal_pwd '"placeholder"'
 grep_hits P0 literal_pwd "'placeholder'"
 grep_hits P0 literal_pwd 'test123456'
+
+# --- P0 generic high-entropy secret patterns (architect-review additions) ---
+# AWS access key
+grep_hits P0 generic_secret 'AKIA[0-9A-Z]{16}'
+# AWS session token marker
+grep_hits P0 generic_secret 'aws_session_token'
+# GitHub PAT (classic)
+grep_hits P0 generic_secret 'ghp_[A-Za-z0-9]{36}'
+# GitHub fine-grained PAT
+grep_hits P0 generic_secret 'github_pat_[A-Za-z0-9_]{82}'
+# Slack bot token
+grep_hits P0 generic_secret 'xoxb-[0-9]+-[0-9]+-[A-Za-z0-9]+'
+# Private key blocks
+grep_hits P0 generic_secret 'BEGIN (RSA |EC |OPENSSH |DSA )?PRIVATE KEY'
+# Very common weak passwords likely to appear as dev defaults
+grep_hits P0 generic_secret '(password|admin|root)(123|1234|12345)'
+grep_hits P0 generic_secret 'welcome1'
+grep_hits P0 generic_secret 'Pa\$\$w0rd'
+grep_hits P0 generic_secret 'Password1!'
 
 # --- P0 sslip ---
 grep_hits P0 sslip '46\.225\.42\.2\.sslip\.io'
@@ -132,10 +162,30 @@ p0_count=$(awk -F'\t' '$1=="P0"' "$TMP" | wc -l | tr -d ' ')
 p1_count=$(awk -F'\t' '$1=="P1"' "$TMP" | wc -l | tr -d ' ')
 total=$(wc -l < "$TMP" | tr -d ' ')
 
+write_baseline_with_header() {
+  local target="$1"
+  local tmp_with_header
+  tmp_with_header="$(mktemp)"
+  {
+    echo "# hardcoded-scan baseline"
+    echo "# generated: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    echo "# commit:    $(git rev-parse HEAD 2>/dev/null || echo unknown)"
+    echo "# P0=$p0_count  P1=$p1_count  total=$total"
+    echo "#"
+    cat "$TMP"
+  } > "$tmp_with_header"
+  mv "$tmp_with_header" "$target"
+}
+
+# When diffing, strip header lines from both files (lines starting with #).
+strip_header() {
+  grep -v '^#' "$1" 2>/dev/null || true
+}
+
 case "$MODE" in
   baseline)
     mkdir -p "$(dirname "$BASELINE_FILE")"
-    cp "$TMP" "$BASELINE_FILE"
+    write_baseline_with_header "$BASELINE_FILE"
     echo "Baseline rewritten: $BASELINE_FILE"
     echo "P0=$p0_count  P1=$p1_count  total=$total"
     exit 0
@@ -145,7 +195,12 @@ case "$MODE" in
       echo "No baseline yet; run --baseline first." >&2
       exit 2
     fi
-    NEW=$(comm -23 "$TMP" "$BASELINE_FILE" || true)
+    BASELINE_PAYLOAD="$(mktemp)"
+    CURRENT_PAYLOAD="$(mktemp)"
+    trap 'rm -f "$TMP" "$BASELINE_PAYLOAD" "$CURRENT_PAYLOAD"' EXIT
+    strip_header "$BASELINE_FILE" | sort -u > "$BASELINE_PAYLOAD"
+    sort -u "$TMP" > "$CURRENT_PAYLOAD"
+    NEW=$(comm -23 "$CURRENT_PAYLOAD" "$BASELINE_PAYLOAD" || true)
     if [[ -z "$NEW" ]]; then
       echo "✅ No new hardcoded hits beyond baseline."
       exit 0
