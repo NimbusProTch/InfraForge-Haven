@@ -39,6 +39,16 @@ class Settings(BaseSettings):
             )
         if not self.webhook_secret:
             recommended.append("WEBHOOK_SECRET")
+        elif self.webhook_secret.strip().lower() in self.webhook_secret_placeholder_values:
+            # Loud error, not fatal — webhook verifier will 503 the endpoint so
+            # a misconfigured prod cannot silently accept forged signatures via
+            # a known placeholder literal.
+            logger.error(
+                "WEBHOOK_SECRET is set to a placeholder literal (%r). "
+                "Webhook endpoints will return 503 (fail-closed) until a real "
+                "secret (openssl rand -hex 32) is wired into iyziops-api-secrets.",
+                self.webhook_secret,
+            )
         if recommended:
             logger.info("Optional settings not configured: %s", ", ".join(recommended))
         return self
@@ -88,8 +98,21 @@ class Settings(BaseSettings):
     )
 
     # Webhook
-    # GitHub webhook secret — set via WEBHOOK_SECRET env var, never hard-coded
+    # GitHub / Gitea webhook secret — set via WEBHOOK_SECRET env var, never hard-coded
     webhook_secret: str = ""
+    # Values that indicate WEBHOOK_SECRET was never wired up. When the live
+    # value matches one of these, webhook verifiers fail-closed with 503 so a
+    # misconfigured prod cannot accept forged signatures via a known literal.
+    # hardcoded-scan: allow (rejection list — these literals are refused, not used)
+    webhook_secret_placeholder_values: tuple[str, ...] = (
+        "placeholder",  # hardcoded-scan: allow
+        "changeme",  # hardcoded-scan: allow
+        "change-me",
+        "your-webhook-secret",
+        "xxx",
+        "secret",
+        "dev-secret",
+    )
 
     # GitOps — monorepo (InfraForge-Haven), gitops/ prefix
     # Set GITOPS_REPO_URL env var to enable GitOps mode; empty = direct K8s API
