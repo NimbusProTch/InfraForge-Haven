@@ -27,6 +27,14 @@ logger = logging.getLogger(__name__)
 
 _LABEL_MANAGED_BY = "haven"
 
+# ClusterSecretStore + ESO apiVersion pinned by platform/argocd/apps/platform/
+# external-secrets-config/cluster-secret-store.yaml (2.V.2). If these drift from
+# that manifest, ESO cannot find the store and ExternalSecret reconciliation
+# silently fails. Locked by api/tests/test_secret_service_constants.py.
+_CLUSTER_SECRET_STORE_NAME = "vault-backend"
+_ESO_API_VERSION = "external-secrets.io/v1beta1"
+_ESO_CRD_VERSION = "v1beta1"
+
 
 def _secret_name(app_slug: str) -> str:
     """Canonical K8s Secret name for an app's sensitive env vars."""
@@ -101,7 +109,7 @@ class SecretService:
             return
 
         body = {
-            "apiVersion": "external-secrets.io/v1",
+            "apiVersion": _ESO_API_VERSION,
             "kind": "ExternalSecret",
             "metadata": {
                 "name": _secret_name(app_slug),
@@ -113,7 +121,7 @@ class SecretService:
             },
             "spec": {
                 "refreshInterval": "30s",
-                "secretStoreRef": {"name": "haven-vault", "kind": "ClusterSecretStore"},
+                "secretStoreRef": {"name": _CLUSTER_SECRET_STORE_NAME, "kind": "ClusterSecretStore"},
                 "target": {"name": _secret_name(app_slug), "creationPolicy": "Owner"},
                 "dataFrom": [{"extract": {"key": f"tenants/{tenant_slug}/apps/{app_slug}/secrets"}}],
             },
@@ -122,7 +130,7 @@ class SecretService:
         try:
             self._k8s.custom_objects.create_namespaced_custom_object(
                 group="external-secrets.io",
-                version="v1",
+                version=_ESO_CRD_VERSION,
                 namespace=namespace,
                 plural="externalsecrets",
                 body=body,
@@ -131,7 +139,7 @@ class SecretService:
             if e.status == 409:
                 self._k8s.custom_objects.replace_namespaced_custom_object(
                     group="external-secrets.io",
-                    version="v1",
+                    version=_ESO_CRD_VERSION,
                     namespace=namespace,
                     plural="externalsecrets",
                     name=_secret_name(app_slug),
@@ -147,7 +155,7 @@ class SecretService:
         try:
             self._k8s.custom_objects.delete_namespaced_custom_object(
                 group="external-secrets.io",
-                version="v1",
+                version=_ESO_CRD_VERSION,
                 namespace=namespace,
                 plural="externalsecrets",
                 name=_secret_name(app_slug),

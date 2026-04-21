@@ -1,7 +1,7 @@
 # hardcoded-scan baseline
-# generated: 2026-04-21T05:39:37Z
-# commit:    a08c2190876a02d0ae0f4a758d6a673c4dcd2c44
-# P0=43  P1=91  total=134
+# generated: 2026-04-21T07:00:12Z
+# commit:    704d45758f5417e6db0d2deff74bacf41342f783
+# P0=35  P1=90  total=125
 #
 P0	cluster_ip	Makefile:95:	@curl -sf https://api.46.225.42.2.sslip.io/api/docs > /dev/null && echo "✓ API OK" || echo "✗ API UNREACHABLE"
 P0	cluster_ip	platform/argocd/apps/platform/kyverno-policies/restrict-registries.yaml:29:          (harbor.iyziops.com or the legacy harbor.46.225.42.2.sslip.io) are
@@ -20,10 +20,6 @@ P0	cluster_ip	scripts/cleanup-orphan-appsets.sh:25:API_URL="${HAVEN_API_URL:-htt
 P0	cluster_ip	scripts/h1d-buildkit-rootless-migration.sh:117:echo "  TOKEN=\$(curl -s -X POST 'https://keycloak.46.225.42.2.sslip.io/realms/haven/protocol/openid-connect/token' \\"
 P0	cluster_ip	scripts/h1d-buildkit-rootless-migration.sh:122:echo "    https://api.46.225.42.2.sslip.io/api/v1/apps/{some-test-app-slug}/build"
 P0	cluster_ip	scripts/h1d-buildkit-rootless-migration.sh:129:echo "  curl -s https://harbor.46.225.42.2.sslip.io/v2/library/tenant-{slug}/{app}/tags/list"
-P0	cluster_ip	scripts/h1e-vault-migrate-haven-api-secrets.sh:103:echo "  TOKEN=\$(curl -s -X POST 'https://keycloak.46.225.42.2.sslip.io/realms/haven/protocol/openid-connect/token' \\"
-P0	cluster_ip	scripts/h1e-vault-migrate-haven-api-secrets.sh:107:echo "  curl -s -H \"Authorization: Bearer \$TOKEN\" https://api.46.225.42.2.sslip.io/api/v1/tenants/me"
-P0	cluster_ip	scripts/h1e-vault-migrate-haven-api-secrets.sh:15:#   - VAULT_ADDR set to https://vault.46.225.42.2.sslip.io OR port-forward
-P0	cluster_ip	scripts/h1e-vault-migrate-haven-api-secrets.sh:99:echo "  curl -s -o /dev/null -w 'HTTP %{http_code}\n' https://api.46.225.42.2.sslip.io/api/docs"
 P0	cluster_ip	scripts/seed-cluster-dns-hosts.sh:26:NAT_IP="46.225.154.1"
 P0	literal_pwd	api/app/routers/github.py:83:    Treating "placeholder" / "changeme" / etc. as empty prevents the popup flow
 P0	literal_pwd	platform/argocd/appsets/platform-helm.yaml:705:              harborAdminPassword: "Harbor12345"
@@ -42,10 +38,6 @@ P0	sslip	scripts/cleanup-orphan-appsets.sh:25:API_URL="${HAVEN_API_URL:-https://
 P0	sslip	scripts/h1d-buildkit-rootless-migration.sh:117:echo "  TOKEN=\$(curl -s -X POST 'https://keycloak.46.225.42.2.sslip.io/realms/haven/protocol/openid-connect/token' \\"
 P0	sslip	scripts/h1d-buildkit-rootless-migration.sh:122:echo "    https://api.46.225.42.2.sslip.io/api/v1/apps/{some-test-app-slug}/build"
 P0	sslip	scripts/h1d-buildkit-rootless-migration.sh:129:echo "  curl -s https://harbor.46.225.42.2.sslip.io/v2/library/tenant-{slug}/{app}/tags/list"
-P0	sslip	scripts/h1e-vault-migrate-haven-api-secrets.sh:103:echo "  TOKEN=\$(curl -s -X POST 'https://keycloak.46.225.42.2.sslip.io/realms/haven/protocol/openid-connect/token' \\"
-P0	sslip	scripts/h1e-vault-migrate-haven-api-secrets.sh:107:echo "  curl -s -H \"Authorization: Bearer \$TOKEN\" https://api.46.225.42.2.sslip.io/api/v1/tenants/me"
-P0	sslip	scripts/h1e-vault-migrate-haven-api-secrets.sh:15:#   - VAULT_ADDR set to https://vault.46.225.42.2.sslip.io OR port-forward
-P0	sslip	scripts/h1e-vault-migrate-haven-api-secrets.sh:99:echo "  curl -s -o /dev/null -w 'HTTP %{http_code}\n' https://api.46.225.42.2.sslip.io/api/docs"
 P1	domain	demo/api/app.py:165:            ("Try it", "curl -X POST demo-api.iyziops.com/notes -d '{\"title\":\"hello\",\"body\":\"world\"}' — it survives pod restart."),
 P1	domain	demo/api/app.py:62:# CORS: demo-ui.iyziops.com → demo-api.iyziops.com
 P1	domain	demo/ui/Dockerfile:14:ARG NEXT_PUBLIC_API_URL=https://demo-api.iyziops.com
@@ -136,4 +128,3 @@ P1	namespace	api/app/schemas/tenant.py:23:            "haven-system",
 P1	namespace	api/app/services/domain_service.py:243:        namespace: str = "haven-system",
 P1	namespace	api/app/services/platform_bootstrap.py:51:ARGOCD_TOKEN_SECRET_NAMESPACE = "haven-system"
 P1	namespace	api/app/services/tenant_service.py:64:                "fromEndpoints": [{"matchLabels": {"io.kubernetes.pod.namespace": "haven-system"}}]
-P1	namespace	scripts/h1e-vault-migrate-haven-api-secrets.sh:24:NAMESPACE="haven-system"
