@@ -34,22 +34,23 @@ else
   fail "scanner exited non-zero on basic invocation"
 fi
 
-# P0 literal pwd detection (Harbor12345 IS in the repo at platform-helm.yaml:705).
+# P0 literal pwd detection (Harbor12345 is a known dev default in the repo).  # hardcoded-scan: allow
 # Capture to variable first to avoid pipefail races with head in the scanner.
 scan_out="$("$SCAN" 2>&1 || true)"
-if echo "$scan_out" | grep -q 'Harbor12345'; then
-  pass "P0 literal_pwd (Harbor12345) detected in known location"
+if echo "$scan_out" | grep -q 'Harbor12345'; then  # hardcoded-scan: allow
+  pass "P0 literal_pwd (Harbor12345) detected in known location"  # hardcoded-scan: allow
 else
-  fail "expected Harbor12345 detection in scan output"
+  fail "expected Harbor12345 detection in scan output"  # hardcoded-scan: allow
 fi
 
-# Allow-marker: ensure api/app/config.py:82-83 *is NOT* in the output despite
-# matching the "placeholder" / "changeme" pattern (marker suppresses it).
-config_line_detected=$("$SCAN" 2>&1 | awk -F'\t' '$3 ~ /api\/app\/config\.py:8[23]/' | wc -l | tr -d ' ')
-if [[ "$config_line_detected" = "0" ]]; then
-  pass "allow-marker suppresses api/app/config.py:82-83 rejection-list literals"
+# Allow-marker: ensure api/app/config.py rejection-list literals are NOT in the
+# scan output (the allow-markers next to those literals must suppress them).
+# Content-based match — do not pin to line numbers, config.py drifts.  # hardcoded-scan: allow
+config_hits=$("$SCAN" 2>&1 | grep -cE 'api/app/config\.py:[0-9]+:.*(placeholder|changeme)' || true)  # hardcoded-scan: allow
+if [[ "$config_hits" = "0" ]]; then
+  pass "allow-marker suppresses api/app/config.py rejection-list literals"
 else
-  fail "api/app/config.py:82-83 should be suppressed by allow-marker (got $config_line_detected hits)"
+  fail "api/app/config.py rejection-list literals should be suppressed (got $config_hits hits)"
 fi
 
 # --baseline writes header + payload
