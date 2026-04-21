@@ -7,9 +7,15 @@ on:
     paths:
       - "api/**"
       - ".github/workflows/api-ci.yml"
+      - "scripts/hardcoded-scan.sh"
+      - "scripts/test_hardcoded_scan.sh"
+      - "scripts/.hardcoded-baseline.txt"
   pull_request:
     paths:
       - "api/**"
+      - "scripts/hardcoded-scan.sh"
+      - "scripts/test_hardcoded_scan.sh"
+      - "scripts/.hardcoded-baseline.txt"
 
 permissions:
   contents: write

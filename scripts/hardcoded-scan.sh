@@ -87,10 +87,14 @@ grep_hits() {
   local category="$2"
   local pattern="$3"
   # git grep -E uses extended POSIX regex; -n line numbers; -I skip binary.
-  # Filter out any line carrying the allow-marker.
+  # Filter out any line carrying the allow-marker, plus container image
+  # digest pins (e.g. `image: harbor.iyziops.com/...@sha256:...`) which are
+  # auto-managed CI pins and drift on every merge to main — not hardcoded
+  # environment values in the Rule 1 sense.
   local results
   results=$(git grep -nIE "$pattern" -- . "${PATH_EXCLUDES[@]}" 2>/dev/null \
-              | grep -v 'hardcoded-scan: allow' || true)
+              | grep -v 'hardcoded-scan: allow' \
+              | grep -vE 'image:[[:space:]]+.*@sha256:' || true)
   if [[ -n "$results" ]]; then
     while IFS= read -r line; do
       printf '%s\t%s\t%s\n' "$severity" "$category" "$line" >> "$TMP"
