@@ -83,6 +83,7 @@ def _effective_github_client_id() -> str:
     Treating "placeholder" / "changeme" / etc. as empty prevents the popup flow
     from redirecting the user to github.com with an invalid client_id (which
     renders a GitHub-side 404 that looks like *our* bug).
+    (hardcoded-scan: allow — the literals above are a rejection list, not a config.)
     """
     cid = (settings.github_client_id or "").strip()
     placeholders = getattr(settings, "github_client_id_placeholder_values", ())
