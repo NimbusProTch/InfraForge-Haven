@@ -26,8 +26,12 @@ spec:
         app: iyziops-api
         haven.io/component: api
       annotations:
-        # Force pod restart when ConfigMap changes (ArgoCD will update this annotation)
-        kubectl.kubernetes.io/restartedAt: "2026-04-13T09:00:00Z"
+        # Force pod restart when ConfigMap/Secret key values change. ArgoCD
+        # selfHeal reverts imperative `kubectl rollout restart`, so bumping
+        # this timestamp in git is the only reliable way to recycle the pod.
+        # Last bump: 2026-04-21 for 2.V.3 (pick up rotated SECRET_KEY +
+        # WEBHOOK_SECRET from the ESO-managed iyziops-api-secrets Secret).
+        kubectl.kubernetes.io/restartedAt: "2026-04-21T07:14:30Z"
     spec:
       serviceAccountName: iyziops-api
       # Pod-level security context — applies to every container by default.
