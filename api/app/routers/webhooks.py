@@ -51,7 +51,7 @@ def _verify_github_signature(body: bytes, secret: str, signature_header: str | N
     if _is_placeholder_secret(secret):
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Webhook endpoint misconfigured (WEBHOOK_SECRET placeholder)",
+            detail="GitHub webhook endpoint misconfigured (WEBHOOK_SECRET placeholder)",
         )
     if not signature_header:
         raise HTTPException(

@@ -98,8 +98,8 @@ class TestIsPlaceholderSecret:
     def test_real_random_secret_returns_false(self) -> None:
         with patch("app.routers.webhooks.settings") as mock:
             mock.webhook_secret_placeholder_values = ("placeholder",)
-            # 32-byte hex is what `openssl rand -hex 32` emits
-            assert _is_placeholder_secret("9f2b7c3a8e4d1f6a0c5b9e7d3a8f2c1b") is False
+            # 64 hex chars = 32 bytes, what `openssl rand -hex 32` emits
+            assert _is_placeholder_secret("9f2b7c3a8e4d1f6a0c5b9e7d3a8f2c1b9f2b7c3a8e4d1f6a0c5b9e7d3a8f2c1b") is False
 
     def test_empty_string_returns_false(self) -> None:
         """Empty means "not configured" — handled by the dev-mode skip branch,
@@ -263,7 +263,7 @@ class TestExistingBehaviorPreserved:
             patch("app.routers.webhooks.settings") as mock_settings,
             patch("app.routers.webhooks.asyncio.create_task", MagicMock()),
         ):
-            mock_settings.webhook_secret = "9f2b7c3a8e4d1f6a0c5b9e7d3a8f2c1b"
+            mock_settings.webhook_secret = "9f2b7c3a8e4d1f6a0c5b9e7d3a8f2c1b9f2b7c3a8e4d1f6a0c5b9e7d3a8f2c1b"
             mock_settings.webhook_secret_placeholder_values = _PLACEHOLDER_TUPLE
             response = await async_client.post(
                 f"/api/v1/webhooks/github/{app_obj.webhook_token}",
@@ -304,7 +304,7 @@ class TestSettingsStartupValidation:
             Settings(
                 secret_key="x",
                 database_url="sqlite://",
-                webhook_secret="9f2b7c3a8e4d1f6a0c5b9e7d3a8f2c1b",
+                webhook_secret="9f2b7c3a8e4d1f6a0c5b9e7d3a8f2c1b9f2b7c3a8e4d1f6a0c5b9e7d3a8f2c1b",
             )
         assert not any("webhook_secret" in r.getMessage().lower() for r in caplog.records)
 
@@ -319,4 +319,18 @@ class TestSettingsStartupValidation:
             and "webhook_secret" in r.getMessage().lower()
             and "placeholder" in r.getMessage().lower()
             for r in caplog.records
+        )
+
+    def test_missing_webhook_secret_emits_recommended_info(self, caplog) -> None:
+        """Positive counterpart to the "no-ERROR" assertion: empty emits an INFO
+        "Optional settings not configured" line listing WEBHOOK_SECRET. Catches
+        a regression where someone accidentally upgrades the empty path to ERROR.
+        """
+        import logging
+
+        with caplog.at_level(logging.INFO, logger="app.config"):
+            Settings(secret_key="x", database_url="sqlite://", webhook_secret="")
+        info_records = [r for r in caplog.records if r.levelno == logging.INFO]
+        assert any(
+            "optional" in r.getMessage().lower() and "webhook_secret" in r.getMessage().lower() for r in info_records
         )
