@@ -21,14 +21,38 @@ router = APIRouter(prefix="/webhooks", tags=["webhooks"])
 logger = logging.getLogger(__name__)
 
 
+def _is_placeholder_secret(secret: str) -> bool:
+    """Return True if `secret` matches a known placeholder literal.
+
+    A placeholder means the Secret was never wired up to a real value. We
+    fail-closed on inbound webhooks to prevent signature bypass by an
+    attacker who knows the literal (e.g. `placeholder`).
+
+    Defensive against test mocks that forget to set the tuple: if the
+    attribute is missing or not a collection, treat the guard as disabled.
+    """
+    placeholders = getattr(settings, "webhook_secret_placeholder_values", ())
+    if not isinstance(placeholders, (tuple, list, set, frozenset)):
+        return False
+    return secret.strip().lower() in placeholders
+
+
 def _verify_github_signature(body: bytes, secret: str, signature_header: str | None) -> None:
     """Raise 401 if the HMAC-SHA256 signature does not match.
 
-    If WEBHOOK_SECRET is not configured the check is skipped (dev mode only).
+    If WEBHOOK_SECRET is not configured at all, the check is skipped (dev
+    mode only). If it is set but equals a known placeholder literal, the
+    request is rejected with 503 so a misconfigured prod cannot silently
+    accept forged signatures.
     """
     if not secret:
         logger.warning("WEBHOOK_SECRET not set — skipping signature verification (dev mode)")
         return
+    if _is_placeholder_secret(secret):
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="GitHub webhook endpoint misconfigured (WEBHOOK_SECRET placeholder)",
+        )
     if not signature_header:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -355,10 +379,19 @@ async def _delete_preview(
 
 
 def _verify_gitea_signature(body: bytes, secret: str, signature_header: str | None) -> None:
-    """Validate Gitea HMAC-SHA256 webhook signature."""
+    """Validate Gitea HMAC-SHA256 webhook signature.
+
+    Same fail-closed contract as `_verify_github_signature`: placeholder
+    secret → 503, empty → skip (dev mode).
+    """
     if not secret:
         logger.warning("WEBHOOK_SECRET not set — skipping Gitea signature verification (dev mode)")
         return
+    if _is_placeholder_secret(secret):
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Gitea webhook endpoint misconfigured (WEBHOOK_SECRET placeholder)",
+        )
     if not signature_header:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

@@ -1,7 +1,7 @@
 # hardcoded-scan baseline
-# generated: 2026-04-21T04:03:46Z
-# commit:    7903bfc30c205465bc36297064cec020af33526d
-# P0=43  P1=95  total=138
+# generated: 2026-04-21T04:36:39Z
+# commit:    b9123207a0389079732f5c41a35215311a17d587
+# P0=48  P1=95  total=143
 #
 P0	cluster_ip	Makefile:95:	@curl -sf https://api.46.225.42.2.sslip.io/api/docs > /dev/null && echo "✓ API OK" || echo "✗ API UNREACHABLE"
 P0	cluster_ip	platform/argocd/apps/platform/kyverno-policies/restrict-registries.yaml:29:          (harbor.iyziops.com or the legacy harbor.46.225.42.2.sslip.io) are
@@ -27,6 +27,11 @@ P0	cluster_ip	scripts/h1e-vault-migrate-haven-api-secrets.sh:99:echo "  curl -s 
 P0	cluster_ip	scripts/seed-cluster-dns-hosts.sh:26:NAT_IP="46.225.154.1"
 P0	literal_pwd	api/app/routers/github.py:83:    Treating "placeholder" / "changeme" / etc. as empty prevents the popup flow
 P0	literal_pwd	platform/argocd/appsets/platform-helm.yaml:705:              harborAdminPassword: "Harbor12345"
+P0	literal_pwd	scripts/test_hardcoded_scan.sh:37:# P0 literal pwd detection (Harbor12345 IS in the repo at platform-helm.yaml:705).
+P0	literal_pwd	scripts/test_hardcoded_scan.sh:40:if echo "$scan_out" | grep -q 'Harbor12345'; then
+P0	literal_pwd	scripts/test_hardcoded_scan.sh:41:  pass "P0 literal_pwd (Harbor12345) detected in known location"
+P0	literal_pwd	scripts/test_hardcoded_scan.sh:43:  fail "expected Harbor12345 detection in scan output"
+P0	literal_pwd	scripts/test_hardcoded_scan.sh:47:# matching the "placeholder" / "changeme" pattern (marker suppresses it).
 P0	sslip	Makefile:95:	@curl -sf https://api.46.225.42.2.sslip.io/api/docs > /dev/null && echo "✓ API OK" || echo "✗ API UNREACHABLE"
 P0	sslip	platform/argocd/apps/platform/kyverno-policies/restrict-registries.yaml:29:          (harbor.iyziops.com or the legacy harbor.46.225.42.2.sslip.io) are
 P0	sslip	platform/argocd/apps/platform/kyverno-policies/restrict-registries.yaml:40:                - image: "harbor.46.225.42.2.sslip.io/*"
@@ -95,10 +100,10 @@ P1	localhost	api/.env.example:5:DATABASE_URL=postgresql+asyncpg://haven:haven@lo
 P1	localhost	api/.env.example:70:CORS_ORIGINS=http://localhost:3000,http://localhost:3001
 P1	localhost	api/.env.example:8:KEYCLOAK_URL=http://localhost:8080
 P1	localhost	api/alembic/alembic.ini:7:sqlalchemy.url = postgresql+asyncpg://haven:haven@localhost:5432/haven_platform
-P1	localhost	api/app/config.py:108:    redis_url: str = "redis://localhost:6379/0"
-P1	localhost	api/app/config.py:128:        "http://localhost:3000,http://localhost:3001,http://localhost:3002,http://127.0.0.1:3000,http://127.0.0.1:3001"
-P1	localhost	api/app/config.py:47:    database_url: str = "postgresql+asyncpg://haven:haven@localhost:5432/haven_platform"
-P1	localhost	api/app/config.py:77:    github_redirect_uri: str = "http://localhost:3001/github/callback"
+P1	localhost	api/app/config.py:131:    redis_url: str = "redis://localhost:6379/0"
+P1	localhost	api/app/config.py:151:        "http://localhost:3000,http://localhost:3001,http://localhost:3002,http://127.0.0.1:3000,http://127.0.0.1:3001"
+P1	localhost	api/app/config.py:57:    database_url: str = "postgresql+asyncpg://haven:haven@localhost:5432/haven_platform"
+P1	localhost	api/app/config.py:87:    github_redirect_uri: str = "http://localhost:3001/github/callback"
 P1	localhost	api/app/routers/build_queue.py:41:        redis_url = getattr(settings, "redis_url", "redis://localhost:6379/0")
 P1	localhost	api/app/routers/queue_status.py:42:        redis_url = getattr(settings, "redis_url", "redis://localhost:6379/0")
 P1	localhost	api/app/workers/git_worker.py:175:        getattr(settings, "redis_url", "redis://localhost:6379/0"),
