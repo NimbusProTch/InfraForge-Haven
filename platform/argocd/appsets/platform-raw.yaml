@@ -102,6 +102,19 @@ spec:
             syncWave: "1"
             path: platform/argocd/apps/platform/kyverno-policies
 
+          # ----- Wave 1: External Secrets Operator configuration ---------
+          # Declares the ClusterSecretStore that ExternalSecret CRDs refer to.
+          # Kept OUTSIDE the ESO Helm chart's source path so the Helm release
+          # never touches ClusterSecretStore (lesson from PR #117 → #118:
+          # manifests with manual Vault-side prerequisites must not live
+          # inside an ArgoCD source path that re-syncs from scratch).
+          # Depends on ESO operator Healthy (platform-helm wave 4) — cross-
+          # appset convergence handled by selfHeal retry (up to ~5 min).
+          - name: external-secrets-config
+            namespace: external-secrets
+            syncWave: "1"
+            path: platform/argocd/apps/platform/external-secrets-config
+
   template:
     metadata:
       name: "{{.name}}"
