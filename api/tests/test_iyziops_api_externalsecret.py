@@ -73,6 +73,28 @@ def test_target_preserves_existing_secret_via_merge() -> None:
     )
 
 
+def test_target_template_annotations_prevent_argocd_prune_loop() -> None:
+    """PR #180 shipped without `spec.target.template.metadata.annotations`.
+    Result: ESO propagated the ExternalSecret's `argocd.argoproj.io/instance`
+    tracking label onto the managed Secret, ArgoCD saw the Secret as an
+    extraneous managed resource (tracking label present, no Secret manifest
+    in the source path), and pruned it within 2s of every ESO create →
+    ESO then errored `Merge: desired secret not found, will not create` →
+    the pod crash-looped on an empty DATABASE_URL.
+
+    Fix (this commit): add IgnoreExtraneous on the template so the materialized
+    Secret carries the annotation and ArgoCD leaves it alone. This test locks
+    the fix so the annotations can't silently drop on a future refactor."""
+    doc = _load()
+    template_annotations = doc["spec"]["target"]["template"]["metadata"]["annotations"]
+    assert template_annotations.get("argocd.argoproj.io/compare-options") == "IgnoreExtraneous", (
+        "Missing IgnoreExtraneous — ArgoCD will prune the ESO-managed Secret."
+    )
+    assert template_annotations.get("argocd.argoproj.io/sync-options") == "Prune=false", (
+        "Missing Prune=false — belt-and-braces guard against ArgoCD prune."
+    )
+
+
 def test_data_entries_match_expected_vault_paths() -> None:
     """Every rotated/migrated field must map to its documented Vault path
     + property per docs/audits/bolge-2v-secrets-2026-04-21.md §1."""
