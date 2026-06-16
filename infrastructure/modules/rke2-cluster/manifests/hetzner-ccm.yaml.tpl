@@ -107,6 +107,20 @@ spec:
           args:
             - "--allow-untagged-cloud"
             - "--cloud-provider=hcloud"
+            # Disable the route-controller. Cilium runs tunnel (VXLAN) mode and
+            # ignores Hetzner network routes, but the CCM route-controller still
+            # writes 10.42.X.0/24 -> <node-private-ip> entries into the hcloud
+            # network for every node. On `tofu destroy` those routes outlive the
+            # nodes that backed them, and the orphan references make subnet
+            # deletion hang 5+ minutes. `--controllers=*,-route` is the standard
+            # cloud-controller-manager flag (enable all default controllers,
+            # disable `route`). nodeipam (--allocate-node-cidrs below) is a
+            # different controller and stays on, harmlessly stamping PodCIDR on
+            # Node objects only — nothing is written to the Hetzner network.
+            # (Phase C14 — destroy-safety)
+            - "--controllers=*,-route"
+            # No-op once route-controller is disabled, but kept to minimize the
+            # diff from the upstream chart's arg set.
             - "--route-reconciliation-period=30s"
             - "--webhook-secure-port=0"
             # We let Cilium IPAM (mode: kubernetes) handle pod CIDR

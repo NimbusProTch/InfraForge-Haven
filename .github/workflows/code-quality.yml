@@ -172,6 +172,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Gating (no continue-on-error): these destroy-safety flags have gone
+      # silently missing before. If this fails, the fix was dropped — block it.
+      - name: Destroy-safety drift guard
+        run: bash scripts/test_destroy_safety.sh
+
       - name: Setup tflint
         continue-on-error: true
         uses: terraform-linters/setup-tflint@v4
