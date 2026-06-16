@@ -1,38 +1,9 @@
 ---
-# =============================================================================
-#  Hetzner Cloud Controller Manager — bootstrap manifest
-# =============================================================================
-#  Installs hcloud-cloud-controller-manager as a raw Deployment via RKE2's
-#  /var/lib/rancher/rke2/server/manifests/ auto-deploy directory. RKE2 applies
-#  YAML manifests in this directory directly with kubectl-style server-side
-#  apply — no helm-install Job pod required.
-#
-#  Why NOT a HelmChart resource:
-#    Wrapping the chart in a `helm.cattle.io/v1 HelmChart` resource means
-#    RKE2's Helm Controller spawns a `helm-install-...` Job pod inside the
-#    cluster to run `helm install`. That pod uses the standard "system addon"
-#    pod template, which does NOT tolerate the
-#    `node.cloudprovider.kubernetes.io/uninitialized:NoSchedule` taint that
-#    kubelet sets on every node when --cloud-provider=external is passed.
-#    Result: the helm-install pod cannot schedule anywhere because every
-#    node is uninitialized, and CCM never starts to remove the taint —
-#    bootstrap deadlock.
-#
-#    Using raw resources sidesteps the helm-install Job entirely. The
-#    Deployment lands directly via RKE2's manifest applier (which runs
-#    inside rke2-server, not as a Pod), and the CCM Pod itself tolerates
-#    the uninitialized taint and runs hostNetwork so it can start before
-#    Cilium is ready.
-#
-#  This pattern is documented in kube-hetzner and hcloud-k8s as the only
-#  reliable way to install Hetzner CCM on a fresh cluster.
-#
-#  Source: https://github.com/hetznercloud/hcloud-cloud-controller-manager/
-#          releases/download/v1.25.1/ccm-networks.yaml
-#  We embed the manifest verbatim (with our own hcloud Secret override above
-#  the upstream content) so the bootstrap is reproducible without internet.
-# =============================================================================
-
+# Hetzner CCM — raw Deployment via RKE2 /var/lib/rancher/rke2/server/manifests/.
+# NOT a helm.cattle.io HelmChart: the helm-install Job pod can't tolerate the
+# uninitialized taint → bootstrap deadlock (see CLAUDE.md CCM gotcha). Comments
+# kept terse on purpose — this manifest is base64-embedded in the first-master
+# cloud-init, which has a hard 32KB limit. Full rationale lives in CLAUDE.md.
 apiVersion: v1
 kind: Secret
 metadata:
@@ -81,15 +52,13 @@ spec:
       serviceAccountName: hcloud-cloud-controller-manager
       dnsPolicy: Default
       tolerations:
-        # Allow CCM itself to schedule on nodes that have not yet been
-        # initialized by CCM (chicken-and-egg breaker).
+        # CCM must schedule on not-yet-initialized nodes (chicken-and-egg) and
+        # on control-plane nodes (kube-hetzner convention: CCM on masters).
         - key: "node.cloudprovider.kubernetes.io/uninitialized"
           value: "true"
           effect: "NoSchedule"
         - key: "CriticalAddonsOnly"
           operator: "Exists"
-        # Allow CCM to schedule on control plane nodes (kube-hetzner runs
-        # CCM only on masters; we follow the same convention).
         - key: "node-role.kubernetes.io/master"
           effect: NoSchedule
           operator: Exists
@@ -98,37 +67,22 @@ spec:
           operator: Exists
         - key: "node.kubernetes.io/not-ready"
           effect: "NoExecute"
-      # hostNetwork is required so CCM can run before Cilium has installed
-      # pod networking. CCM is the thing that initializes nodes, so it has
-      # to bypass the not-yet-existing pod network.
+      # hostNetwork: CCM runs before Cilium installs pod networking.
       hostNetwork: true
       containers:
         - name: hcloud-cloud-controller-manager
           args:
             - "--allow-untagged-cloud"
             - "--cloud-provider=hcloud"
-            # Disable the route-controller. Cilium runs tunnel (VXLAN) mode and
-            # ignores Hetzner network routes, but the CCM route-controller still
-            # writes 10.42.X.0/24 -> <node-private-ip> entries into the hcloud
-            # network for every node. On `tofu destroy` those routes outlive the
-            # nodes that backed them, and the orphan references make subnet
-            # deletion hang 5+ minutes. `--controllers=*,-route` is the standard
-            # cloud-controller-manager flag (enable all default controllers,
-            # disable `route`). nodeipam (--allocate-node-cidrs below) is a
-            # different controller and stays on, harmlessly stamping PodCIDR on
-            # Node objects only — nothing is written to the Hetzner network.
-            # (Phase C14 — destroy-safety)
+            # --controllers=*,-route disables the route-controller: it writes
+            # orphan 10.42.x/24 routes that hang `tofu destroy` on subnet
+            # deletion. nodeipam (--allocate-node-cidrs) is separate, stays on,
+            # harmless. (Phase C14 — see CLAUDE.md.)
             - "--controllers=*,-route"
-            # No-op once route-controller is disabled, but kept to minimize the
-            # diff from the upstream chart's arg set.
             - "--route-reconciliation-period=30s"
             - "--webhook-secure-port=0"
-            # We let Cilium IPAM (mode: kubernetes) handle pod CIDR
-            # allocation. CCM's --allocate-node-cidrs path is harmless
-            # because Cilium ignores both CCM and kube-controller-manager
-            # CIDR writes and uses its own IPAM, but we keep the flag
-            # because the upstream chart sets it and removing it would
-            # diverge from the maintained manifest.
+            # Cilium IPAM owns pod CIDRs; this flag is harmless, kept to match
+            # the upstream chart.
             - "--allocate-node-cidrs=true"
             - "--cluster-cidr=10.244.0.0/16"
             - "--leader-elect=false"
@@ -143,11 +97,8 @@ spec:
                 secretKeyRef:
                   key: network
                   name: hcloud
-            # Routing the LB → node path through the private network is
-            # what makes Cilium Gateway → CCM → Hetzner LB end-to-end work
-            # without going through public IPs. Set unconditionally — the
-            # ingress LB and all node networks live inside the same private
-            # subnet by design.
+            # LB → node path via the private network (Cilium Gateway → CCM →
+            # Hetzner LB without public IPs).
             - name: HCLOUD_LOAD_BALANCERS_USE_PRIVATE_IP
               value: "true"
             - name: HCLOUD_LOAD_BALANCERS_DISABLE_PRIVATE_INGRESS
