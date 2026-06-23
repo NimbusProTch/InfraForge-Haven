@@ -30,7 +30,7 @@ class TestVaultServiceOperations:
             await svc.write_secrets("rotterdam", "my-api", {"DB_PASSWORD": "secret123"})
             mock_req.assert_called_once_with(
                 "POST",
-                "haven/data/tenants/rotterdam/apps/my-api/secrets",
+                "kv/data/platform/tenants/rotterdam/apps/my-api/secrets",
                 json={"data": {"DB_PASSWORD": "secret123"}},
             )
 
@@ -65,7 +65,7 @@ class TestVaultServiceOperations:
             await svc.delete_secrets("rotterdam", "my-api")
             mock_req.assert_called_once_with(
                 "DELETE",
-                "haven/metadata/tenants/rotterdam/apps/my-api/secrets",
+                "kv/metadata/platform/tenants/rotterdam/apps/my-api/secrets",
             )
 
     @pytest.mark.asyncio
@@ -75,6 +75,37 @@ class TestVaultServiceOperations:
             mock_req.return_value = {"data": {"data": {"KEY1": "v1", "KEY2": "v2"}}}
             keys = await svc.list_keys("rotterdam", "my-api")
             assert sorted(keys) == ["KEY1", "KEY2"]
+
+
+class TestVaultEsoPathContract:
+    """Lock the write-path / ESO-read-key contract for tenant app secrets.
+
+    Regression guard for the 'haven/ mount vs kv/ store' bug: vault_service wrote
+    to the `haven` mount while the ExternalSecret read from the `kv` store under a
+    different subpath → ESO materialised an empty Secret → tenant pod crash-loop on
+    missing env. The two MUST resolve to the same physical Vault location, and both
+    MUST live under platform/ so the existing `platform-eso-read` policy
+    (read kv/data/platform/*) grants ESO access without widening.
+    """
+
+    def test_eso_key_matches_vault_write_path(self):
+        from app.services.secret_service import _tenant_secret_vault_key
+        from app.services.vault_service import _vault_path
+
+        tenant, app = "rotterdam", "my-api"
+        eso_key = _tenant_secret_vault_key(tenant, app)
+        # ESO resolves remoteRef.key against the `kv` mount as kv/data/<key>.
+        resolved = f"kv/data/{eso_key}"
+        assert resolved == _vault_path(tenant, app)
+
+    def test_paths_are_under_platform_for_policy_coverage(self):
+        from app.services.secret_service import _tenant_secret_vault_key
+        from app.services.vault_service import _vault_metadata_path, _vault_path
+
+        tenant, app = "rotterdam", "my-api"
+        assert _tenant_secret_vault_key(tenant, app).startswith("platform/")
+        assert _vault_path(tenant, app).startswith("kv/data/platform/")
+        assert _vault_metadata_path(tenant, app).startswith("kv/metadata/platform/")
 
 
 # ---------------------------------------------------------------------------

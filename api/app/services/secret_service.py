@@ -5,7 +5,7 @@ Design:
   - Sensitive env vars → Vault (when configured) or K8s Secret (fallback).
 
 When Vault is configured (VAULT_URL + VAULT_TOKEN):
-  - Sensitive vars written to Vault KV v2: haven/tenants/{tenant}/apps/{app}/secrets
+  - Sensitive vars written to Vault KV v2: kv/platform/tenants/{tenant}/apps/{app}/secrets
   - ESO (External Secrets Operator) syncs Vault → K8s Secret automatically
   - Pod reads via envFrom.secretRef (same as before)
 
@@ -39,6 +39,17 @@ _ESO_CRD_VERSION = "v1beta1"
 def _secret_name(app_slug: str) -> str:
     """Canonical K8s Secret name for an app's sensitive env vars."""
     return f"{app_slug}-env-secrets"
+
+
+def _tenant_secret_vault_key(tenant_slug: str, app_slug: str) -> str:
+    """ExternalSecret remoteRef key for a tenant app, relative to the `kv` mount.
+
+    ESO resolves this against the ClusterSecretStore `kv` mount as
+    kv/data/platform/tenants/{tenant}/apps/{app}/secrets — which MUST equal the
+    path vault_service._vault_path() writes to. Locked by
+    test_vault_service.py::test_eso_key_matches_vault_write_path.
+    """
+    return f"platform/tenants/{tenant_slug}/apps/{app_slug}/secrets"
 
 
 def _build_secret_body(namespace: str, app_slug: str, data: dict[str, str]) -> dict:
@@ -123,7 +134,7 @@ class SecretService:
                 "refreshInterval": "30s",
                 "secretStoreRef": {"name": _CLUSTER_SECRET_STORE_NAME, "kind": "ClusterSecretStore"},
                 "target": {"name": _secret_name(app_slug), "creationPolicy": "Owner"},
-                "dataFrom": [{"extract": {"key": f"tenants/{tenant_slug}/apps/{app_slug}/secrets"}}],
+                "dataFrom": [{"extract": {"key": _tenant_secret_vault_key(tenant_slug, app_slug)}}],
             },
         }
 

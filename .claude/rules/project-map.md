@@ -31,7 +31,7 @@ haven-platform/
 │   │   │   └── vault.py               # Vault API wrapper
 │   │   ├── k8s/                       # Kubernetes client
 │   │   └── auth/                      # JWT + RBAC
-│   ├── tests/                         # ⭐ BACKEND TESTS (71 files, ~1185 tests)
+│   ├── tests/                         # ⭐ BACKEND TESTS (94 files, ~1550 tests)
 │   │   └── test_{module}.py
 │   ├── pyproject.toml
 │   └── Dockerfile

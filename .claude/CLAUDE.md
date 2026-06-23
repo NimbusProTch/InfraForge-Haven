@@ -87,7 +87,7 @@ haven-platform/
 │       │   ├── managed_db.py       # DB provision/deprovision
 │       │   └── backup.py           # DB backup/restore
 │       ├── workers/
-│       │   └── git_writer.py    # Single-worker git commit processor
+│       │   └── git_worker.py    # Single-worker git commit processor
 │       ├── templates/gitops/    # Jinja2 templates for values.yaml etc.
 │       ├── k8s/                 # Kubernetes client wrapper
 │       └── auth/                # Keycloak JWT verification
@@ -118,7 +118,7 @@ All state changes flow through Gitea → ArgoCD. Direct `kubectl apply` only for
 bootstrapping. Application state lives in `gitops/tenants/{slug}/apps/{app}/values.yaml`.
 
 ### 2. Queue-Based Git Writer (Conflict Prevention)
-All git commits go through a single Redis FIFO queue worker (`workers/git_writer.py`).
+All git commits go through a single Redis FIFO queue worker (`workers/git_worker.py`).
 This prevents concurrent commit conflicts when multiple users modify values simultaneously.
 Dead-letter queue (`haven:git:dlq`) captures failures after 3 retries.
 

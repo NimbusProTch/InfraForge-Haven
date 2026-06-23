@@ -1,6 +1,11 @@
 """HashiCorp Vault KV v2 API client for sensitive environment variables.
 
-Secrets are stored at: haven/tenants/{tenant_slug}/apps/{app_slug}/secrets
+Secrets are stored at: kv/platform/tenants/{tenant_slug}/apps/{app_slug}/secrets
+(KV v2 mount `kv`, nested under platform/ so the existing `platform-eso-read`
+policy — read kv/data/platform/* — already grants ESO access without widening).
+This MUST match the ClusterSecretStore mount (`kv`) and the ExternalSecret
+remoteRef key (`platform/tenants/...`) built in secret_service.py, otherwise ESO
+reads an empty path and the tenant pod crash-loops on missing env.
 ESO (External Secrets Operator) syncs Vault secrets to K8s Secrets automatically.
 
 When Vault is not configured (VAULT_URL empty), falls back to direct K8s Secrets.
@@ -19,13 +24,13 @@ VAULT_TOKEN = settings.vault_token
 
 
 def _vault_path(tenant_slug: str, app_slug: str) -> str:
-    """Vault KV v2 path for an app's sensitive env vars."""
-    return f"haven/data/tenants/{tenant_slug}/apps/{app_slug}/secrets"
+    """Vault KV v2 data path for an app's sensitive env vars (mount `kv`)."""
+    return f"kv/data/platform/tenants/{tenant_slug}/apps/{app_slug}/secrets"
 
 
 def _vault_metadata_path(tenant_slug: str, app_slug: str) -> str:
-    """Vault KV v2 metadata path for an app's sensitive env vars."""
-    return f"haven/metadata/tenants/{tenant_slug}/apps/{app_slug}/secrets"
+    """Vault KV v2 metadata path for an app's sensitive env vars (mount `kv`)."""
+    return f"kv/metadata/platform/tenants/{tenant_slug}/apps/{app_slug}/secrets"
 
 
 class VaultService:
