@@ -1,7 +1,7 @@
 # hardcoded-scan baseline
-# generated: 2026-04-21T07:00:12Z
-# commit:    704d45758f5417e6db0d2deff74bacf41342f783
-# P0=35  P1=90  total=125
+# generated: 2026-06-23T05:00:57Z
+# commit:    dc6cbb8ad74647da47dd9ef79003870bd0d34d76
+# P0=33  P1=90  total=123
 #
 P0	cluster_ip	Makefile:95:	@curl -sf https://api.46.225.42.2.sslip.io/api/docs > /dev/null && echo "✓ API OK" || echo "✗ API UNREACHABLE"
 P0	cluster_ip	platform/argocd/apps/platform/kyverno-policies/restrict-registries.yaml:29:          (harbor.iyziops.com or the legacy harbor.46.225.42.2.sslip.io) are
@@ -10,7 +10,6 @@ P0	cluster_ip	platform/argocd/apps/platform/kyverno-policies/restrict-registries
 P0	cluster_ip	platform/argocd/apps/platform/kyverno-policies/restrict-registries.yaml:57:              - image: "harbor.iyziops.com/* | harbor.46.225.42.2.sslip.io/* | alpine:* | busybox:*"
 P0	cluster_ip	platform/argocd/apps/tenant-management/iyziops-api/configmap.yaml:11:  LB_IP: "46.225.42.2"
 P0	cluster_ip	platform/argocd/apps/tenant-management/iyziops-ui/configmap.yaml:12:  NEXT_PUBLIC_LB_IP: "46.225.42.2"
-P0	cluster_ip	platform/manifests/harbor/httproute.yaml:36:    - harbor.46.225.42.2.sslip.io
 P0	cluster_ip	platform/manifests/haven-builds-rootless-migration/buildkitd-rootless.yaml:97:#        https://api.46.225.42.2.sslip.io/api/v1/apps/{app-slug}/build
 P0	cluster_ip	platform/manifests/haven-builds-rootless-migration/buildkitd-rootless.yaml:99:#   5. Verify the resulting image lands in Harbor (`harbor.46.225.42.2.sslip.io/library/...`)
 P0	cluster_ip	platform/manifests/haven-builds/harbor-docker-config.yaml:4:# `"insecureRegistries": ["harbor.46.225.42.2.sslip.io"]` which forced
@@ -28,7 +27,6 @@ P0	sslip	platform/argocd/apps/platform/kyverno-policies/restrict-registries.yaml
 P0	sslip	platform/argocd/apps/platform/kyverno-policies/restrict-registries.yaml:40:                - image: "harbor.46.225.42.2.sslip.io/*"
 P0	sslip	platform/argocd/apps/platform/kyverno-policies/restrict-registries.yaml:53:          or legacy harbor.46.225.42.2.sslip.io; alpine/busybox allowed).
 P0	sslip	platform/argocd/apps/platform/kyverno-policies/restrict-registries.yaml:57:              - image: "harbor.iyziops.com/* | harbor.46.225.42.2.sslip.io/* | alpine:* | busybox:*"
-P0	sslip	platform/manifests/harbor/httproute.yaml:36:    - harbor.46.225.42.2.sslip.io
 P0	sslip	platform/manifests/haven-builds-rootless-migration/buildkitd-rootless.yaml:97:#        https://api.46.225.42.2.sslip.io/api/v1/apps/{app-slug}/build
 P0	sslip	platform/manifests/haven-builds-rootless-migration/buildkitd-rootless.yaml:99:#   5. Verify the resulting image lands in Harbor (`harbor.46.225.42.2.sslip.io/library/...`)
 P0	sslip	platform/manifests/haven-builds/harbor-docker-config.yaml:4:# `"insecureRegistries": ["harbor.46.225.42.2.sslip.io"]` which forced

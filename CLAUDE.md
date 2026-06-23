@@ -58,10 +58,10 @@ UI sadece monitoring/dashboard. Oluşturma/güncelleme/silme hep OpenTofu + GitO
 5. **Keycloak**: Tenant başına realm
 
 ### GitOps-First + Queue-Based Git Writer
-Tüm state değişiklikleri Gitea → ArgoCD'den akar. Concurrent commit conflict'lerini önlemek için tek Redis FIFO queue worker'ı (`api/app/workers/git_writer.py`) tüm git commit'leri seri işler. DLQ (`haven:git:dlq`) 3 retry sonrası fail'leri yakalar.
+Tüm state değişiklikleri Gitea → ArgoCD'den akar. Concurrent commit conflict'lerini önlemek için tek Redis FIFO queue worker'ı (`api/app/workers/git_worker.py`) tüm git commit'leri seri işler. DLQ (`haven:git:dlq`) 3 retry sonrası fail'leri yakalar.
 
 ### ApplicationSet per Tenant
-Her tenant'ın kendi `appset-{slug}` ArgoCD ApplicationSet'i var → `gitops/tenants/{slug}/apps/*` izliyor. Yeni app deploy'u API çağrısı gerektirmez; git directory'ye values.yaml düşer, ArgoCD otomatik keşfeder.
+Tek `tenants` ArgoCD ApplicationSet'i (git generator) `gitops/tenants/*` altındaki her dizini otomatik `tenant-{slug}` Application'a çeviriyor (`platform/argocd/appsets/tenants.yaml`). Yeni app deploy'u API çağrısı gerektirmez; git directory'ye values.yaml düşer, generator otomatik keşfeder. (Per-app ayrı ApplicationSet YOK.)
 
 ### Vault + External Secrets for Sensitive Vars
 Non-sensitive env vars → `values.yaml` (plaintext, version-controlled). Sensitive vars (DB passwords, API keys) → Vault → ESO `ExternalSecret` CRD → K8s Secret. UI'da `🔒` toggle ile mark ediliyor.
@@ -128,9 +128,9 @@ Geçen sprint'te gerçekten çarpan tuzaklar:
 
 - **Cilium operator Gateway API CRD detection startup-only**: CRD presence kontrolü bir kez yapılır, re-check yok. Fresh cluster'da Cilium ArgoCD'den önce boot ettiğinden CRD'ler sonradan geliyor. Fix: `kubectl rollout restart deploy/cilium-operator -n kube-system` gateway-api-crds Application sync'i sonrası.
 
-- **gateway-api-crds Application lokasyonu**: `platform/argocd/apps/ingress/` altına KOYMA — platform-ingress App tek transaction sync eder, Gateway resource'ları CRD yokken fail eder. Sibling olarak `platform/argocd/appsets/gateway-api-crds.yaml` (sync-wave: `-10`), iyziops-root → gateway-api-crds → platform-ingress (`-5`) sırasıyla uygulansın.
+- **gateway-api-crds runtime fetch (mevcut implementasyon)**: Gateway API CRD'leri ArgoCD ile DEĞİL, ilk master cloud-init runcmd'sinde `curl ... experimental-install.yaml | kubectl apply --server-side` ile kuruluyor (`master-cloud-init.yaml.tpl:~250`, pin `var.gateway_api_version` v1.2.0) — ArgoCD/Cilium boot'undan önce. Eski tasarım (sibling `appsets/gateway-api-crds.yaml` sync-wave -10) UYGULANMADI; K8s label'ları negatif sync-wave kabul etmiyor, cloud-init pre-install bu sırayı zaten garantiliyor.
 
-- **cert-manager Cloudflare DNS-01 cleanup race (RESOLVED 2026-04-13)**: cert-manager **v1.17.0** Cloudflare'in Şubat 2025 API değişikliğine uyumsuzdu — DNS record response'larında `zone_id` alanı kaldırıldı, v1.17.0'ın cleanup kodu empty zone ID ile `DELETE /zones//dns_records/<id>` gönderiyor, error 7003 ile fail ediyordu. Fresh bootstrap'te `iyziops-wildcard` cert `Issuing`'de takılıyor, stale `_acme-challenge.iyziops.com` TXT'leri birikiyordu. **Kalıcı fix**: cert-manager v1.17.0 → **v1.20.2** upgrade ([PR #7549](https://github.com/cert-manager/cert-manager/pull/7549)). Token permission ile ilgisi yoktu (önceki session'ın notu hatalıydı). Fix: `platform/argocd/appsets/platform-services.yaml` `targetRevision: v1.20.2` + `installCRDs: true` → `crds.enabled: true + crds.keep: true` (v1.20 chart schema).
+- **cert-manager Cloudflare DNS-01 cleanup race (RESOLVED 2026-04-13)**: cert-manager **v1.17.0** Cloudflare'in Şubat 2025 API değişikliğine uyumsuzdu — DNS record response'larında `zone_id` alanı kaldırıldı, v1.17.0'ın cleanup kodu empty zone ID ile `DELETE /zones//dns_records/<id>` gönderiyor, error 7003 ile fail ediyordu. Fresh bootstrap'te `iyziops-wildcard` cert `Issuing`'de takılıyor, stale `_acme-challenge.iyziops.com` TXT'leri birikiyordu. **Kalıcı fix**: cert-manager v1.17.0 → **v1.20.2** upgrade ([PR #7549](https://github.com/cert-manager/cert-manager/pull/7549)). Token permission ile ilgisi yoktu (önceki session'ın notu hatalıydı). Fix: `platform/argocd/appsets/platform-helm.yaml` cert-manager generator `targetRevision: v1.20.2` + `installCRDs: true` → `crds.enabled: true + crds.keep: true` (v1.20 chart schema).
 
 - **iyziops-platform-repo secret vestigial sshPrivateKey**: Bootstrap manifest `sshPrivateKey` field'ı ile Secret oluşturuyor ama GitOps repo public HTTPS. ArgoCD SSH auth'a zorlanıp `ssh: no key found` ile fail ediyor. Fix: `kubectl patch secret iyziops-platform-repo --type=json -p='[{"op":"remove","path":"/data/sshPrivateKey"}]'`. Kalıcı: template'ten field'ı sil.
 
